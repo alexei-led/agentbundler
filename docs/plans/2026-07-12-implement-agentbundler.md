@@ -188,15 +188,15 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ### Task 22: Verify acceptance criteria
 
-- [ ] Run `go test ./...` — all implemented package tests must pass
-- [ ] Run the fractal module validator in tree mode over `.` — the design tree must remain defect-free
-- [ ] Run `gofmt` and `go vet ./...` — all issues fixed
-- [ ] Verify every `⚠️` noted during implementation is resolved or explicitly accepted by the user
+- [x] Run `go test ./...` — all implemented package tests must pass
+- [x] Run the fractal module validator in tree mode over `.` — the design tree must remain defect-free
+- [x] Run `gofmt` and `go vet ./...` — all issues fixed
+- [x] Verify every `⚠️` noted during implementation is resolved or explicitly accepted by the user
 
 ### Task 23: [Final] Update documentation
 
-- [ ] Update `README.md` if the implementation affects its current product description
-- [ ] Verify each implemented `module.md` still matches what was built; use `/modularity:fractal-align` for a rigorous alignment pass
+- [x] Update `README.md` if the implementation affects its current product description
+- [x] Verify each implemented `module.md` still matches what was built; use `/modularity:fractal-align` for a rigorous alignment pass
 
 ## Post-Completion
 

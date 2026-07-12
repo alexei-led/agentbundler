@@ -140,7 +140,11 @@ func parseArgs(args []string) (options, error) {
 
 func locateManifest(root, cwd string) (string, string, error) {
 	if root != "" {
-		absolute, err := filepath.Abs(filepath.Join(cwd, root))
+		candidate := root
+		if !filepath.IsAbs(candidate) {
+			candidate = filepath.Join(cwd, candidate)
+		}
+		absolute, err := filepath.Abs(candidate)
 		if err != nil {
 			return "", "", err
 		}
