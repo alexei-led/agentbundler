@@ -29,9 +29,9 @@ src/plugins/<target>/<name>/...
 <asset-directory>/.agentbundler/targets/<target>/files/...
 ```
 
-`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `bundle.packages` lists exact package-manifest paths. A package manifest is `{ "id": String, "metadata": Object, "assets": [RelativePath] }`; each asset path is exact and its canonical parent determines `skill`, `agent`, `hook`, or `native-resource`. Package and asset identities are the declared package ID and `kind/name`. Unknown fields, duplicate keys, duplicate asset paths, and invalid identities are errors.
+`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `bundle.packages` lists exact package-manifest paths. A package manifest is `{ "id": String, "metadata": Object, "assets": [RelativePath] }`; each asset entry is either a skill directory (`src/skills/<name>`) or an exact single-file path (`src/agents/<name>.md`, `src/hooks/<name>.json`, or `src/plugins/<target>/<name>`). A skill entry resolves its directory and `SKILL.md`; single-file entries use their containing directory as the sidecar directory. The canonical parent determines `skill`, `agent`, `hook`, or `native-resource`; identities are the declared package ID and `kind/name`. Unknown fields, duplicate keys, duplicate asset paths, and invalid identities are errors.
 
-An asset sidecar is `{ "capabilities": [String] }`. A target sidecar uses the shared overlay JSON fields: `frontmatterPatch`, `bodyPatch`, `files`, `deletedFiles`, and `acknowledgments`. The sibling `files/` tree supplies byte-exact file patches. Sidecars and support files cannot contain symlinks or paths outside the asset.
+An asset sidecar is `asset.json` with exactly `{ "capabilities": [String] }`, where each capability string becomes a `CapabilityUse` at the sidecar path. A target sidecar is `<asset-directory>/.agentbundler/targets/<target>.json` with exactly `{ "frontmatterPatch": Object?, "bodyPatch": Object?, "files": Object?, "deletedFiles": [String], "acknowledgments": [Object] }`; absent fields are omitted. `files` maps asset-relative slash paths to UTF-8 strings or base64 objects `{ "base64": String }`; the sibling `files/` tree, when present, overrides same-path JSON entries. Sidecars and support files cannot contain symlinks or paths outside the asset.
 
 ## Subdomain Classification
 
@@ -69,7 +69,7 @@ SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, bytes: ByteSequence }
 TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
@@ -80,7 +80,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }

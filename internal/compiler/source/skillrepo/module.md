@@ -20,7 +20,7 @@ This module adopts an existing Agent Skills collection with no file moves. Witho
 
 `skillsRepository` is required and has `{ "package": String, "roots": [RelativePath], "metadata": Object }`. Each root is resolved below the manifest root. A version-1 `agentbundle.json` with `kind: skills-repository` therefore supplies package identity, metadata, and explicit roots; no root is inferred.
 
-For each declared root, recursively find `SKILL.md` without crossing symlinks. The directory containing `SKILL.md` is the asset root and its basename is the identity `skill/<basename>`. The file is parsed with optional JSON-subset frontmatter delimited by first-line and closing `---`; frontmatter is an object and the remaining bytes are the exact body. Every regular file below the asset root except `.agentbundler/` is a base support file. Duplicate identities, invalid frontmatter, or non-regular entries are diagnostics. Sidecars use `.agentbundler/assets/skill/<name>/asset.json`, `targets/<target>.json`, and `targets/<target>/files/...` with the shared overlay schema.
+For each declared root, recursively find `SKILL.md` without crossing symlinks. The directory containing `SKILL.md` is the asset root and its basename is the identity `skill/<basename>`. The file is parsed with optional JSON-subset frontmatter delimited by first-line and closing `---`; frontmatter is an object and the remaining bytes are the exact body. Every regular file below the asset root except `.agentbundler/` is a base support file. Duplicate identities, invalid frontmatter, or non-regular entries are diagnostics. `.agentbundler/assets/skill/<name>/asset.json` is exactly `{ "capabilities": [String] }`; each target sidecar is `targets/<target>.json` with the shared overlay fields, and `targets/<target>/files/...` overrides same-path JSON file entries.
 
 ## Subdomain Classification
 
@@ -58,7 +58,7 @@ SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, bytes: ByteSequence }
 TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
@@ -69,7 +69,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }

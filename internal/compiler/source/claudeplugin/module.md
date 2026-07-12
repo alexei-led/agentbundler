@@ -29,9 +29,9 @@ hooks/<name>.json
 .agentbundler/assets/<kind>/<name>/targets/<target>/files/...
 ```
 
-`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `claudePlugin.pluginRoot` identifies the directory containing `.claude-plugin/plugin.json`. The plugin manifest must be a UTF-8 JSON object with string `name`, optional string `description`, and optional `version`; unknown fields are preserved as metadata only when they are JSON scalar/object values. Marketplace metadata is accepted only when its local plugin path resolves to the same plugin root.
+`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `claudePlugin.pluginRoot` identifies the directory containing `.claude-plugin/plugin.json`. The plugin manifest must be a UTF-8 JSON object with string `name`, optional string `description`, optional string `version`, and optional `hooks` object. Each `hooks` member maps an event name to an array of `{ "matcher": String?, "command": String, "timeout": Integer? }`; hook names are the event name plus stable ordinal. Marketplace metadata is accepted only at `.claude-plugin/marketplace.json` with a `plugins` array containing exactly one entry whose `source` resolves to the same plugin root; its other fields become package metadata. Unknown fields are errors.
 
-`skills/<name>/SKILL.md` maps to `skill/<name>`, `agents/<name>.md` maps to `agent/<name>`, and each declared `hooks/<name>.json` maps to `hook/<name>`. Every other declared or discovered component becomes a `NativeGap` with its relative path and optional target `claude`. Sidecars use the shared asset/target overlay schema; `.agentbundler/` is never imported as a native asset.
+`skills/<name>/SKILL.md` maps to `skill/<name>`, `agents/<name>.md` maps to `agent/<name>`, and each declared hook maps to `hook/<event>-<ordinal>`. Every other declared or discovered component becomes a `NativeGap` with its relative path, mapped asset when applicable, and optional target `claude`. Asset sidecars use `.agentbundler/assets/<kind>/<name>/asset.json` exactly `{ "capabilities": [String] }`; target sidecars use `<target>.json` with the shared overlay fields and `files/` tree precedence. `.agentbundler/` is never imported as a native asset.
 
 ## Subdomain Classification
 
@@ -69,7 +69,7 @@ SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, bytes: ByteSequence }
 TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
@@ -80,7 +80,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }

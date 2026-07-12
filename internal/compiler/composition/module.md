@@ -53,7 +53,7 @@ SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, bytes: ByteSequence }
 TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
@@ -64,7 +64,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
@@ -100,7 +100,7 @@ SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, bytes: ByteSequence }
 TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
@@ -111,7 +111,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
@@ -128,7 +128,7 @@ BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 compose(SourceInventory, TargetComposition) -> [NormalizedPackage] + [Diagnostic]
 ```
 
-Composition applies these rules in order: select the target overlay; merge frontmatter by RFC 7396 JSON Merge Patch; apply body replacement or exact heading-path section patches outside fenced code; prepend the skill preamble only to skills; apply support-file additions then deletions; resolve exact capability uses and acknowledgments; resolve every applicable native gap with exactly one policy; and sort packages, assets, files, and acknowledgments deterministically. Missing, unused, duplicate, advisory-without-acknowledgment, and unsupported capability policies are errors. `replace` requires an asset in the same inventory; `exclude` and `source-only` do not. The operation produces no target files.
+Composition applies these rules in order: select the target overlay; merge frontmatter by RFC 7396 JSON Merge Patch; apply body replacement or exact heading-path section patches outside fenced code; prepend the skill preamble only to skills; apply support-file additions then deletions; resolve each `SourceAsset.capabilityUses` against exact rules and acknowledgments; resolve every `NativeGap` whose `asset` is present and whose target is absent or equal to the composition target with exactly one policy; `exclude` emits no normalized asset for the gap, `source-only` emits no derived representation, and `replace` adds the policy replacement asset; and sort packages, assets, files, and acknowledgments deterministically. Missing, unused, duplicate, advisory-without-acknowledgment, and unsupported capability policies are errors. `replace` requires an asset in the same inventory; `exclude` and `source-only` do not. The operation produces no target files.
 
 ## Integrations
 
