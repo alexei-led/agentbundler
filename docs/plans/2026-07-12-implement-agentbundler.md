@@ -51,19 +51,19 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ### Task 3 [Wave 1]: Implement `internal/artifact/nativeverify/`
 
-- [ ] Read `internal/artifact/nativeverify/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/nativeverify/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/artifact/nativeverify/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/nativeverify/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ⚠️ Resolved design prerequisite: `RunNativeChecks`, result semantics, diagnostic codes, and bounded output policy are now normative.
 
 ### Task 4 [Wave 1]: Implement `internal/artifact/provenance/`
 
-- [ ] Read `internal/artifact/provenance/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/provenance/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/artifact/provenance/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/provenance/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ⚠️ Resolved design prerequisite: model compiler files, provenance inputs/API, canonical JSON schema, and SHA-256 scope/order are now normative.
 

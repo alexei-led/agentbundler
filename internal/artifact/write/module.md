@@ -94,6 +94,8 @@ func ReplaceOutput(plan model.BuildPlan, outputRoot string) []model.Diagnostic
 
 `outputRoot` is a cleaned absolute path. A target file's destination is `outputRoot / target / PlannedFile.path`; a compiler file's destination is `outputRoot / PlannedFile.path`. The operation assumes parent plan validation has succeeded. It stages the entire output root, including compiler files, then either replaces the full selected generated output or reports failure while preserving the prior output root. It never writes source-owned files.
 
+Write and recovery failures emit a locationless error diagnostic with code `ARTIFACT_WRITE_FAILED` and a message containing the failed operation and wrapped OS error. A Windows executable-intent rejection emits `ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED`. Diagnostics are emitted in operation order and do not expose absolute paths outside the configured output root.
+
 ### Fallback Replacement Journal
 
 When atomic directory exchange is unavailable, one private journal, staging directory, and backup directory are created adjacent to `outputRoot`, never inside it. The journal records the output path, staging path, backup path, whether an old root existed, and one phase: `prepared`, `old-moved`, or `new-installed`. It is closed after staging validation, then the old root is renamed to backup and `old-moved` persisted, then staging is renamed to output and `new-installed` persisted. Backup and journal are removed only after `new-installed`; supported directory/file sync operations are performed after each phase and rename.

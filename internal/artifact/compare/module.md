@@ -29,6 +29,7 @@ This module observes all selected generated output against one `BuildPlan` witho
 ## Public Contract
 
 <!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -136,6 +137,7 @@ func DetectDrift(plan model.BuildPlan, outputRoot string) []Drift
 - It does not invoke Git or external parsers.
 - Extra files are drift even if they are valid target-native files.
 - It does not recurse through symlinks.
+- On Windows, any planned file with `executable: true` is invalid input. The parent artifact validator rejects it with `ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED` before calling this comparator. If this leaf is called directly with such a plan, it reports one `Drift{Kind: DriftChanged, Path: planned destination}` without reading output. On non-Windows, executable intent matches whether at least one POSIX execute bit is set; non-executable intent matches no execute bits.
 
 ## Test Specification
 
