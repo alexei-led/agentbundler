@@ -153,24 +153,24 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ### Task 17 [Wave 2]: Implement `internal/artifact/`
 
-- [ ] Read `internal/artifact/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/artifact/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/artifact/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module's own code and wire its submodules per its Internal Design inside `internal/artifact/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 18 [Wave 2]: Implement `internal/compiler/source/`
 
-- [ ] Read `internal/compiler/source/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/compiler/source/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/compiler/source/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module's own code and wire its submodules per its Internal Design inside `internal/compiler/source/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 19 [Wave 2]: Implement `internal/target/`
 
-- [ ] Read `internal/target/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/target/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/target/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module's own code and wire its submodules per its Internal Design inside `internal/target/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 20 [Wave 3]: Implement `internal/compiler/`
 
