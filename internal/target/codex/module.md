@@ -51,7 +51,7 @@ SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, bytes: ByteSequence }
 TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
@@ -62,7 +62,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
@@ -81,7 +81,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `codex`. It uses the parent deterministic renderer baseline at `formatRevision: 1` until verified Codex paths and TOML facts are recorded. Capability rules are `asset.skill=native`, `asset.agent=equivalent`, `asset.hook=native`, and `asset.native-resource=native`; no TOML or native validation command is synthesized.
+The adapter's `target` is `codex`. It implements the deterministic renderer baseline specified in `internal/target/module.md` locally at `formatRevision: 1` until verified Codex paths and TOML facts are recorded. Capability rules are `asset.skill=native`, `asset.agent=equivalent`, `asset.hook=native`, and `asset.native-resource=native`; no TOML or native validation command is synthesized. The local implementation must produce byte-identical baseline output for identical model input.
 
 ## Integrations
 
