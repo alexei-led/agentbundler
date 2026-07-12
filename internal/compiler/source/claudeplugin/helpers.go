@@ -1,0 +1,681 @@
+package claudeplugin
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/alexei-led/agentbundler/internal/compiler/model"
+)
+
+type claudeInspector struct {
+	workspaceRoot string
+	sourceRoot    string
+	inputs        map[model.RelativePath]string
+	diagnostics   []model.Diagnostic
+	native        []model.NativeGap
+}
+
+func (i *claudeInspector) findSkillFiles(root string) []string {
+	var found []string
+	var walk func(string)
+	walk = func(directory string) {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			i.error(i.relativePath(directory), "read directory: "+err.Error())
+			return
+		}
+		for _, entry := range entries {
+			path := filepath.Join(directory, entry.Name())
+			if entry.Type()&os.ModeSymlink != 0 {
+				i.error(i.relativePath(path), "source symlinks are not allowed")
+				continue
+			}
+			if entry.IsDir() {
+				if entry.Name() == ".agentbundler" {
+					continue
+				}
+				walk(path)
+				continue
+			}
+			if !entry.Type().IsRegular() {
+				i.error(i.relativePath(path), "source entries must be regular files or directories")
+				continue
+			}
+			if entry.Name() == "SKILL.md" {
+				found = append(found, path)
+			}
+		}
+	}
+	walk(root)
+	sort.Strings(found)
+	return found
+}
+
+func (i *claudeInspector) inspectSkill(skillFile string) (model.SourceAsset, bool) {
+	assetRoot := filepath.Dir(skillFile)
+	name := filepath.Base(assetRoot)
+	identity, err := model.NewAssetID("skill/" + name)
+	if err != nil {
+		i.error(i.relativePath(skillFile), "skill identity: "+err.Error())
+		return model.SourceAsset{}, false
+	}
+	markdown, ok := i.readInput(skillFile)
+	if !ok {
+		return model.SourceAsset{}, false
+	}
+	frontmatter, body, err := parseFrontmatter(markdown)
+	if err != nil {
+		i.error(i.relativePath(skillFile), "skill frontmatter: "+err.Error())
+		return model.SourceAsset{}, false
+	}
+	files := i.supportFiles(assetRoot, skillFile)
+	capabilities, overlays := i.sidecars(identity, model.AssetKindSkill, name)
+	return model.SourceAsset{
+		Identity: identity,
+		Kind:     model.AssetKindSkill,
+		Base: model.AssetContent{
+			Frontmatter: frontmatter,
+			Body:        body,
+			Files:       files,
+		},
+		CapabilityUses: capabilities,
+		Overlays:       overlays,
+	}, true
+}
+
+func (i *claudeInspector) supportFiles(assetRoot, skillFile string) map[model.RelativePath][]byte {
+	files := make(map[model.RelativePath][]byte)
+	var walk func(string)
+	walk = func(directory string) {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			i.error(i.relativePath(directory), "read support directory: "+err.Error())
+			return
+		}
+		for _, entry := range entries {
+			path := filepath.Join(directory, entry.Name())
+			if entry.Type()&os.ModeSymlink != 0 {
+				i.error(i.relativePath(path), "source symlinks are not allowed")
+				continue
+			}
+			if entry.IsDir() {
+				if entry.Name() != ".agentbundler" {
+					walk(path)
+				}
+				continue
+			}
+			if !entry.Type().IsRegular() {
+				i.error(i.relativePath(path), "support entries must be regular files or directories")
+				continue
+			}
+			if path == skillFile {
+				continue
+			}
+			content, ok := i.readInput(path)
+			if !ok {
+				continue
+			}
+			relative, err := filepath.Rel(assetRoot, path)
+			if err != nil {
+				i.error(i.relativePath(path), "resolve support file: "+err.Error())
+				continue
+			}
+			normalized, err := model.NewRelativePath(filepath.ToSlash(relative))
+			if err != nil {
+				i.error(i.relativePath(path), "support file path: "+err.Error())
+				continue
+			}
+			files[normalized] = content
+		}
+	}
+	walk(assetRoot)
+	return files
+}
+
+func (i *claudeInspector) sidecars(identity model.AssetID, kind model.AssetKind, name string) ([]model.CapabilityUse, []model.TargetOverlay) {
+	sidecarRoot := filepath.Join(i.sourceRoot, ".agentbundler", "assets", string(kind), name)
+	info, err := os.Lstat(sidecarRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		i.error(i.relativePath(sidecarRoot), "inspect sidecar: "+err.Error())
+		return nil, nil
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		i.error(i.relativePath(sidecarRoot), "asset sidecar root must be a directory and not a symlink")
+		return nil, nil
+	}
+
+	var capabilities []model.CapabilityUse
+	assetConfig := filepath.Join(sidecarRoot, "asset.json")
+	if data, exists := i.optionalRegularInput(assetConfig); exists {
+		parsed, err := parseAssetSidecar(data)
+		if err != nil {
+			i.error(i.relativePath(assetConfig), "asset sidecar: "+err.Error())
+		} else {
+			for _, capability := range parsed {
+				key, err := model.NewCapabilityKey(capability)
+				if err != nil {
+					i.error(i.relativePath(assetConfig), "capability: "+err.Error())
+					continue
+				}
+				capabilities = append(capabilities, model.CapabilityUse{
+					Key:      key,
+					Location: model.SourceLocation{Path: model.RelativePath(i.relativePath(assetConfig))},
+				})
+			}
+		}
+	}
+
+	targetsRoot := filepath.Join(sidecarRoot, "targets")
+	return capabilities, i.targetSidecars(identity, targetsRoot)
+}
+
+func (i *claudeInspector) targetSidecars(identity model.AssetID, targetsRoot string) []model.TargetOverlay {
+	entries, err := os.ReadDir(targetsRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		i.error(i.relativePath(targetsRoot), "read target sidecars: "+err.Error())
+		return nil
+	}
+	targets := make(map[model.TargetID]targetFiles)
+	for _, entry := range entries {
+		path := filepath.Join(targetsRoot, entry.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			i.error(i.relativePath(path), "sidecar symlinks are not allowed")
+			continue
+		}
+		if entry.IsDir() {
+			target, ok := parseTargetID(entry.Name())
+			if !ok {
+				i.error(i.relativePath(path), "target sidecar directory has an invalid target")
+				continue
+			}
+			config := targets[target]
+			config.treePath = filepath.Join(path, "files")
+			targets[target] = config
+			continue
+		}
+		if !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".json") {
+			i.error(i.relativePath(path), "target sidecar must be a <target>.json file or target directory")
+			continue
+		}
+		target, ok := parseTargetID(strings.TrimSuffix(entry.Name(), ".json"))
+		if !ok {
+			i.error(i.relativePath(path), "target sidecar has an invalid target")
+			continue
+		}
+		config := targets[target]
+		config.jsonPath = path
+		targets[target] = config
+	}
+
+	orderedTargets := make([]model.TargetID, 0, len(targets))
+	for target := range targets {
+		orderedTargets = append(orderedTargets, target)
+	}
+	sort.Slice(orderedTargets, func(i, j int) bool { return orderedTargets[i] < orderedTargets[j] })
+	overlays := make([]model.TargetOverlay, 0, len(orderedTargets))
+	for _, target := range orderedTargets {
+		config := targets[target]
+		overlay := model.TargetOverlay{Target: target}
+		fileEntries := make(map[model.RelativePath][]byte)
+		if config.jsonPath != "" {
+			data, ok := i.readInput(config.jsonPath)
+			if !ok {
+				continue
+			}
+			parsed, err := parseTargetSidecar(data)
+			if err != nil {
+				i.error(i.relativePath(config.jsonPath), "target sidecar: "+err.Error())
+			} else {
+				overlay.FrontmatterPatch = parsed.FrontmatterPatch
+				overlay.BodyPatch = parsed.BodyPatch
+				overlay.DeletedFiles = parsed.DeletedFiles
+				overlay.Acknowledgments = parsed.Acknowledgments
+				for path, content := range parsed.Files {
+					fileEntries[path] = content
+				}
+			}
+		}
+		if config.treePath != "" {
+			for path, content := range i.filesTree(config.treePath) {
+				fileEntries[path] = content
+			}
+		}
+		paths := make([]model.RelativePath, 0, len(fileEntries))
+		for path := range fileEntries {
+			paths = append(paths, path)
+		}
+		sort.Slice(paths, func(i, j int) bool { return paths[i] < paths[j] })
+		for _, path := range paths {
+			overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Bytes: fileEntries[path]})
+		}
+		for index := range overlay.Acknowledgments {
+			overlay.Acknowledgments[index].Asset = identity
+			overlay.Acknowledgments[index].Target = target
+		}
+		overlays = append(overlays, overlay)
+	}
+	return overlays
+}
+
+type targetFiles struct {
+	jsonPath string
+	treePath string
+}
+
+func (i *claudeInspector) filesTree(root string) map[model.RelativePath][]byte {
+	files := make(map[model.RelativePath][]byte)
+	info, err := os.Lstat(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return files
+		}
+		i.error(i.relativePath(root), "inspect target files tree: "+err.Error())
+		return files
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		i.error(i.relativePath(root), "target files tree must be a directory and not a symlink")
+		return files
+	}
+	var walk func(string)
+	walk = func(directory string) {
+		entries, err := os.ReadDir(directory)
+		if err != nil {
+			i.error(i.relativePath(directory), "read target files tree: "+err.Error())
+			return
+		}
+		for _, entry := range entries {
+			path := filepath.Join(directory, entry.Name())
+			if entry.Type()&os.ModeSymlink != 0 {
+				i.error(i.relativePath(path), "sidecar symlinks are not allowed")
+				continue
+			}
+			if entry.IsDir() {
+				walk(path)
+				continue
+			}
+			if !entry.Type().IsRegular() {
+				i.error(i.relativePath(path), "target files entries must be regular files or directories")
+				continue
+			}
+			content, ok := i.readInput(path)
+			if !ok {
+				continue
+			}
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
+				i.error(i.relativePath(path), "resolve target file: "+err.Error())
+				continue
+			}
+			normalized, err := model.NewRelativePath(filepath.ToSlash(relative))
+			if err != nil {
+				i.error(i.relativePath(path), "target file path: "+err.Error())
+				continue
+			}
+			files[normalized] = content
+		}
+	}
+	walk(root)
+	return files
+}
+
+func (i *claudeInspector) optionalRegularInput(path string) ([]byte, bool) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false
+		}
+		i.error(i.relativePath(path), "inspect sidecar: "+err.Error())
+		return nil, false
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		i.error(i.relativePath(path), "sidecar must be a regular file and not a symlink")
+		return nil, false
+	}
+	return i.readInput(path)
+}
+
+func (i *claudeInspector) readInput(path string) ([]byte, bool) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		i.error(i.relativePath(path), "read input: "+err.Error())
+		return nil, false
+	}
+	relative := model.RelativePath(i.relativePath(path))
+	digest := sha256.Sum256(content)
+	i.inputs[relative] = hex.EncodeToString(digest[:])
+	return content, true
+}
+
+func (i *claudeInspector) relativePath(path string) string {
+	relative, err := filepath.Rel(i.workspaceRoot, path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(relative)
+}
+
+func (i *claudeInspector) error(path, message string) {
+	diagnostic := model.Diagnostic{Code: diagnosticCode, Severity: model.SeverityError, Message: message}
+	if path != "" {
+		diagnostic.Location = &model.SourceLocation{Path: model.RelativePath(path)}
+	}
+	i.diagnostics = append(i.diagnostics, diagnostic)
+}
+
+func parseFrontmatter(markdown []byte) (map[string]any, string, error) {
+	frontmatter := make(map[string]any)
+	firstEnd, firstLine := nextLine(markdown, 0)
+	if firstLine != "---" {
+		return frontmatter, string(markdown), nil
+	}
+	for offset := firstEnd; offset <= len(markdown); {
+		next, line := nextLine(markdown, offset)
+		if line == "---" {
+			if err := decodeStrictJSONObject(markdown[firstEnd:offset], &frontmatter); err != nil {
+				return nil, "", err
+			}
+			return frontmatter, string(markdown[next:]), nil
+		}
+		if next == len(markdown) && offset == len(markdown) {
+			break
+		}
+		offset = next
+	}
+	return nil, "", fmt.Errorf("frontmatter opening delimiter has no closing delimiter")
+}
+
+func nextLine(data []byte, offset int) (int, string) {
+	end := bytes.IndexByte(data[offset:], '\n')
+	if end < 0 {
+		line := strings.TrimSuffix(string(data[offset:]), "\r")
+		return len(data), line
+	}
+	end += offset
+	line := strings.TrimSuffix(string(data[offset:end]), "\r")
+	return end + 1, line
+}
+
+func parseAssetSidecar(data []byte) ([]string, error) {
+	var sidecar struct {
+		Capabilities []string `json:"capabilities"`
+	}
+	if err := decodeStrictJSONObject(data, &sidecar); err != nil {
+		return nil, err
+	}
+	if sidecar.Capabilities == nil {
+		return nil, fmt.Errorf("capabilities is required")
+	}
+	return sidecar.Capabilities, nil
+}
+
+type parsedTargetSidecar struct {
+	FrontmatterPatch *map[string]any
+	BodyPatch        *model.BodyPatch
+	Files            map[model.RelativePath][]byte
+	DeletedFiles     []model.RelativePath
+	Acknowledgments  []model.Acknowledgment
+}
+
+func parseTargetSidecar(data []byte) (parsedTargetSidecar, error) {
+	var raw struct {
+		FrontmatterPatch json.RawMessage `json:"frontmatterPatch"`
+		BodyPatch        json.RawMessage `json:"bodyPatch"`
+		Files            json.RawMessage `json:"files"`
+		DeletedFiles     json.RawMessage `json:"deletedFiles"`
+		Acknowledgments  json.RawMessage `json:"acknowledgments"`
+	}
+	if err := decodeStrictJSONObject(data, &raw); err != nil {
+		return parsedTargetSidecar{}, err
+	}
+	result := parsedTargetSidecar{Files: make(map[model.RelativePath][]byte)}
+	if raw.FrontmatterPatch != nil {
+		var patch map[string]any
+		if err := decodeStrictJSONObject(raw.FrontmatterPatch, &patch); err != nil {
+			return result, fmt.Errorf("frontmatterPatch: %w", err)
+		}
+		result.FrontmatterPatch = &patch
+	}
+	if raw.BodyPatch != nil {
+		patch, err := parseBodyPatch(raw.BodyPatch)
+		if err != nil {
+			return result, fmt.Errorf("bodyPatch: %w", err)
+		}
+		result.BodyPatch = &patch
+	}
+	if raw.Files != nil {
+		files, err := parseJSONFiles(raw.Files)
+		if err != nil {
+			return result, fmt.Errorf("files: %w", err)
+		}
+		result.Files = files
+	}
+	if raw.DeletedFiles != nil {
+		var paths []string
+		if err := decodeStrictJSON(raw.DeletedFiles, &paths); err != nil {
+			return result, fmt.Errorf("deletedFiles: %w", err)
+		}
+		for _, path := range paths {
+			normalized, err := model.NewRelativePath(path)
+			if err != nil {
+				return result, fmt.Errorf("deletedFiles: %w", err)
+			}
+			result.DeletedFiles = append(result.DeletedFiles, normalized)
+		}
+	}
+	if raw.Acknowledgments != nil {
+		if err := decodeStrictJSON(raw.Acknowledgments, &result.Acknowledgments); err != nil {
+			return result, fmt.Errorf("acknowledgments: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func parseBodyPatch(data []byte) (model.BodyPatch, error) {
+	var raw struct {
+		Mode     model.BodyMode `json:"mode"`
+		Text     *string        `json:"text"`
+		Sections []struct {
+			HeadingPath []string `json:"headingPath"`
+			Body        string   `json:"body"`
+		} `json:"sections"`
+	}
+	if err := decodeStrictJSONObject(data, &raw); err != nil {
+		return model.BodyPatch{}, err
+	}
+	patch := model.BodyPatch{Mode: raw.Mode, Text: raw.Text}
+	for _, section := range raw.Sections {
+		patch.Sections = append(patch.Sections, model.SectionPatch{HeadingPath: section.HeadingPath, Body: section.Body})
+	}
+	return patch, nil
+}
+
+func parseJSONFiles(data []byte) (map[model.RelativePath][]byte, error) {
+	var raw map[string]json.RawMessage
+	if err := decodeStrictJSONObject(data, &raw); err != nil {
+		return nil, err
+	}
+	files := make(map[model.RelativePath][]byte, len(raw))
+	for path, value := range raw {
+		normalized, err := model.NewRelativePath(path)
+		if err != nil {
+			return nil, fmt.Errorf("file path %q: %w", path, err)
+		}
+		var text string
+		if err := decodeStrictJSON(value, &text); err == nil {
+			files[normalized] = []byte(text)
+			continue
+		}
+		var encoded struct {
+			Base64 *string `json:"base64"`
+		}
+		if err := decodeStrictJSONObject(value, &encoded); err != nil || encoded.Base64 == nil {
+			return nil, fmt.Errorf("file %q must be a UTF-8 string or {\"base64\": String}", path)
+		}
+		content, err := base64.StdEncoding.DecodeString(*encoded.Base64)
+		if err != nil {
+			return nil, fmt.Errorf("file %q base64: %w", path, err)
+		}
+		files[normalized] = content
+	}
+	return files, nil
+}
+
+func decodeStrictJSONObject(data []byte, destination any) error {
+	if len(data) == 0 || !utf8.Valid(data) {
+		return fmt.Errorf("must be UTF-8 JSON")
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return err
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return fmt.Errorf("must be a JSON object")
+	}
+	return decodeStrictJSON(data, destination)
+}
+
+func decodeStrictJSON(data []byte, destination any) error {
+	if len(data) == 0 || !utf8.Valid(data) {
+		return fmt.Errorf("must be UTF-8 JSON")
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	if err := ensureEOF(decoder); err != nil {
+		return err
+	}
+	return nil
+}
+
+func rejectDuplicateJSONKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := scanJSONValue(decoder); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple top-level JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func scanJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		keys := make(map[string]struct{})
+		for decoder.More() {
+			token, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := token.(string)
+			if !ok {
+				return fmt.Errorf("invalid JSON object key")
+			}
+			if _, exists := keys[key]; exists {
+				return fmt.Errorf("duplicate JSON key %q", key)
+			}
+			keys[key] = struct{}{}
+			if err := scanJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token()
+		return err
+	case '[':
+		for decoder.More() {
+			if err := scanJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err := decoder.Token()
+		return err
+	default:
+		return fmt.Errorf("invalid JSON delimiter %q", delimiter)
+	}
+}
+
+func ensureEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("multiple top-level JSON values")
+		}
+		return err
+	}
+	return nil
+}
+
+func containedPath(root, relative string) (string, error) {
+	candidate := filepath.Join(root, filepath.FromSlash(relative))
+	path, err := filepath.Rel(root, candidate)
+	if err != nil || path == ".." || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes its declared root")
+	}
+	return candidate, nil
+}
+
+func requireDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("must not be a symlink")
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("must be a directory")
+	}
+	return nil
+}
+
+func parseTargetID(value string) (model.TargetID, bool) {
+	target := model.TargetID(value)
+	switch target {
+	case model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
+		return target, true
+	default:
+		return "", false
+	}
+}
+
+func hasErrors(diagnostics []model.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == model.SeverityError {
+			return true
+		}
+	}
+	return false
+}

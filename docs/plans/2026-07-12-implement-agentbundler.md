@@ -76,10 +76,10 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ### Task 6 [Wave 1]: Implement `internal/compiler/composition/`
 
-- [ ] Read `internal/compiler/composition/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/composition/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/compiler/composition/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/composition/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 7 [Wave 0]: Implement `internal/compiler/model/`
 
@@ -90,24 +90,24 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ### Task 8 [Wave 1]: Implement `internal/compiler/source/bundle/`
 
-- [ ] Read `internal/compiler/source/bundle/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/bundle/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/compiler/source/bundle/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/bundle/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 9 [Wave 1]: Implement `internal/compiler/source/claudeplugin/`
 
-- [ ] Read `internal/compiler/source/claudeplugin/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/claudeplugin/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/compiler/source/claudeplugin/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/claudeplugin/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 10 [Wave 1]: Implement `internal/compiler/source/skillrepo/`
 
-- [ ] Read `internal/compiler/source/skillrepo/module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/skillrepo/`
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `internal/compiler/source/skillrepo/module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/skillrepo/`
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 11 [Wave 1]: Implement `internal/target/claude/`
 

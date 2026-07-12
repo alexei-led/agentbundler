@@ -135,6 +135,7 @@ type TargetOverlay struct {
 // NativeGap identifies a source component with target-native behavior.
 type NativeGap struct {
 	Component string         `json:"component"`
+	Asset     *AssetID       `json:"asset,omitempty"`
 	Location  SourceLocation `json:"location"`
 	Target    *TargetID      `json:"target,omitempty"`
 }
@@ -205,10 +206,11 @@ type SourceManifest struct {
 
 // SourceAsset is an uncomposed source asset.
 type SourceAsset struct {
-	Identity AssetID         `json:"identity"`
-	Kind     AssetKind       `json:"kind"`
-	Base     AssetContent    `json:"base"`
-	Overlays []TargetOverlay `json:"overlays"`
+	Identity       AssetID         `json:"identity"`
+	Kind           AssetKind       `json:"kind"`
+	Base           AssetContent    `json:"base"`
+	CapabilityUses []CapabilityUse `json:"capabilityUses"`
+	Overlays       []TargetOverlay `json:"overlays"`
 }
 
 // SourcePackage is an uncomposed source package.
