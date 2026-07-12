@@ -30,7 +30,7 @@ This module coordinates one compilation without owning source-topology details, 
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -39,39 +39,87 @@ ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
 InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-TargetOverlay = { target: TargetID, content: AssetContent?, deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
 NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
 TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
 BuildMode = build | check
-CompileRequest = { manifest: SourceManifest, targets: [TargetID], packages: [PackageID], mode: BuildMode, nativeVerify: Boolean }
+CompileRequest = { workspaceRoot: absolute cleaned directory path, manifest: SourceManifest, targets: [TargetID], packages: [PackageID], mode: BuildMode, nativeVerify: Boolean }
 CompilationResult = { plan: BuildPlan, diagnostics: [Diagnostic], drift: Boolean, nativeVerificationFailed: Boolean }
 compile(CompileRequest) -> CompilationResult
 ```
 
-`compile` is pure until it hands the complete selected `BuildPlan` to the artifact facade. A request with no selectors uses manifest-declared derived targets and all selected packages. Any error diagnostic prevents rendering dependent output. `nativeVerify` is valid only for `check`.
+### Go API
+
+**Package**: `github.com/alexei-led/agentbundler/internal/compiler`
+
+```go
+package compiler
+
+import "github.com/alexei-led/agentbundler/internal/compiler/model"
+
+type BuildMode string
+
+const (
+    BuildModeBuild BuildMode = "build"
+    BuildModeCheck BuildMode = "check"
+)
+
+type CompileRequest struct {
+    WorkspaceRoot string
+    Manifest      model.SourceManifest
+    Targets       []model.TargetID
+    Packages      []model.PackageID
+    Mode          BuildMode
+    NativeVerify  bool
+}
+
+type CompilationResult struct {
+    Plan                     model.BuildPlan
+    Diagnostics              []model.Diagnostic
+    Drift                    bool
+    NativeVerificationFailed bool
+}
+
+func Compile(request CompileRequest) CompilationResult
+```
+
+`Compile` never mutates `request` or returned model values. It validates that `WorkspaceRoot` is an existing cleaned absolute directory before invoking a collaborator. `WorkspaceRoot` is operational context: source paths and the generated-output root are resolved beneath it, while all model paths remain relative. A request with no selectors uses manifest-declared derived targets and all selected packages. Any error diagnostic prevents rendering dependent output. `nativeVerify` is valid only for `check`.
 
 ## Integrations
 
@@ -85,7 +133,7 @@ compile(CompileRequest) -> CompilationResult
 
 <!-- contract: import — restated from internal/compiler/source/module.md -->
 ```text
-import(SourceManifest) -> SourceInventory + [Diagnostic]
+import(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
 - **Counterpart**: `internal/compiler/composition`
@@ -98,7 +146,7 @@ import(SourceManifest) -> SourceInventory + [Diagnostic]
 
 <!-- contract: compose — restated from internal/compiler/composition/module.md -->
 ```text
-compose(SourceInventory, TargetID, [CapabilityRule]) -> [NormalizedPackage] + [Diagnostic]
+compose(SourceInventory, TargetComposition) -> [NormalizedPackage] + [Diagnostic]
 ```
 
 - **Counterpart**: `internal/target`
@@ -122,11 +170,25 @@ render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
   - **Balanced?**: yes.
   - **Shared knowledge**:
 
+<!-- contract: ProvenanceInput, ProvenanceInputFile, ProvenanceAcknowledgment, AdapterRevision — restated from internal/artifact/provenance/module.md (subset: omits append-provenance) -->
+```text
+ProvenanceInput = {
+  compilerVersion: String,
+  configuration: ByteSequence,
+  inputs: [ProvenanceInputFile],
+  acknowledgments: [ProvenanceAcknowledgment],
+  adapterRevisions: [AdapterRevision]
+}
+ProvenanceInputFile = { path: RelativePath, sha256: String }
+ProvenanceAcknowledgment = { asset: String, target: TargetID, key: String, reason: String }
+AdapterRevision = { target: TargetID, revision: Integer }
+```
+
 <!-- contract: write, compare, provenance, verify — restated from internal/artifact/module.md -->
 ```text
 write(BuildPlan, output-root) -> [Diagnostic]
 compare(BuildPlan, output-root) -> [Diagnostic]
-provenance(BuildPlan, compiler-version) -> BuildPlan
+provenance(BuildPlan, ProvenanceInput) -> BuildPlan + [Diagnostic]
 verify([NativeCheck], output-root) -> [Diagnostic]
 ```
 

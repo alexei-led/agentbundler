@@ -16,6 +16,23 @@ This module adopts one existing Claude plugin without moving its files. Without 
 - Inventory Claude-only components as native gaps.
 - Preserve the native source tree as author-owned and untouched.
 
+### Canonical Layout and Mapping
+
+```text
+agentbundle.json
+.claude-plugin/plugin.json
+skills/<name>/SKILL.md
+agents/<name>.md
+hooks/<name>.json
+.agentbundler/assets/<kind>/<name>/asset.json
+.agentbundler/assets/<kind>/<name>/targets/<target>.json
+.agentbundler/assets/<kind>/<name>/targets/<target>/files/...
+```
+
+`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `claudePlugin.pluginRoot` identifies the directory containing `.claude-plugin/plugin.json`. The plugin manifest must be a UTF-8 JSON object with string `name`, optional string `description`, and optional `version`; unknown fields are preserved as metadata only when they are JSON scalar/object values. Marketplace metadata is accepted only when its local plugin path resolves to the same plugin root.
+
+`skills/<name>/SKILL.md` maps to `skill/<name>`, `agents/<name>.md` maps to `agent/<name>`, and each declared `hooks/<name>.json` maps to `hook/<name>`. Every other declared or discovered component becomes a `NativeGap` with its relative path and optional target `claude`. Sidecars use the shared asset/target overlay schema; `.agentbundler/` is never imported as a native asset.
+
 ## Subdomain Classification
 
 **Supporting.** This importer makes adoption low-friction but does not define portable semantics. Claude's format may change, so implementation volatility is moderate.
@@ -29,7 +46,7 @@ This module adopts one existing Claude plugin without moving its files. Without 
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, Severity, AssetContent, TargetOverlay, NativeGap, Acknowledgment, SourceManifest, SourceAsset, SourcePackage, SourceInventory, Diagnostic — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -38,27 +55,49 @@ ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
 InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
+CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-TargetOverlay = { target: TargetID, content: AssetContent?, deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
 NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath }
+CapabilityUse = { key: CapabilityKey, location: SourceLocation }
+CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
+PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
+TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
-inspect-claudeplugin(SourceManifest) -> SourceInventory + [Diagnostic]
+inspect-claudeplugin(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-The importer accepts only `kind: claude-plugin`. It never edits Claude source. When Claude is selected, the Claude adapter rebuilds a deterministic native package under the configured generated-output root. Derived-target overlays and native-gap policies live in `.agentbundler/` beside, not inside, the Claude-native tree.
+The importer accepts only `kind: claude-plugin`. It decodes UTF-8 JSON with duplicate-key and unknown-field rejection for the manifest and sidecars, parses optional JSON-subset Markdown frontmatter, and sorts all discovered paths. It never crosses symlinks, edits Claude source, or imports generated output. When Claude is selected, the Claude adapter rebuilds a deterministic native package under the configured generated-output root. Derived-target overlays and native-gap policies live in `.agentbundler/` beside, not inside, the Claude-native tree.
 
 ## Integrations
 
@@ -86,7 +125,7 @@ The importer accepts only `kind: claude-plugin`. It never edits Claude source. W
 ## Constraints and Invariants
 
 - The importer supports one local plugin root, not a multi-plugin marketplace.
-- A missing `agentbundle.yaml` may produce guidance but cannot trigger auto-adoption.
+- A missing `agentbundle.json` may produce guidance but cannot trigger auto-adoption.
 - Unknown Claude-native content is never silently discarded during derived compilation.
 - Claude may be selected like any other target; its generated package is adapter-rendered under output and never written back to source.
 

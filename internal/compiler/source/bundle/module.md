@@ -10,10 +10,28 @@ This module imports Agentbundler's clean canonical bundle layout. Without it, ow
 
 ## Functional Responsibilities
 
-- Read `agentbundle.yaml` and canonical source paths.
+- Read `agentbundle.json` and canonical source paths.
 - Discover explicit package manifests, skills, agents, hooks, and target-native resources.
 - Preserve direct asset target overlays beside canonical assets.
 - Build package membership from explicit manifests rather than globs.
+
+### Canonical Layout and Schema
+
+```text
+agentbundle.json
+packages/<package>.json
+src/skills/<name>/SKILL.md
+src/agents/<name>.md
+src/hooks/<name>.json
+src/plugins/<target>/<name>/...
+<asset-directory>/.agentbundler/asset.json
+<asset-directory>/.agentbundler/targets/<target>.json
+<asset-directory>/.agentbundler/targets/<target>/files/...
+```
+
+`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `bundle.packages` lists exact package-manifest paths. A package manifest is `{ "id": String, "metadata": Object, "assets": [RelativePath] }`; each asset path is exact and its canonical parent determines `skill`, `agent`, `hook`, or `native-resource`. Package and asset identities are the declared package ID and `kind/name`. Unknown fields, duplicate keys, duplicate asset paths, and invalid identities are errors.
+
+An asset sidecar is `{ "capabilities": [String] }`. A target sidecar uses the shared overlay JSON fields: `frontmatterPatch`, `bodyPatch`, `files`, `deletedFiles`, and `acknowledgments`. The sibling `files/` tree supplies byte-exact file patches. Sidecars and support files cannot contain symlinks or paths outside the asset.
 
 ## Subdomain Classification
 
@@ -28,7 +46,7 @@ This module imports Agentbundler's clean canonical bundle layout. Without it, ow
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, Severity, AssetContent, TargetOverlay, NativeGap, Acknowledgment, SourceManifest, SourceAsset, SourcePackage, SourceInventory, Diagnostic — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -37,27 +55,49 @@ ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
 InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
+CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-TargetOverlay = { target: TargetID, content: AssetContent?, deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
 NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath }
+CapabilityUse = { key: CapabilityKey, location: SourceLocation }
+CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
+PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
+TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
-inspect-bundle(SourceManifest) -> SourceInventory + [Diagnostic]
+inspect-bundle(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-The importer accepts only `kind: bundle`. Package membership is explicit. Portable source remains author-owned; generated output never becomes another source root.
+The importer accepts only `kind: bundle`. It decodes UTF-8 JSON with duplicate-key and unknown-field rejection. Markdown frontmatter is optional; when present it starts with a first-line `---`, ends at the next `---` line, and contains exactly one JSON object. The remaining bytes are the exact body. Package membership is explicit; unlisted canonical assets are ignored. All walks are sorted and do not cross symlinks. Portable source remains author-owned; generated output never becomes another source root.
 
 ## Integrations
 
@@ -87,7 +127,7 @@ The importer accepts only `kind: bundle`. Package membership is explicit. Portab
 - Package manifests, not directory inference, define package membership.
 - A target resource cannot overwrite an adapter-generated file.
 - Overlay files remain inside their owning asset directory.
-- Unknown manifest fields and duplicate YAML keys are errors.
+- Unknown manifest fields and duplicate JSON object keys are errors.
 
 ## Test Specification
 

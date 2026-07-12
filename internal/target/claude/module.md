@@ -28,29 +28,51 @@ This module renders Claude Code-native package output. Without it, Claude plugin
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, PackageMetadata, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, Acknowledgment, CapabilityUse, CapabilityRule, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
 AssetID = stable asset identity in the form kind/name
 ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
+InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
+SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
+SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
 TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 <!-- contract: Adapter, render — restated from internal/target/module.md (subset: Claude render operation) -->
@@ -59,7 +81,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `claude`. Its target plan includes only deterministic Claude-native files and optional native checks under generated output. It does not edit an adopted canonical Claude source tree.
+The adapter's `target` is `claude`. Its target plan uses the parent deterministic renderer baseline at `formatRevision: 1` until verified Claude-native layout facts are recorded. Capability rules are `asset.skill=native`, `asset.agent=native`, `asset.hook=native`, and `asset.native-resource=native`. The baseline `package-index.json` is a metadata placeholder, not a Claude manifest or marketplace claim. It does not edit an adopted canonical Claude source tree.
 
 ## Integrations
 

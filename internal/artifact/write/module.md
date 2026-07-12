@@ -29,26 +29,76 @@ This module materializes the complete selected `BuildPlan` through staging and r
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, ByteSequence, SourceLocation, TargetID, Severity, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
+AssetID = stable asset identity in the form kind/name
 ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
+InputFile = { path: RelativePath, sha256: String }
+PackageMetadata = Map<String, JsonValue>
+
+SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
+AssetKind = skill | agent | hook | native-resource
+CapabilityKey = canonical non-empty identifier
+CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+
+AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+NativeGap = { component: String, location: SourceLocation, target: TargetID? }
+Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
+CapabilityUse = { key: CapabilityKey, location: SourceLocation }
+CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
+SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
 TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
 replace-output(BuildPlan, output-root) -> [Diagnostic]
 ```
 
-The operation assumes parent plan validation has succeeded. It either replaces every selected generated tree or reports failure while preserving every prior selected tree. It never writes source-owned files.
+### Go API
+
+**Package**: `github.com/alexei-led/agentbundler/internal/artifact/write`
+
+```go
+package write
+
+import "github.com/alexei-led/agentbundler/internal/compiler/model"
+
+func ReplaceOutput(plan model.BuildPlan, outputRoot string) []model.Diagnostic
+```
+
+`outputRoot` is a cleaned absolute path. A target file's destination is `outputRoot / target / PlannedFile.path`; a compiler file's destination is `outputRoot / PlannedFile.path`. The operation assumes parent plan validation has succeeded. It stages the entire output root, including compiler files, then either replaces the full selected generated output or reports failure while preserving the prior output root. It never writes source-owned files.
+
+### Fallback Replacement Journal
+
+When atomic directory exchange is unavailable, one private journal, staging directory, and backup directory are created adjacent to `outputRoot`, never inside it. The journal records the output path, staging path, backup path, whether an old root existed, and one phase: `prepared`, `old-moved`, or `new-installed`. It is closed after staging validation, then the old root is renamed to backup and `old-moved` persisted, then staging is renamed to output and `new-installed` persisted. Backup and journal are removed only after `new-installed`; supported directory/file sync operations are performed after each phase and rename.
+
+Before staging, an existing journal is recovered idempotently: `prepared` removes staging and retains the old root; `old-moved` removes any replacement root and restores backup when present; `new-installed` retains the replacement root and removes backup. If recovery cannot establish its required state, return a diagnostic, leave the journal, and start no replacement. An interruption before `new-installed` restores the prior state; an interruption after it retains the complete new state. Durability is limited by platforms without directory syncing.
 
 ## Integrations
 
@@ -76,8 +126,9 @@ The operation assumes parent plan validation has succeeded. It either replaces e
 ## Constraints and Invariants
 
 - The writer never follows output symlinks.
-- It creates directories only below validated output root.
-- A write failure cannot leave a mixed old/new selection or delete any prior selected generated tree.
+- It creates directories only below validated output root, except its private staging, journal, and backup siblings adjacent to that root.
+- On Windows, executable intent `true` is invalid and parent validation emits `ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED`. On non-Windows, true means at least one execute bit and false means no execute bits.
+- A write failure cannot leave a mixed old/new generated output root or delete any prior selected generated entry.
 - File modification times are not part of output semantics.
 
 ## Test Specification
@@ -87,9 +138,12 @@ The operation assumes parent plan validation has succeeded. It either replaces e
 - **Test name**: staged paths follow sorted plan order.
   - **Scenario**: write plan entries in varied input order.
   - **Expected behavior**: staging write order and final tree are deterministic.
-- **Test name**: executable intent is applied.
+- **Test name**: executable intent is applied on POSIX.
   - **Scenario**: plan has executable and non-executable files.
-  - **Expected behavior**: supported platform metadata matches intent.
+  - **Expected behavior**: executable files have at least one execute bit and non-executable files have none.
+- **Test name**: fallback journal recovers each interruption phase.
+  - **Scenario**: construct interrupted `prepared`, `old-moved`, and `new-installed` journals for existing and absent roots, then invoke `ReplaceOutput`.
+  - **Expected behavior**: recovery follows the state table and the next replacement starts only after recovery succeeds.
 
 ### Integration Contract Tests
 

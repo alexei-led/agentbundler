@@ -13,6 +13,7 @@ This file is the normative implementation stack for every module in the Agentbun
 - **Package manager**: Go Modules, with a root `go.mod`.
 - **Module import path**: `github.com/alexei-led/agentbundler`. Cross-module imports use the full path `github.com/alexei-led/agentbundler/<module-path>`; for example, `internal/artifact` is imported as `github.com/alexei-led/agentbundler/internal/artifact`.
 - **Dependencies**: Go standard library only. Do not add third-party dependencies unless the design and an explicit stack decision are updated first.
+- **Provenance configuration normalization**: use `encoding/json.Compact` only. It removes insignificant JSON whitespace but does not sort object keys or normalize number or string spellings. Provenance must not claim RFC 8785 conformance.
 - **Build tooling**: `go build` for the CLI and the standard Go toolchain.
 
 ## Testing
@@ -30,8 +31,19 @@ This file is the normative implementation stack for every module in the Agentbun
 - **Static analysis**: `go vet ./...`.
 - **Verification rule**: run the relevant tests when present or warranted, plus formatting and static analysis before final acceptance.
 
+## Go Contract Projection
+
+The language-neutral contracts in `module.md` files are normative. In Go they map as follows:
+
+- A module's package path is `github.com/alexei-led/agentbundler/<module-path>` and its package name is the final directory name. The repository root package is `agentbundler`.
+- A contract type is owned by the module that defines it normatively. A consumer imports that package when its own `module.md` has a marked restatement of the type; it never recreates a look-alike type.
+- A contract operation becomes an exported Go function whose name is the operation name converted to PascalCase: `compile` → `Compile`, `detect-drift` → `DetectDrift`, and `run-native-checks` → `RunNativeChecks`.
+- `String`, `Boolean`, `Integer`, `ByteSequence`, `Map<String, JsonValue>`, `[T]`, `T?`, and records map to `string`, `bool`, `int`, `[]byte`, `map[string]any`, `[]T`, `*T`, and exported-field structs. Contract enums are named `string` types with constants. A record field uses its contract name converted to PascalCase.
+- An operation returning `T + [Diagnostic]` maps to `(T, []model.Diagnostic)`. An operation returning `[Diagnostic]` maps to `[]model.Diagnostic`. `model` means `github.com/alexei-led/agentbundler/internal/compiler/model`.
+- Operational filesystem inputs such as `workspace-root` and `output-root` are cleaned absolute `string` paths. They are never model values, serialized output, or generated content.
+
 ## Conventions
 
 - Keep production code inside the module folder described by its `module.md`.
-- Use only the contracts documented by the module tree; do not reach into sibling or child internals.
+- Use only the contracts documented by the module tree; do not reach into sibling or child internals. Importing a contract owner's public Go package through a marked restatement is allowed; importing its private files is not.
 - Preserve deterministic behavior and the no-network/no-clock/no-environment-output constraints from the design documents.

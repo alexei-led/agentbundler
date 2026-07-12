@@ -116,7 +116,7 @@ A command creates a compile request and invokes the compiler. The compiler impor
 ### Boundary Tests
 
 - **Test name**: no manifest emits adoption guidance.
-  - **Scenario**: run in a directory containing a detected supported layout but no `agentbundle.yaml`.
+  - **Scenario**: run in a directory containing a detected supported layout but no `agentbundle.json`.
   - **Expected behavior**: no compilation occurs; the diagnostic prints the exact starter manifest.
 - **Test name**: invalid selector is rejected.
   - **Scenario**: select a target or package not declared by the manifest.

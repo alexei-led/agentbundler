@@ -4,7 +4,7 @@
 
 Agentbundler is a standalone Go compiler for coding-agent packages. It turns an explicit source repository into deterministic, target-native package trees without becoming a package manager, installer, registry, or universal runtime. Without this module, each repository must maintain target-specific compiler logic and cannot prove that generated output is current.
 
-- Design tree: `./` — 21 modules in 4 waves, ordered bottom-up by module height
+- Design tree: `./` — 21 modules in 6 waves, ordered bottom-up by both module height and required Go import dependencies. `internal/compiler/model` is implemented before Go consumers; parent facades remain strictly after every child.
 - All design modules are in scope; the repository currently contains design documents only
 - Each task implements exactly one module; its complete specification is that module's `module.md`
 
@@ -20,6 +20,8 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 - **CRITICAL: all relevant tests must pass before the task is complete** — no exceptions
 - **CRITICAL: if the design proves wrong or incomplete during implementation, update the module.md first** (it is validated on write), mark the finding with ⚠️ in this plan, then implement to the updated design — never silently diverge from the documents
 
+⚠️ Design completion pass: readiness review found and resolved missing contracts for validated model construction, composition patches and native-gap policies, canonical source layouts and sidecars, deterministic target-neutral rendering baselines, symlink drift classification, native-check working-directory defaults, compact JSON provenance hashing, fallback replacement journals, and Windows executable intent. The validator reports no defects.
+
 ## Progress Tracking
 
 - Mark completed items with `[x]` immediately when done
@@ -29,50 +31,50 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ## Implementation Steps
 
-### Task 1 [Wave 0]: Implement `cmd/agentbundler/`
+### Task 1 [Wave 4]: Implement `cmd/agentbundler/`
 
 - [ ] Read `cmd/agentbundler/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `cmd/agentbundler/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-⚠️ Blocked: `cmd/agentbundler/module.md` does not define concrete flag grammar/defaults, manifest search semantics, JSON/human rendering schemas, or an importable compiler Go API.
+⚠️ Resolved design prerequisite: concrete command grammar, `agentbundle.json` discovery/schema, output rendering, and the compiler Go boundary are now normative.
 
-### Task 2 [Wave 0]: Implement `internal/artifact/compare/`
+### Task 2 [Wave 1]: Implement `internal/artifact/compare/`
 
 - [ ] Read `internal/artifact/compare/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/compare/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-⚠️ Blocked: `internal/artifact/compare/module.md` does not define an interoperable Go API or type-ownership seam for the restated `BuildPlan`.
+⚠️ Resolved design prerequisite: `DetectDrift(model.BuildPlan, outputRoot)` and deterministic target/compiler-file destination mapping are now normative.
 
-### Task 3 [Wave 0]: Implement `internal/artifact/nativeverify/`
+### Task 3 [Wave 1]: Implement `internal/artifact/nativeverify/`
 
 - [ ] Read `internal/artifact/nativeverify/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/nativeverify/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-⚠️ Blocked: `internal/artifact/nativeverify/module.md` omits its Go-callable API, diagnostic categorization, and bounded output/truncation semantics.
+⚠️ Resolved design prerequisite: `RunNativeChecks`, result semantics, diagnostic codes, and bounded output policy are now normative.
 
-### Task 4 [Wave 0]: Implement `internal/artifact/provenance/`
+### Task 4 [Wave 1]: Implement `internal/artifact/provenance/`
 
 - [ ] Read `internal/artifact/provenance/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/provenance/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-⚠️ Blocked: `internal/artifact/provenance/module.md` does not supply the required provenance inputs or define the JSON schema, hash algorithm/scope/order, output-root representation, or Go API behavior.
+⚠️ Resolved design prerequisite: model compiler files, provenance inputs/API, canonical JSON schema, and SHA-256 scope/order are now normative.
 
-### Task 5 [Wave 0]: Implement `internal/artifact/write/`
+### Task 5 [Wave 1]: Implement `internal/artifact/write/`
 
 - [ ] Read `internal/artifact/write/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/write/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 6 [Wave 0]: Implement `internal/compiler/composition/`
+### Task 6 [Wave 1]: Implement `internal/compiler/composition/`
 
 - [ ] Read `internal/compiler/composition/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
@@ -86,98 +88,98 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/model/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 8 [Wave 0]: Implement `internal/compiler/source/bundle/`
+### Task 8 [Wave 1]: Implement `internal/compiler/source/bundle/`
 
 - [ ] Read `internal/compiler/source/bundle/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/bundle/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 9 [Wave 0]: Implement `internal/compiler/source/claudeplugin/`
+### Task 9 [Wave 1]: Implement `internal/compiler/source/claudeplugin/`
 
 - [ ] Read `internal/compiler/source/claudeplugin/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/claudeplugin/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 10 [Wave 0]: Implement `internal/compiler/source/skillrepo/`
+### Task 10 [Wave 1]: Implement `internal/compiler/source/skillrepo/`
 
 - [ ] Read `internal/compiler/source/skillrepo/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/compiler/source/skillrepo/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 11 [Wave 0]: Implement `internal/target/claude/`
+### Task 11 [Wave 1]: Implement `internal/target/claude/`
 
 - [ ] Read `internal/target/claude/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/target/claude/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 12 [Wave 0]: Implement `internal/target/codex/`
+### Task 12 [Wave 1]: Implement `internal/target/codex/`
 
 - [ ] Read `internal/target/codex/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/target/codex/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 13 [Wave 0]: Implement `internal/target/copilot/`
+### Task 13 [Wave 1]: Implement `internal/target/copilot/`
 
 - [ ] Read `internal/target/copilot/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/target/copilot/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 14 [Wave 0]: Implement `internal/target/cursor/`
+### Task 14 [Wave 1]: Implement `internal/target/cursor/`
 
 - [ ] Read `internal/target/cursor/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/target/cursor/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 15 [Wave 0]: Implement `internal/target/grok/`
+### Task 15 [Wave 1]: Implement `internal/target/grok/`
 
 - [ ] Read `internal/target/grok/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/target/grok/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 16 [Wave 0]: Implement `internal/target/pi/`
+### Task 16 [Wave 1]: Implement `internal/target/pi/`
 
 - [ ] Read `internal/target/pi/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/target/pi/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 17 [Wave 1]: Implement `internal/artifact/`
+### Task 17 [Wave 2]: Implement `internal/artifact/`
 
 - [ ] Read `internal/artifact/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/artifact/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 18 [Wave 1]: Implement `internal/compiler/source/`
+### Task 18 [Wave 2]: Implement `internal/compiler/source/`
 
 - [ ] Read `internal/compiler/source/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/compiler/source/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 19 [Wave 1]: Implement `internal/target/`
+### Task 19 [Wave 2]: Implement `internal/target/`
 
 - [ ] Read `internal/target/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/target/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 20 [Wave 2]: Implement `internal/compiler/`
+### Task 20 [Wave 3]: Implement `internal/compiler/`
 
 - [ ] Read `internal/compiler/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module's own code and wire its submodules per its Internal Design inside `internal/compiler/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
-### Task 21 [Wave 3]: Implement `./` (root module)
+### Task 21 [Wave 5]: Implement `./` (root module)
 
 - [ ] Read `module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk

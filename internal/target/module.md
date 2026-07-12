@@ -29,29 +29,51 @@ This module owns the built-in adapter boundary and target selection. Without it,
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, PackageMetadata, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, Acknowledgment, CapabilityUse, CapabilityRule, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
 AssetID = stable asset identity in the form kind/name
 ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
+InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
+SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
+SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
+SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
 TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
@@ -62,6 +84,24 @@ render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
 `resolve` returns one built-in adapter or a diagnostic. `render` is pure and returns all generated native files, plus optional native checks. An adapter may return a diagnostic for a capability the composition layer should already have rejected; this is a defensive consistency check, not an alternate loss policy.
+
+## Deterministic Renderer Baseline
+
+Until a verified target-primary layout is documented, every built-in adapter uses this target-neutral interchange baseline at `formatRevision: 1`. It is not a claim of vendor-runtime acceptance. Each adapter declares one capability rule for each key: `asset.skill`, `asset.agent`, `asset.hook`, and `asset.native-resource`.
+
+For each accepted package, the renderer emits:
+
+```text
+packages/<package-segment>/package.json
+packages/<package-segment>/assets/<asset-kind>/<asset-segment>/asset.json
+packages/<package-segment>/assets/<asset-kind>/<asset-segment>/content.md
+packages/<package-segment>/assets/<asset-kind>/<asset-segment>/files/<source-relative-path>
+package-index.json
+```
+
+`package.json` is canonical JSON `{ "identity": PackageID, "metadata": PackageMetadata, "target": TargetID }`. `asset.json` is canonical JSON `{ "capabilityUses": [CapabilityUse], "frontmatter": Map<String, JsonValue>, "identity": AssetID, "kind": AssetKind }`. `content.md` is the exact UTF-8 body; support files are copied byte-for-byte. `package-index.json` is `{ "format": "agentbundler-target-bundle", "formatRevision": 1, "packages": [PackageID], "target": TargetID }`. JSON has UTF-8, sorted object keys, no insignificant whitespace, and one trailing newline.
+
+Package and asset segments percent-encode UTF-8 bytes as uppercase `%HH`, leaving only ASCII letters, digits, `-`, `_`, and `.` literal. Sort packages by identity, assets by identity, capability uses by key then source location, files by path, and target-plan files by path. All baseline files are non-executable and native checks are empty. A target mismatch, non-native/equivalent capability, invalid identity, or duplicate output path returns diagnostics and no plan files.
 
 ## Integrations
 

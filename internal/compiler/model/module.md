@@ -45,25 +45,55 @@ CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
 
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-TargetOverlay = { target: TargetID, content: AssetContent?, deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
 NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
 CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
 
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
 TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
+
+### Go API
+
+**Package**: `github.com/alexei-led/agentbundler/internal/compiler/model`
+
+The Go Contract Projection in `docs/tech-stack.md` defines the exported Go representation of every public model type. This package additionally exports:
+
+```go
+func NewRelativePath(value string) (RelativePath, error)
+func NewPackageID(value string) (PackageID, error)
+func NewAssetID(value string) (AssetID, error)
+func NewCapabilityKey(value string) (CapabilityKey, error)
+func DecodeSourceManifestJSON(data []byte) (SourceManifest, []Diagnostic)
+func ValidateSourceManifest(manifest SourceManifest) []Diagnostic
+func ValidateSourceInventory(inventory SourceInventory) []Diagnostic
+func ValidateTargetComposition(input TargetComposition) []Diagnostic
+func ValidateNormalizedPackage(pkg NormalizedPackage) []Diagnostic
+func ValidateBuildPlan(plan BuildPlan) []Diagnostic
+```
+
+All constructors reject empty, NUL-containing, absolute, escaping, or otherwise invalid scalar values. Aggregate values crossing a module boundary must pass their corresponding validator; validators perform no filesystem, process, clock, network, or environment access. `DecodeSourceManifestJSON` rejects malformed JSON, duplicate keys, unknown fields, duplicate target IDs, an empty target list, invalid enum values, and values that violate the public contract.
 
 ## Integrations
 
@@ -101,7 +131,11 @@ BuildPlan = { targets: [TargetPlan] }
 - No model type carries an absolute path, open file handle, process handle, clock, environment map, or target-specific private struct.
 - Lists have deterministic order before crossing a module boundary.
 - A `PlannedFile` path is relative and cannot contain a path escape.
-- A `BuildPlan` contains all selected targets and is the indivisible write/check transaction.
+- A `NativeCheck.program` is a non-empty executable name containing no NUL, `/`, or `\\`; it is resolved through `PATH`, never as a filesystem path. Every argument contains no NUL. An absent `workingDirectory` means the generated target root; a present value is relative to that root. `location` identifies the adapter declaration that produced the check.
+- A `BuildPlan` contains all selected targets plus compiler-owned files and is the indivisible write/check transaction. Each compiler-file path is relative to the generated-output root; each target file path is relative to its target root. No full destination path may occur more than once.
+- `BodyPatch` has exactly one active payload: replace has non-nil text and zero sections; sections has nil text and one or more unique non-empty heading paths. Overlay file paths are unique and cannot occur in deleted files.
+- Target compositions and native-gap policies are unique by target and component. `replace` requires an existing replacement asset; `exclude` and `source-only` forbid one. Capability states require exact acknowledgments for semantic loss; unsupported is always an error.
+- Within a `NormalizedPackage`, every asset identity is unique. Within one target render input, every package identity is unique.
 - Capability matching uses exact `CapabilityKey` equality; there are no wildcards, predicates, or expressions.
 - `advisory` and `unsupported` are not successful states until composition resolves them explicitly.
 - This module imports no sibling module.

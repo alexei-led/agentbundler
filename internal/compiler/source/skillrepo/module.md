@@ -16,6 +16,12 @@ This module adopts an existing Agent Skills collection with no file moves. Witho
 - Import optional `.agentbundler/` derived-target adaptations.
 - Reject topology ambiguity rather than guessing a package grouping.
 
+### Manifest and Discovery Schema
+
+`skillsRepository` is required and has `{ "package": String, "roots": [RelativePath], "metadata": Object }`. Each root is resolved below the manifest root. A version-1 `agentbundle.json` with `kind: skills-repository` therefore supplies package identity, metadata, and explicit roots; no root is inferred.
+
+For each declared root, recursively find `SKILL.md` without crossing symlinks. The directory containing `SKILL.md` is the asset root and its basename is the identity `skill/<basename>`. The file is parsed with optional JSON-subset frontmatter delimited by first-line and closing `---`; frontmatter is an object and the remaining bytes are the exact body. Every regular file below the asset root except `.agentbundler/` is a base support file. Duplicate identities, invalid frontmatter, or non-regular entries are diagnostics. Sidecars use `.agentbundler/assets/skill/<name>/asset.json`, `targets/<target>.json`, and `targets/<target>/files/...` with the shared overlay schema.
+
 ## Subdomain Classification
 
 **Supporting.** It reduces adoption friction for generic skills repositories. Its functional behavior is narrow and changes less often than portable composition, so volatility is moderate.
@@ -29,7 +35,7 @@ This module adopts an existing Agent Skills collection with no file moves. Witho
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, Severity, AssetContent, TargetOverlay, NativeGap, Acknowledgment, SourceManifest, SourceAsset, SourcePackage, SourceInventory, Diagnostic — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -38,27 +44,49 @@ ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
 InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
+CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-TargetOverlay = { target: TargetID, content: AssetContent?, deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
 NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath }
+CapabilityUse = { key: CapabilityKey, location: SourceLocation }
+CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
+PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
+TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
-inspect-skillrepo(SourceManifest) -> SourceInventory + [Diagnostic]
+inspect-skillrepo(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-The importer accepts only `kind: skills-repository`. Every declared root is explicit. The resulting inventory has one package; repositories needing several package compositions use bundle mode.
+The importer accepts only `kind: skills-repository`. It decodes UTF-8 JSON with duplicate-key and unknown-field rejection, validates the package configuration, sorts roots and discovered paths, and hashes every imported regular input with SHA-256. Every declared root is explicit. The resulting inventory has one package; repositories needing several package compositions use bundle mode.
 
 ## Integrations
 

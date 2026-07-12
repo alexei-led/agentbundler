@@ -29,7 +29,7 @@ This module selects the explicit source-topology importer and produces one compl
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, Severity, AssetContent, TargetOverlay, NativeGap, Acknowledgment, SourceManifest, SourceAsset, SourcePackage, SourceInventory, Diagnostic — restated from internal/compiler/model/module.md (subset: minimal recursively closed contract) -->
+<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -38,27 +38,49 @@ ByteSequence = immutable UTF-8 or binary file content
 SourceLocation = { path: RelativePath, line: Int?, column: Int? }
 InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
+
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | native-resource
 CapabilityKey = canonical non-empty identifier
+CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
+
 AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-TargetOverlay = { target: TargetID, content: AssetContent?, deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
+BodyMode = replace | sections
+SectionPatch = { headingPath: [String], body: String }
+BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
+FilePatch = { path: RelativePath, bytes: ByteSequence }
+TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
 NativeGap = { component: String, location: SourceLocation, target: TargetID? }
 Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath }
+CapabilityUse = { key: CapabilityKey, location: SourceLocation }
+CapabilityRule = { key: CapabilityKey, state: CapabilityState }
+NativeGapAction = replace | exclude | source-only
+NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
+TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+BundleSourceConfig = { packages: [RelativePath] }
+ClaudePluginSourceConfig = { pluginRoot: RelativePath }
+SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
+SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-Diagnostic = { code: String, severity: Severity, location: SourceLocation, message: String }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
+PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
+NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
+TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 ```text
-import(SourceManifest) -> SourceInventory + [Diagnostic]
+import(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-`import` chooses the importer only from `SourceManifest.kind`. If no manifest is present, the module may report recognized candidate layouts and print a starter manifest, but it returns no inventory. An importer error still reports every safely discoverable source location.
+`import` validates an existing cleaned absolute `workspace-root`, resolves `SourceManifest.root` beneath it, and chooses the importer only from `SourceManifest.kind`. If no manifest is present, the command may report recognized candidate layouts and print a starter manifest, but this operation is not called. An importer error still reports every safely discoverable source location.
 
 ## Integrations
 
@@ -72,7 +94,7 @@ import(SourceManifest) -> SourceInventory + [Diagnostic]
 
 <!-- contract: inspect-bundle — restated from internal/compiler/source/bundle/module.md -->
 ```text
-inspect-bundle(SourceManifest) -> SourceInventory + [Diagnostic]
+inspect-bundle(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
 - **Counterpart**: `internal/compiler/source/claudeplugin`
@@ -85,7 +107,7 @@ inspect-bundle(SourceManifest) -> SourceInventory + [Diagnostic]
 
 <!-- contract: inspect-claudeplugin — restated from internal/compiler/source/claudeplugin/module.md -->
 ```text
-inspect-claudeplugin(SourceManifest) -> SourceInventory + [Diagnostic]
+inspect-claudeplugin(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
 - **Counterpart**: `internal/compiler/source/skillrepo`
@@ -98,7 +120,7 @@ inspect-claudeplugin(SourceManifest) -> SourceInventory + [Diagnostic]
 
 <!-- contract: inspect-skillrepo — restated from internal/compiler/source/skillrepo/module.md -->
 ```text
-inspect-skillrepo(SourceManifest) -> SourceInventory + [Diagnostic]
+inspect-skillrepo(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
 ## Internal Design
@@ -113,7 +135,7 @@ The parent performs no topology-specific traversal beyond manifest discovery. Ea
 
 ## Constraints and Invariants
 
-- The source kind is explicit and committed in `agentbundle.yaml`.
+- The source kind is explicit and committed in `agentbundle.json`.
 - No child importer calls target adapters, writes output, or executes native tools.
 - The importer root is contained by the manifest repository root.
 - Every filesystem walk is sorted and rejects source symlinks and path escape.
