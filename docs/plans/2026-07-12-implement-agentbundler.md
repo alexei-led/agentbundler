@@ -36,12 +36,16 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `cmd/agentbundler/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
+⚠️ Blocked: `cmd/agentbundler/module.md` does not define concrete flag grammar/defaults, manifest search semantics, JSON/human rendering schemas, or an importable compiler Go API.
+
 ### Task 2 [Wave 0]: Implement `internal/artifact/compare/`
 
 - [ ] Read `internal/artifact/compare/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/compare/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
+
+⚠️ Blocked: `internal/artifact/compare/module.md` does not define an interoperable Go API or type-ownership seam for the restated `BuildPlan`.
 
 ### Task 3 [Wave 0]: Implement `internal/artifact/nativeverify/`
 
@@ -50,12 +54,16 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/nativeverify/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
 
+⚠️ Blocked: `internal/artifact/nativeverify/module.md` omits its Go-callable API, diagnostic categorization, and bounded output/truncation semantics.
+
 ### Task 4 [Wave 0]: Implement `internal/artifact/provenance/`
 
 - [ ] Read `internal/artifact/provenance/module.md` in full — it is the complete and only spec for this task
 - [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
 - [ ] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `internal/artifact/provenance/`
 - [ ] Run relevant verification, including `go test` for any tests added or affected
+
+⚠️ Blocked: `internal/artifact/provenance/module.md` does not supply the required provenance inputs or define the JSON schema, hash algorithm/scope/order, output-root representation, or Go API behavior.
 
 ### Task 5 [Wave 0]: Implement `internal/artifact/write/`
 

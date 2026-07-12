@@ -1,4 +1,5 @@
 .pi/
+.pi-subagents/
 
 # Go build and test artifacts
 bin/
