@@ -181,10 +181,10 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ### Task 21 [Wave 5]: Implement `./` (root module)
 
-- [ ] Read `module.md` in full — it is the complete and only spec for this task
-- [ ] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [ ] Implement the root module's own code and wire its submodules per its Internal Design
-- [ ] Run relevant verification, including `go test` for any tests added or affected
+- [x] Read `module.md` in full — it is the complete and only spec for this task
+- [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
+- [x] Implement the root module's own code and wire its submodules per its Internal Design
+- [x] Run relevant verification, including `go test` for any tests added or affected
 
 ### Task 22: Verify acceptance criteria
 
