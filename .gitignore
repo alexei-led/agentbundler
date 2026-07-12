@@ -1,0 +1,6 @@
+.pi/
+
+# Go build and test artifacts
+bin/
+coverage.out
+*.test
