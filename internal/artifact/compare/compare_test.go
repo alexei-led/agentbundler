@@ -30,7 +30,7 @@ func TestDetectDriftClassifiesExactMissingChangedAndExtra(t *testing.T) {
 	writeFile(t, root, "claude/extra.txt", []byte("extra"), 0o644)
 	writeFile(t, root, "compiler.txt", []byte("compiler"), 0o644)
 
-	assertDrift(t, DetectDrift(plan, root), []Drift{
+	assertDrift(t, detectDrift(t, plan, root), []Drift{
 		{Kind: DriftExtra, Path: "claude/extra.txt"},
 		{Kind: DriftMissing, Path: "claude/missing.txt"},
 		{Kind: DriftChanged, Path: "claude/plugin.json"},
@@ -53,7 +53,7 @@ func TestDetectDriftOrdersFindingsByPath(t *testing.T) {
 	writeFile(t, root, "z-extra.txt", []byte("z"), 0o644)
 	writeFile(t, root, "a-extra.txt", []byte("a"), 0o644)
 
-	assertDrift(t, DetectDrift(plan, root), []Drift{
+	assertDrift(t, detectDrift(t, plan, root), []Drift{
 		{Kind: DriftExtra, Path: "a-extra.txt"},
 		{Kind: DriftMissing, Path: "claude/a-missing.txt"},
 		{Kind: DriftMissing, Path: "pi/z-missing.txt"},
@@ -74,7 +74,7 @@ func TestDetectDriftDoesNotMutateOutput(t *testing.T) {
 	writeFile(t, root, "extra.txt", []byte("extra"), 0o644)
 
 	before := snapshotTree(t, root)
-	_ = DetectDrift(plan, root)
+	_ = detectDrift(t, plan, root)
 	after := snapshotTree(t, root)
 	if !reflect.DeepEqual(after, before) {
 		t.Fatalf("output changed:\nbefore: %#v\nafter:  %#v", before, after)
@@ -104,7 +104,7 @@ func TestDetectDriftClassifiesSymlinksWithoutTraversal(t *testing.T) {
 		},
 	}}}
 
-	assertDrift(t, DetectDrift(plan, root), []Drift{
+	assertDrift(t, detectDrift(t, plan, root), []Drift{
 		{Kind: DriftExtra, Path: "claude/blocked"},
 		{Kind: DriftMissing, Path: "claude/blocked/child.txt"},
 		{Kind: DriftChanged, Path: "claude/expected-link"},
@@ -125,11 +125,11 @@ func TestDetectDriftComparesExecutableIntent(t *testing.T) {
 	}}}
 	writeFile(t, root, "tool", []byte("#!/bin/sh\nexit 0\n"), 0o644)
 
-	assertDrift(t, DetectDrift(plan, root), []Drift{{Kind: DriftChanged, Path: "tool"}})
+	assertDrift(t, detectDrift(t, plan, root), []Drift{{Kind: DriftChanged, Path: "tool"}})
 	if err := os.Chmod(filepath.Join(root, "tool"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	assertDrift(t, DetectDrift(plan, root), nil)
+	assertDrift(t, detectDrift(t, plan, root), nil)
 }
 
 func writeFile(t *testing.T, root, relativePath string, contents []byte, mode os.FileMode) {
@@ -144,6 +144,15 @@ func writeFile(t *testing.T, root, relativePath string, contents []byte, mode os
 	if err := os.Chmod(path, mode); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func detectDrift(t *testing.T, plan model.BuildPlan, root string) []Drift {
+	t.Helper()
+	drift, err := DetectDrift(plan, root)
+	if err != nil {
+		t.Fatalf("DetectDrift() error = %v", err)
+	}
+	return drift
 }
 
 func assertDrift(t *testing.T, got, want []Drift) {

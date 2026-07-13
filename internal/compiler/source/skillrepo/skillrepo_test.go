@@ -91,6 +91,20 @@ func TestInspectSkillRepoImportsSkillsAndSidecars(t *testing.T) {
 	}
 }
 
+func TestInspectSkillRepoRejectsSymlinkedSidecarAncestor(t *testing.T) {
+	workspace := t.TempDir()
+	outside := t.TempDir()
+	writeFixture(t, workspace, "source/skills/alpha/SKILL.md", "Alpha.")
+	writeFixture(t, outside, "assets/skill/alpha/asset.json", `{"capabilities":["asset.skill"]}`)
+	if err := os.Symlink(outside, filepath.Join(workspace, "source", ".agentbundler")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, diagnostics := InspectSkillRepo(testManifest(), workspace)
+	if !hasErrors(diagnostics) {
+		t.Fatalf("InspectSkillRepo() diagnostics = %#v, want error", diagnostics)
+	}
+}
+
 func TestInspectSkillRepoRejectsInvalidTopologies(t *testing.T) {
 	cases := []struct {
 		name  string

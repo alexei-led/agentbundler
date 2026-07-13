@@ -84,6 +84,18 @@ func TestReplaceOutputStagingFailurePreservesExistingOutput(t *testing.T) {
 	assertFile(t, filepath.Join(output, "preserved.txt"), "old")
 }
 
+func TestReplaceOutputRemovesStaleJournalTemporary(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "generated")
+	mustWriteFile(t, journalPath(output)+".tmp", "incomplete")
+	if diagnostics := ReplaceOutput(model.BuildPlan{CompilerFiles: []model.PlannedFile{{Path: "current.txt", Bytes: []byte("current")}}}, output); len(diagnostics) != 0 {
+		t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
+	}
+	assertFile(t, filepath.Join(output, "current.txt"), "current")
+	if _, err := os.Lstat(journalPath(output) + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("stale temporary remains or could not be checked: %v", err)
+	}
+}
+
 func TestReplaceOutputRecoversFallbackJournal(t *testing.T) {
 	for _, test := range []struct {
 		name          string

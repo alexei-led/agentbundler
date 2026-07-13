@@ -48,6 +48,10 @@ func InspectSkillRepo(manifest model.SourceManifest, workspaceRoot string) (mode
 		inspector.error(string(manifest.Root), "manifest root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
 	}
+	if err := noSymlinkComponents(workspaceRoot, inspector.sourceRoot); err != nil {
+		inspector.error(string(manifest.Root), "manifest root: "+err.Error())
+		return model.SourceInventory{}, inspector.diagnostics
+	}
 	if err := requireDirectory(inspector.sourceRoot); err != nil {
 		inspector.error(string(manifest.Root), "manifest root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
@@ -60,6 +64,10 @@ func InspectSkillRepo(manifest model.SourceManifest, workspaceRoot string) (mode
 		absoluteRoot, err := containedPath(inspector.sourceRoot, string(root))
 		if err != nil {
 			inspector.error(string(root), "skill root: "+err.Error())
+			continue
+		}
+		if err := noSymlinkComponents(inspector.sourceRoot, absoluteRoot); err != nil {
+			inspector.error(inspector.relativePath(absoluteRoot), "skill root: "+err.Error())
 			continue
 		}
 		if err := requireDirectory(absoluteRoot); err != nil {
@@ -242,6 +250,13 @@ func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.Relative
 
 func (i *inspector) sidecars(identity model.AssetID, name string) ([]model.CapabilityUse, []model.TargetOverlay) {
 	sidecarRoot := filepath.Join(i.sourceRoot, ".agentbundler", "assets", "skill", name)
+	if err := noSymlinkComponents(i.sourceRoot, sidecarRoot); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		i.error(i.relativePath(sidecarRoot), "inspect sidecar: "+err.Error())
+		return nil, nil
+	}
 	info, err := os.Lstat(sidecarRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -751,6 +766,33 @@ func containedPath(root, relative string) (string, error) {
 		return "", fmt.Errorf("path escapes its declared root")
 	}
 	return candidate, nil
+}
+
+func noSymlinkComponents(root, candidate string) error {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path escapes its declared root")
+	}
+	current := root
+	if info, err := os.Lstat(current); err != nil {
+		return err
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("source symlinks are not allowed")
+	}
+	for _, segment := range strings.Split(relative, string(filepath.Separator)) {
+		if segment == "." || segment == "" {
+			continue
+		}
+		current = filepath.Join(current, segment)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("source symlinks are not allowed")
+		}
+	}
+	return nil
 }
 
 func requireDirectory(path string) error {

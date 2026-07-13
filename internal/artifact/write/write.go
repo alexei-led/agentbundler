@@ -354,6 +354,21 @@ func persistJournal(path string, journal replacementJournal) error {
 	return syncDirectory(filepath.Dir(path))
 }
 
+func removeStaleJournalTemporary(path string) error {
+	temporary := path + ".tmp"
+	info, err := os.Lstat(temporary)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return errors.New("output journal temporary is not a regular file")
+	}
+	return os.Remove(temporary)
+}
+
 func removeJournal(path string) error {
 	if err := os.Remove(path); err != nil {
 		return err
@@ -363,6 +378,9 @@ func removeJournal(path string) error {
 
 func recoverJournal(outputRoot string) error {
 	path := journalPath(outputRoot)
+	if err := removeStaleJournalTemporary(path); err != nil {
+		return err
+	}
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil

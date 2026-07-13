@@ -16,12 +16,13 @@ import (
 )
 
 const (
-	diagnosticInvalidPlan  = "invalid-model"
-	diagnosticExecutable   = "ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED"
-	diagnosticProvenance   = "PROVENANCE_INVALID"
-	diagnosticDriftMissing = "DRIFT_MISSING"
-	diagnosticDriftChanged = "DRIFT_CHANGED"
-	diagnosticDriftExtra   = "DRIFT_EXTRA"
+	diagnosticInvalidPlan      = "invalid-model"
+	diagnosticExecutable       = "ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED"
+	diagnosticProvenance       = "PROVENANCE_INVALID"
+	diagnosticDriftMissing     = "DRIFT_MISSING"
+	diagnosticDriftChanged     = "DRIFT_CHANGED"
+	diagnosticDriftExtra       = "DRIFT_EXTRA"
+	diagnosticDriftObservation = "DRIFT_OBSERVATION_FAILED"
 )
 
 // ProvenanceInputFile identifies an input included in build provenance.
@@ -62,12 +63,16 @@ func Write(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
 }
 
 // Compare validates plan and reports exact generated-output drift below outputRoot.
-func Compare(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
+// The returned bool distinguishes observed drift from an output-observation failure.
+func Compare(plan model.BuildPlan, outputRoot string) ([]model.Diagnostic, bool) {
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
-		return diagnostics
+		return diagnostics, false
 	}
 
-	drift := compare.DetectDrift(plan, outputRoot)
+	drift, err := compare.DetectDrift(plan, outputRoot)
+	if err != nil {
+		return []model.Diagnostic{{Code: diagnosticDriftObservation, Severity: model.SeverityError, Message: fmt.Sprintf("inspect generated output: %v", err)}}, false
+	}
 	diagnostics := make([]model.Diagnostic, len(drift))
 	for index, entry := range drift {
 		diagnostics[index] = model.Diagnostic{
@@ -76,7 +81,7 @@ func Compare(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
 			Message:  fmt.Sprintf("generated output %s: %s", entry.Kind, entry.Path),
 		}
 	}
-	return diagnostics
+	return diagnostics, len(drift) != 0
 }
 
 // Provenance validates plan and appends deterministic compiler-owned provenance.
@@ -97,8 +102,11 @@ func Provenance(plan model.BuildPlan, input ProvenanceInput) (model.BuildPlan, [
 }
 
 // Verify runs declared native checks against outputRoot after a current comparison.
-func Verify(checks []model.NativeCheck, outputRoot string) []model.Diagnostic {
-	return nativeverify.RunNativeChecks(checks, outputRoot).Diagnostics
+func Verify(checks []model.NativeCheck, outputRoot string) nativeverify.Result {
+	if diagnostics := model.ValidateNativeChecks(checks); len(diagnostics) != 0 {
+		return nativeverify.Result{Diagnostics: diagnostics}
+	}
+	return nativeverify.RunNativeChecks(checks, outputRoot)
 }
 
 func validatePlan(plan model.BuildPlan) []model.Diagnostic {

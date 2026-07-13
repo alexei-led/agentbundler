@@ -36,15 +36,18 @@ type expectedFile struct {
 }
 
 // DetectDrift compares plan with the generated output under outputRoot without modifying it.
-func DetectDrift(plan model.BuildPlan, outputRoot string) []Drift {
+func DetectDrift(plan model.BuildPlan, outputRoot string) ([]Drift, error) {
 	expected := expectedFiles(plan)
 	if runtime.GOOS == "windows" {
 		for _, destination := range sortedExecutableDestinations(expected) {
-			return []Drift{{Kind: DriftChanged, Path: model.RelativePath(destination)}}
+			return []Drift{{Kind: DriftChanged, Path: model.RelativePath(destination)}}, nil
 		}
 	}
 
-	actual := outputEntries(outputRoot)
+	actual, err := outputEntries(outputRoot)
+	if err != nil {
+		return nil, err
+	}
 	requiredDirectories := requiredDirectories(expected)
 	var drift []Drift
 
@@ -76,7 +79,7 @@ func DetectDrift(plan model.BuildPlan, outputRoot string) []Drift {
 	}
 
 	sortDrift(drift)
-	return drift
+	return drift, nil
 }
 
 func expectedFiles(plan model.BuildPlan) map[string]expectedFile {
@@ -109,16 +112,18 @@ func sortedExecutableDestinations(expected map[string]expectedFile) []string {
 	return destinations
 }
 
-func outputEntries(outputRoot string) map[string]os.FileInfo {
+func outputEntries(outputRoot string) (map[string]os.FileInfo, error) {
 	entries := make(map[string]os.FileInfo)
-	walkOutput(outputRoot, "", entries)
-	return entries
+	if err := walkOutput(outputRoot, "", entries); err != nil {
+		return nil, err
+	}
+	return entries, nil
 }
 
-func walkOutput(directory, relativeDirectory string, entries map[string]os.FileInfo) {
+func walkOutput(directory, relativeDirectory string, entries map[string]os.FileInfo) error {
 	directoryEntries, err := os.ReadDir(directory)
 	if err != nil {
-		return
+		return err
 	}
 	for _, entry := range directoryEntries {
 		destination := entry.Name()
@@ -127,13 +132,16 @@ func walkOutput(directory, relativeDirectory string, entries map[string]os.FileI
 		}
 		info, err := os.Lstat(filepath.Join(directory, entry.Name()))
 		if err != nil {
-			continue
+			return err
 		}
 		entries[destination] = info
 		if info.IsDir() {
-			walkOutput(filepath.Join(directory, entry.Name()), destination, entries)
+			if err := walkOutput(filepath.Join(directory, entry.Name()), destination, entries); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 func requiredDirectories(expected map[string]expectedFile) map[string]bool {

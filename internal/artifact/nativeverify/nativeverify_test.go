@@ -192,15 +192,19 @@ func TestRunNativeChecksReportsNonzeroAndSignalFailures(t *testing.T) {
 }
 
 func TestRunNativeChecksRejectsInvalidDeclarations(t *testing.T) {
-	check := testCheck(nil)
-	check.Program = ""
+	for _, program := range []string{""} {
+		t.Run(program, func(t *testing.T) {
+			check := testCheck(nil)
+			check.Program = program
 
-	result := RunNativeChecks([]model.NativeCheck{check}, t.TempDir())
+			result := RunNativeChecks([]model.NativeCheck{check}, t.TempDir())
 
-	if result.Success {
-		t.Error("RunNativeChecks() success = true, want false")
+			if result.Success {
+				t.Error("RunNativeChecks() success = true, want false")
+			}
+			assertDiagnostic(t, result.Diagnostics, 0, invalidCheckCode, model.SeverityError, check.Location)
+		})
 	}
-	assertDiagnostic(t, result.Diagnostics, 0, invalidCheckCode, model.SeverityError, check.Location)
 }
 
 func TestNativeVerifyHelperProcess(t *testing.T) {

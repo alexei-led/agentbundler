@@ -43,7 +43,6 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 	gapActions, gapDiagnostics := resolveNativeGaps(inventory.NativeGaps, target, assets)
 	diagnostics = append(diagnostics, gapDiagnostics...)
 
-	usedRules := make(map[model.CapabilityKey]bool, len(rules))
 	var packages []model.NormalizedPackage
 	for _, sourcePackage := range inventory.Packages {
 		pkg := model.NormalizedPackage{
@@ -70,7 +69,10 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 					diagnostics = append(diagnostics, diagnostic(diagnosticMissingCapabilityRule, &use.Location, "asset %q uses capability %q without a target rule", sourceAsset.Identity, use.Key))
 					continue
 				}
-				usedRules[use.Key] = true
+				if rule.State == model.CapabilityStateUnsupported {
+					diagnostics = append(diagnostics, diagnostic(diagnosticMissingCapabilityRule, &use.Location, "asset %q uses unsupported capability %q for target %q", sourceAsset.Identity, use.Key, target.Target))
+					continue
+				}
 				if rule.State == model.CapabilityStateAdvisory && !hasAcknowledgment(acknowledgments, use.Key) {
 					diagnostics = append(diagnostics, diagnostic(diagnosticMissingAcknowledgment, &use.Location, "asset %q uses advisory capability %q without an acknowledgment", sourceAsset.Identity, use.Key))
 				}
@@ -101,14 +103,10 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 		packages = append(packages, pkg)
 	}
 
-	for _, rule := range target.Capabilities {
-		if !usedRules[rule.Key] {
-			diagnostics = append(diagnostics, diagnostic(diagnosticUnusedCapabilityRule, nil, "target rule for capability %q has no source use", rule.Key))
-		}
-	}
 	if hasErrors(diagnostics) {
 		return nil, diagnostics
 	}
+	canonicalizePackages(packages)
 	return packages, diagnostics
 }
 
@@ -277,9 +275,9 @@ func applySectionPatches(body string, patches []model.SectionPatch) (string, err
 	}
 	var replacements []replacement
 	for _, patch := range patches {
-		start, level, found := findHeading(lines, patch.HeadingPath)
-		if !found {
-			return "", fmt.Errorf("section %q does not exist", strings.Join(patch.HeadingPath, " / "))
+		start, level, err := findHeading(lines, patch.HeadingPath)
+		if err != nil {
+			return "", err
 		}
 		end := len(lines)
 		for index := start + 1; index < len(lines); index++ {
@@ -310,9 +308,11 @@ func splitBody(body string) []string {
 	return strings.SplitAfter(body, "\n")
 }
 
-func findHeading(lines []string, path []string) (int, int, bool) {
+func findHeading(lines []string, path []string) (int, int, error) {
 	ancestors := make([]string, 7)
 	fence := ""
+	match := -1
+	matchLevel := 0
 	for index, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
@@ -346,10 +346,38 @@ func findHeading(lines []string, path []string) (int, int, bool) {
 			}
 		}
 		if matched {
-			return index, level, true
+			if match >= 0 {
+				return 0, 0, fmt.Errorf("section %q is ambiguous", strings.Join(path, " / "))
+			}
+			match = index
+			matchLevel = level
 		}
 	}
-	return 0, 0, false
+	if match < 0 {
+		return 0, 0, fmt.Errorf("section %q does not exist", strings.Join(path, " / "))
+	}
+	return match, matchLevel, nil
+}
+
+func canonicalizePackages(packages []model.NormalizedPackage) {
+	for index := range packages {
+		pkg := &packages[index]
+		sort.Slice(pkg.Assets, func(i, j int) bool { return pkg.Assets[i].Identity < pkg.Assets[j].Identity })
+		sort.Slice(pkg.Acknowledgments, func(i, j int) bool {
+			left, right := pkg.Acknowledgments[i], pkg.Acknowledgments[j]
+			if left.Asset != right.Asset {
+				return left.Asset < right.Asset
+			}
+			if left.Target != right.Target {
+				return left.Target < right.Target
+			}
+			if left.Key != right.Key {
+				return left.Key < right.Key
+			}
+			return left.Reason < right.Reason
+		})
+	}
+	sort.Slice(packages, func(i, j int) bool { return packages[i].Identity < packages[j].Identity })
 }
 
 func heading(line string) (int, string, bool) {

@@ -83,14 +83,45 @@ func TestComposeAppliesExplicitBodyModes(t *testing.T) {
 	}
 }
 
-func TestComposeRejectsMissingSectionAnchor(t *testing.T) {
-	patch := model.BodyPatch{Mode: model.BodyModeSections, Sections: []model.SectionPatch{{HeadingPath: []string{"Missing"}, Body: "new"}}}
-	packages, diagnostics := Compose(oneAssetInventory("# Present\nbody\n", patch), model.TargetComposition{Target: model.TargetPi})
-	if packages != nil {
-		t.Errorf("packages = %#v, want nil", packages)
+func TestComposeRejectsInvalidSectionAnchor(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{name: "missing", body: "# Present\nbody\n"},
+		{name: "duplicate", body: "# Install\none\n# Install\ntwo\n"},
 	}
-	if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticCodeInvalidComposition {
-		t.Errorf("diagnostics = %#v", diagnostics)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			patch := model.BodyPatch{Mode: model.BodyModeSections, Sections: []model.SectionPatch{{HeadingPath: []string{"Install"}, Body: "new"}}}
+			if tc.name == "missing" {
+				patch.Sections[0].HeadingPath = []string{"Missing"}
+			}
+			packages, diagnostics := Compose(oneAssetInventory(tc.body, patch), model.TargetComposition{Target: model.TargetPi})
+			if packages != nil {
+				t.Errorf("packages = %#v, want nil", packages)
+			}
+			if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticCodeInvalidComposition {
+				t.Errorf("diagnostics = %#v", diagnostics)
+			}
+		})
+	}
+}
+
+func TestComposeCanonicalizesPackageAndAssetOrder(t *testing.T) {
+	inventory := model.SourceInventory{Packages: []model.SourcePackage{
+		{Identity: "z", Assets: []model.SourceAsset{{Identity: "skill/z", Kind: model.AssetKindSkill}, {Identity: "skill/a", Kind: model.AssetKindSkill}}},
+		{Identity: "a", Assets: []model.SourceAsset{{Identity: "skill/b", Kind: model.AssetKindSkill}}},
+	}}
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetPi})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose diagnostics = %#v", diagnostics)
+	}
+	if got := []model.PackageID{packages[0].Identity, packages[1].Identity}; !reflect.DeepEqual(got, []model.PackageID{"a", "z"}) {
+		t.Errorf("package order = %#v", got)
+	}
+	if got := []model.AssetID{packages[1].Assets[0].Identity, packages[1].Assets[1].Identity}; !reflect.DeepEqual(got, []model.AssetID{"skill/a", "skill/z"}) {
+		t.Errorf("asset order = %#v", got)
 	}
 }
 

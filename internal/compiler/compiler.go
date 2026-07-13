@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/artifact"
 	"github.com/alexei-led/agentbundler/internal/compiler/composition"
@@ -107,20 +108,46 @@ func Compile(request CompileRequest) CompilationResult {
 	}
 	result.Plan = provenancePlan
 	outputRoot := filepath.Join(request.WorkspaceRoot, filepath.FromSlash(string(request.Manifest.Output)))
+	if err := noSymlinkComponents(request.WorkspaceRoot, outputRoot); err != nil && !os.IsNotExist(err) {
+		result.Diagnostics = append(result.Diagnostics, errorDiagnostic("invalid-output-root", err.Error()))
+		return result
+	}
 	if request.Mode == BuildModeBuild {
 		result.Diagnostics = append(result.Diagnostics, artifact.Write(result.Plan, outputRoot)...)
 		return result
 	}
-	driftDiagnostics := artifact.Compare(result.Plan, outputRoot)
+	driftDiagnostics, drift := artifact.Compare(result.Plan, outputRoot)
 	result.Diagnostics = append(result.Diagnostics, driftDiagnostics...)
-	result.Drift = len(driftDiagnostics) != 0
+	result.Drift = drift
 	if !result.Drift && request.NativeVerify {
 		checks := nativeChecks(result.Plan)
-		nativeDiagnostics := artifact.Verify(checks, outputRoot)
-		result.Diagnostics = append(result.Diagnostics, nativeDiagnostics...)
-		result.NativeVerificationFailed = len(nativeDiagnostics) != 0
+		nativeResult := artifact.Verify(checks, outputRoot)
+		result.Diagnostics = append(result.Diagnostics, nativeResult.Diagnostics...)
+		result.NativeVerificationFailed = !nativeResult.Success
 	}
 	return result
+}
+
+func noSymlinkComponents(root, candidate string) error {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path escapes workspace root")
+	}
+	current := root
+	for _, segment := range strings.Split(relative, string(filepath.Separator)) {
+		if segment == "." || segment == "" {
+			continue
+		}
+		current = filepath.Join(current, segment)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("output path contains a symbolic link")
+		}
+	}
+	return nil
 }
 
 func validateWorkspace(root string) error {

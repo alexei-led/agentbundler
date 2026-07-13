@@ -187,7 +187,10 @@ func renderResult(parsed options, stdout, stderr io.Writer, result compiler.Comp
 		for i, diagnostic := range result.Diagnostics {
 			output.Diagnostics[i] = jsonDiagnostic{Code: diagnostic.Code, Severity: diagnostic.Severity, Location: diagnostic.Location, Message: diagnostic.Message}
 		}
-		_ = json.NewEncoder(stdout).Encode(output)
+		if err := json.NewEncoder(stdout).Encode(output); err != nil {
+			fmt.Fprintf(stderr, "OUTPUT_WRITE_FAILED: %v\n", err)
+			return 1
+		}
 	} else {
 		for _, diagnostic := range result.Diagnostics {
 			fmt.Fprintln(stderr, formatDiagnostic(diagnostic))

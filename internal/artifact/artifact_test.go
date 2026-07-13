@@ -53,7 +53,10 @@ func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			outputRoot := filepath.Join(t.TempDir(), "output")
 			writeDiagnostics := Write(test.plan, outputRoot)
-			compareDiagnostics := Compare(test.plan, outputRoot)
+			compareDiagnostics, drift := Compare(test.plan, outputRoot)
+			if drift {
+				t.Fatal("Compare() reported drift for an invalid plan")
+			}
 			if len(writeDiagnostics) == 0 {
 				t.Fatal("Write() accepted invalid plan")
 			}
@@ -81,7 +84,10 @@ func TestCompareMapsExactDrift(t *testing.T) {
 	writeArtifactFile(t, outputRoot, "claude/changed.txt", "actual")
 	writeArtifactFile(t, outputRoot, "extra.txt", "extra")
 
-	diagnostics := Compare(plan, outputRoot)
+	diagnostics, drift := Compare(plan, outputRoot)
+	if !drift {
+		t.Fatal("Compare() drift = false, want true")
+	}
 	want := []model.Diagnostic{
 		{Code: diagnosticDriftChanged, Severity: model.SeverityError, Message: "generated output changed: claude/changed.txt"},
 		{Code: diagnosticDriftMissing, Severity: model.SeverityError, Message: "generated output missing: claude/missing.txt"},
@@ -89,6 +95,13 @@ func TestCompareMapsExactDrift(t *testing.T) {
 	}
 	if !reflect.DeepEqual(diagnostics, want) {
 		t.Fatalf("Compare() diagnostics = %#v, want %#v", diagnostics, want)
+	}
+}
+
+func TestCompareReportsObservationFailureSeparatelyFromDrift(t *testing.T) {
+	diagnostics, drift := Compare(planWithFile("skill.md"), filepath.Join(t.TempDir(), "missing"))
+	if drift || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticDriftObservation {
+		t.Fatalf("Compare() = (%#v, %t)", diagnostics, drift)
 	}
 }
 
@@ -139,8 +152,18 @@ func TestProvenanceAdaptsInputAndMapsFailures(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsProgramPaths(t *testing.T) {
+	for _, program := range []string{"/tmp/untrusted-tool", `relative\\tool`} {
+		t.Run(program, func(t *testing.T) {
+			result := Verify([]model.NativeCheck{{Program: program, Location: model.SourceLocation{Path: "native-check"}}}, t.TempDir())
+			if result.Success || len(result.Diagnostics) == 0 || result.Diagnostics[0].Severity != model.SeverityError {
+				t.Fatalf("Verify() result = %#v", result)
+			}
+		})
+	}
+}
+
 func TestArtifactWorkflowWritesComparesThenVerifies(t *testing.T) {
-	t.Setenv("ARTIFACT_HELPER", "1")
 	plan, diagnostics := Provenance(planWithFile("skill.md"), validProvenanceInput())
 	if len(diagnostics) != 0 {
 		t.Fatalf("Provenance() diagnostics = %#v", diagnostics)
@@ -149,37 +172,18 @@ func TestArtifactWorkflowWritesComparesThenVerifies(t *testing.T) {
 	if diagnostics := Write(plan, outputRoot); len(diagnostics) != 0 {
 		t.Fatalf("Write() diagnostics = %#v", diagnostics)
 	}
-	if diagnostics := Compare(plan, outputRoot); len(diagnostics) != 0 {
-		t.Fatalf("Compare() diagnostics = %#v", diagnostics)
+	if diagnostics, drift := Compare(plan, outputRoot); len(diagnostics) != 0 || drift {
+		t.Fatalf("Compare() = (%#v, %t)", diagnostics, drift)
 	}
 
-	marker := filepath.Join(t.TempDir(), "verified")
-	diagnostics = Verify([]model.NativeCheck{{
-		Program:   os.Args[0],
-		Arguments: []string{"-test.run=^TestArtifactNativeVerifyHelper$", "--", marker},
+	verification := Verify([]model.NativeCheck{{
+		Program:   "go",
+		Arguments: []string{"version"},
 		Location:  model.SourceLocation{Path: "native-check"},
 	}}, outputRoot)
-	if len(diagnostics) != 0 {
-		t.Fatalf("Verify() diagnostics = %#v", diagnostics)
+	if !verification.Success || len(verification.Diagnostics) != 0 {
+		t.Fatalf("Verify() result = %#v", verification)
 	}
-	if contents, err := os.ReadFile(marker); err != nil || string(contents) != "verified" {
-		t.Fatalf("verification marker = %q, error = %v", contents, err)
-	}
-}
-
-func TestArtifactNativeVerifyHelper(t *testing.T) {
-	if os.Getenv("ARTIFACT_HELPER") != "1" {
-		return
-	}
-	for index, argument := range os.Args {
-		if argument == "--" && index+1 < len(os.Args) {
-			if err := os.WriteFile(os.Args[index+1], []byte("verified"), 0o600); err != nil {
-				os.Exit(2)
-			}
-			return
-		}
-	}
-	os.Exit(2)
 }
 
 func planWithFile(path model.RelativePath) model.BuildPlan {

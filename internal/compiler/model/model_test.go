@@ -30,7 +30,7 @@ func TestNewRelativePathRejectsEscapes(t *testing.T) {
 func TestDecodeSourceManifestJSONRejectsStrictInvalidInput(t *testing.T) {
 	t.Parallel()
 
-	valid := `{"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base"]}}`
+	valid := `{"version":1,"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base"]}}`
 	cases := []struct {
 		name string
 		data string
@@ -61,7 +61,7 @@ func TestDecodeSourceManifestJSONRejectsStrictInvalidInput(t *testing.T) {
 	}
 }
 
-func TestValidateTargetCompositionRejectsUnsupportedCapability(t *testing.T) {
+func TestValidateTargetCompositionAllowsUnsupportedCapability(t *testing.T) {
 	t.Parallel()
 
 	diagnostics := ValidateTargetComposition(TargetComposition{
@@ -71,8 +71,36 @@ func TestValidateTargetCompositionRejectsUnsupportedCapability(t *testing.T) {
 			State: CapabilityStateUnsupported,
 		}},
 	})
-	if !hasError(diagnostics) {
-		t.Fatalf("ValidateTargetComposition() diagnostics = %#v, want error", diagnostics)
+	if hasError(diagnostics) {
+		t.Fatalf("ValidateTargetComposition() diagnostics = %#v, want no error", diagnostics)
+	}
+}
+
+func TestDecodeSourceManifestJSONAcceptsVersionOne(t *testing.T) {
+	t.Parallel()
+
+	_, diagnostics := DecodeSourceManifestJSON([]byte(`{"version":1,"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base"]}}`))
+	if hasError(diagnostics) {
+		t.Fatalf("DecodeSourceManifestJSON() diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestValidateSourceInventoryRejectsInvalidCapabilityUse(t *testing.T) {
+	t.Parallel()
+
+	inventory := SourceInventory{Packages: []SourcePackage{{
+		Identity: "base",
+		Assets: []SourceAsset{{
+			Identity: "skill/example",
+			Kind:     AssetKindSkill,
+			CapabilityUses: []CapabilityUse{{
+				Key:      "",
+				Location: SourceLocation{Path: "../outside"},
+			}},
+		}},
+	}}}
+	if diagnostics := ValidateSourceInventory(inventory); !hasError(diagnostics) {
+		t.Fatalf("ValidateSourceInventory() diagnostics = %#v, want error", diagnostics)
 	}
 }
 

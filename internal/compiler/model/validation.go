@@ -54,6 +54,9 @@ func NewCapabilityKey(value string) (CapabilityKey, error) {
 // ValidateSourceManifest validates a source declaration without accessing the filesystem.
 func ValidateSourceManifest(manifest SourceManifest) []Diagnostic {
 	var diagnostics []Diagnostic
+	if manifest.Version != 0 && manifest.Version != 1 {
+		diagnostics = appendInvalid(diagnostics, "manifest version must be 1")
+	}
 	if !validSourceKind(manifest.Kind) {
 		diagnostics = appendInvalid(diagnostics, "manifest kind is invalid")
 	}
@@ -167,9 +170,6 @@ func ValidateTargetComposition(input TargetComposition) []Diagnostic {
 		}
 		if !validCapabilityState(rule.State) {
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("capability %q has invalid state %q", rule.Key, rule.State))
-		}
-		if rule.State == CapabilityStateUnsupported {
-			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("capability %q is unsupported for target %q", rule.Key, input.Target))
 		}
 		if _, ok := capabilities[rule.Key]; ok {
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("capability %q is duplicated", rule.Key))
@@ -317,6 +317,12 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Base)...)
+	for _, capability := range asset.CapabilityUses {
+		if err := validateIdentifier(string(capability.Key), "capability key"); err != nil {
+			diagnostics = appendInvalid(diagnostics, "capability use: "+err.Error())
+		}
+		diagnostics = append(diagnostics, validateSourceLocation(capability.Location)...)
+	}
 	overlays := make(map[TargetID]struct{}, len(asset.Overlays))
 	for _, overlay := range asset.Overlays {
 		if !validTargetID(overlay.Target) {
@@ -491,6 +497,15 @@ func validatePlannedFile(file PlannedFile) []Diagnostic {
 	}
 	for _, origin := range file.Origin {
 		diagnostics = append(diagnostics, validateSourceLocation(origin)...)
+	}
+	return diagnostics
+}
+
+// ValidateNativeChecks validates standalone native verification declarations.
+func ValidateNativeChecks(checks []NativeCheck) []Diagnostic {
+	var diagnostics []Diagnostic
+	for _, check := range checks {
+		diagnostics = append(diagnostics, validateNativeCheck(check)...)
 	}
 	return diagnostics
 }

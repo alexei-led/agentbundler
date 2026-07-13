@@ -194,6 +194,7 @@ type SkillsRepositorySourceConfig struct {
 
 // SourceManifest describes one compiler source.
 type SourceManifest struct {
+	Version          int                           `json:"version"`
 	Kind             SourceKind                    `json:"kind"`
 	Root             RelativePath                  `json:"root"`
 	Targets          []TargetID                    `json:"targets"`
