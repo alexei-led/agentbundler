@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v archfit >/dev/null 2>&1; then
+	printf '%s\n' 'archfit is required for architecture checks.' >&2
+	printf '%s\n' 'Install it with: brew install alexei-led/tap/archfit' >&2
+	exit 1
+fi
+
+if [[ "${ARCHFIT_VERSION_CHECK:-}" == "1" ]]; then
+	version=$(archfit --version 2>&1)
+	if [[ "$version" != *'v1.6.0'* ]]; then
+		printf 'archfit v1.6.0 is required in strict mode; found: %s\n' "$version" >&2
+		exit 1
+	fi
+fi
+
+exec archfit check --config .archfit.yaml --require-tools --progress none

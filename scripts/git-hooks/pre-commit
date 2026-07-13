@@ -32,4 +32,4 @@ if [[ "$workflow_failed" == true ]]; then
 	exit 1
 fi
 
-gitleaks git --pre-commit --staged --redact --verbose
+gitleaks git --config .gitleaks.toml --pre-commit --staged --redact --verbose

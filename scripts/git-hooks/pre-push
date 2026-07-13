@@ -14,7 +14,8 @@ if [[ "$has_updates" == false ]]; then
 	exit 0
 fi
 
-gitleaks git --redact --verbose
+gitleaks git --config .gitleaks.toml --redact --verbose
+scripts/check-architecture
 go test ./...
 go vet ./...
 golangci-lint run ./...

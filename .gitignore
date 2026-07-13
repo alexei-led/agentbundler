@@ -1,6 +1,9 @@
-# Agent state
+# Agent and architecture-tool state
 .pi/
 .pi-subagents/
+.claude/
+.codegraph/
+.archfit-cache/
 
 # Go build and test artifacts
 bin/

@@ -1,0 +1,180 @@
+version: 1
+# Agentbundler is one binary with one owner. Module distance therefore follows
+# code structure. Volatility describes the domain contract: target adapters
+# change with vendor formats; artifact writing is stable infrastructure.
+coupling:
+  min_severity: medium
+  duplicated_knowledge: score
+  volatility_cascade: true
+languages:
+  go:
+    enabled: true
+  typescript:
+    enabled: false
+  python:
+    enabled: false
+  rust:
+    enabled: false
+# CI installs and requires pinned analyzers. Local pre-push requires the
+# configured analyzers to be available; versions may differ by developer.
+analyzers:
+  scip:
+    enabled: true
+  syntax:
+    enabled: true
+  clones:
+    enabled: true
+# Inner to outer. forbidden_layer_direction rejects an inner module importing a
+# module listed after it.
+layers:
+  - model
+  - stage
+  - compiler
+  - cmd
+modules:
+  compiler_model:
+    owner: alexei-led
+    paths:
+      - internal/compiler/model/**
+    public:
+      - internal/compiler/model
+    layer: model
+    subdomain: core
+    volatility: medium
+    deploy_unit: agentbundler
+  composition:
+    owner: alexei-led
+    paths:
+      - internal/compiler/composition/**
+    public:
+      - internal/compiler/composition
+    layer: stage
+    subdomain: core
+    volatility: high
+    deploy_unit: agentbundler
+  source:
+    owner: alexei-led
+    paths:
+      - internal/compiler/source/**
+    public:
+      - internal/compiler/source
+    layer: stage
+    subdomain: core
+    volatility: medium
+    deploy_unit: agentbundler
+  target:
+    owner: alexei-led
+    paths:
+      - internal/target/**
+    public:
+      - internal/target
+    layer: stage
+    subdomain: supporting
+    volatility: high
+    deploy_unit: agentbundler
+  artifact:
+    owner: alexei-led
+    paths:
+      - internal/artifact/**
+    public:
+      - internal/artifact
+    layer: stage
+    subdomain: generic
+    volatility: low
+    deploy_unit: agentbundler
+  compiler:
+    owner: alexei-led
+    paths:
+      - internal/compiler/*.go
+    public:
+      - internal/compiler
+    layer: compiler
+    subdomain: core
+    volatility: medium
+    deploy_unit: agentbundler
+  cmd_agentbundler:
+    owner: alexei-led
+    paths:
+      - cmd/agentbundler/**
+    public:
+      - cmd/agentbundler
+    role: composition_root
+    layer: cmd
+    subdomain: generic
+    volatility: low
+    deploy_unit: agentbundler
+rules:
+  - id: no_layer_back_edges
+    type: forbidden_layer_direction
+    gate: fail
+  - id: public_api_only
+    type: public_api_only
+    gate: fail
+  - id: no_cycles
+    type: cycle
+    gate: fail
+  # Composition, import, rendering, and artifact handling meet only in the
+  # compiler orchestrator. Keep the stage implementations independent.
+  - id: composition_no_source
+    type: forbidden_dependency
+    from: internal/compiler/composition/**
+    to: internal/compiler/source/**
+    gate: fail
+  - id: composition_no_target
+    type: forbidden_dependency
+    from: internal/compiler/composition/**
+    to: internal/target/**
+    gate: fail
+  - id: composition_no_artifact
+    type: forbidden_dependency
+    from: internal/compiler/composition/**
+    to: internal/artifact/**
+    gate: fail
+  - id: source_no_composition
+    type: forbidden_dependency
+    from: internal/compiler/source/**
+    to: internal/compiler/composition/**
+    gate: fail
+  - id: source_no_target
+    type: forbidden_dependency
+    from: internal/compiler/source/**
+    to: internal/target/**
+    gate: fail
+  - id: source_no_artifact
+    type: forbidden_dependency
+    from: internal/compiler/source/**
+    to: internal/artifact/**
+    gate: fail
+  - id: target_no_composition
+    type: forbidden_dependency
+    from: internal/target/**
+    to: internal/compiler/composition/**
+    gate: fail
+  - id: target_no_source
+    type: forbidden_dependency
+    from: internal/target/**
+    to: internal/compiler/source/**
+    gate: fail
+  - id: target_no_artifact
+    type: forbidden_dependency
+    from: internal/target/**
+    to: internal/artifact/**
+    gate: fail
+  - id: artifact_no_composition
+    type: forbidden_dependency
+    from: internal/artifact/**
+    to: internal/compiler/composition/**
+    gate: fail
+  - id: artifact_no_source
+    type: forbidden_dependency
+    from: internal/artifact/**
+    to: internal/compiler/source/**
+    gate: fail
+  - id: artifact_no_target
+    type: forbidden_dependency
+    from: internal/artifact/**
+    to: internal/target/**
+    gate: fail
+ai:
+  provider: anthropic
+  model: claude-opus-4-8

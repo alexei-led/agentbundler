@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+git config --local core.hooksPath scripts/git-hooks
+printf 'git hooks enabled: %s\n' "$(git config --local --get core.hooksPath)"

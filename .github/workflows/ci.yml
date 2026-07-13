@@ -4,6 +4,13 @@ on:
   pull_request:
 permissions:
   contents: read
+env:
+  ARCHFIT_VERSION: v1.6.0
+  ARCHFIT_VERSION_CHECK: "1"
+  AST_GREP_VERSION: 0.44.0
+  JSCPD_VERSION: 5.0.11
+  NODE_VERSION: "24"
+  SCIP_GO_VERSION: v0.2.7
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -22,6 +29,20 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install architecture tools
+        # zizmor: ignore[adhoc-packages] pinned CI-only analyzers are not app dependencies
+        run: |
+          go install "github.com/alexei-led/archfit/cmd/archfit@${ARCHFIT_VERSION}"
+          go install "github.com/sourcegraph/scip-go/cmd/scip-go@${SCIP_GO_VERSION}"
+          npm install --global \
+            "@ast-grep/cli@${AST_GREP_VERSION}" \
+            "jscpd@${JSCPD_VERSION}"
+      - name: Check architecture
+        run: scripts/check-architecture
       - name: Test
         run: go test ./...
       - name: Lint
