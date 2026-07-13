@@ -160,6 +160,9 @@ func ValidateSourceInventory(inventory SourceInventory) []Diagnostic {
 // ValidateTargetComposition validates target-specific composition policy.
 func ValidateTargetComposition(input TargetComposition) []Diagnostic {
 	var diagnostics []Diagnostic
+	if input.Profile != "" && input.Profile != TargetProfileProject && input.Profile != TargetProfilePackage {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q has invalid profile %q", input.Target, input.Profile))
+	}
 	if !validTargetID(input.Target) {
 		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q is invalid", input.Target))
 	}
@@ -209,6 +212,9 @@ func ValidateNormalizedPackage(pkg NormalizedPackage) []Diagnostic {
 	}
 	if !validTargetID(pkg.Target) {
 		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("normalized package target %q is invalid", pkg.Target))
+	}
+	if pkg.Profile != "" && pkg.Profile != TargetProfileProject && pkg.Profile != TargetProfilePackage {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("normalized package profile %q is invalid", pkg.Profile))
 	}
 	if err := validateJSONValue(pkg.Metadata); err != nil {
 		diagnostics = appendInvalid(diagnostics, "normalized package metadata: "+err.Error())
@@ -317,6 +323,18 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Base)...)
+	if len(asset.Targets) > 0 {
+		targets := make(map[TargetID]struct{}, len(asset.Targets))
+		for _, target := range asset.Targets {
+			if !validTargetID(target) {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("asset %q target %q is invalid", asset.Identity, target))
+			}
+			if _, exists := targets[target]; exists {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("asset %q target %q is duplicated", asset.Identity, target))
+			}
+			targets[target] = struct{}{}
+		}
+	}
 	for _, capability := range asset.CapabilityUses {
 		if err := validateIdentifier(string(capability.Key), "capability key"); err != nil {
 			diagnostics = appendInvalid(diagnostics, "capability use: "+err.Error())
@@ -636,7 +654,7 @@ func validTargetID(target TargetID) bool {
 
 func validAssetKind(kind AssetKind) bool {
 	switch kind {
-	case AssetKindSkill, AssetKindAgent, AssetKindHook, AssetKindNativeResource:
+	case AssetKindSkill, AssetKindAgent, AssetKindHook, AssetKindResource, AssetKindNativeResource:
 		return true
 	default:
 		return false

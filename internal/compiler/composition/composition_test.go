@@ -51,6 +51,23 @@ func TestComposeAppliesOverlayAndSkillPreamble(t *testing.T) {
 	}
 }
 
+func TestComposeSelectsTargetFilteredAssets(t *testing.T) {
+	inventory := model.SourceInventory{Packages: []model.SourcePackage{{
+		Identity: "bundle",
+		Assets: []model.SourceAsset{
+			{Identity: "agent/claude", Kind: model.AssetKindAgent, Targets: []model.TargetID{model.TargetClaude}},
+			{Identity: "skill/shared", Kind: model.AssetKindSkill},
+		},
+	}}}
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetPi})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose diagnostics = %#v", diagnostics)
+	}
+	if got, want := len(packages[0].Assets), 1; got != want || packages[0].Assets[0].Identity != "skill/shared" {
+		t.Fatalf("selected assets = %#v, want shared skill only", packages[0].Assets)
+	}
+}
+
 func TestComposeAppliesExplicitBodyModes(t *testing.T) {
 	replacement := "replaced"
 	base := "# First\nkeep\n## Child\nold\n# Last\nlast\n```markdown\n# Not a heading\n```\n"

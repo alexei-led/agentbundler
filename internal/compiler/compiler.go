@@ -221,6 +221,9 @@ func selectPackages(inventory model.SourceInventory, requested []model.PackageID
 func compositionPolicy(manifest model.SourceManifest, targetID model.TargetID, capabilities []model.CapabilityRule) model.TargetComposition {
 	for _, policy := range manifest.Composition {
 		if policy.Target == targetID {
+			if len(policy.Capabilities) == 0 {
+				policy.Capabilities = capabilities
+			}
 			return policy
 		}
 	}

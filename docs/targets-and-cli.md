@@ -5,20 +5,24 @@ paths below are target-relative.
 
 ## Target layouts
 
-- **Claude Code:** `.claude/skills/<name>/`. No plugin manifest is generated.
-- **Codex:** `.codex-plugin/plugin.json` and `skills/<name>/`. The manifest
-  includes package name, `./skills`, and supported string metadata.
-- **Pi:** `.pi/skills/<name>/`. TypeScript extensions, themes, and Pi package
-  manifests are not generated.
-- **GitHub Copilot:** `.github/skills/<name>/`. Custom agents are outside the
-  current renderer.
-- **Grok Build:** `.grok/skills/<name>/`. Grok plugins and marketplaces are not
-  generated.
-- **Cursor:** `.cursor-plugin/plugin.json` and `skills/<name>/`. The manifest
-  includes `./skills/` and supported string metadata.
+Project profiles keep the lightweight roots used by each agent. Package profiles
+produce installable target roots:
+
+- **Claude Code:** project `.claude/skills/<name>/`; package
+  `.claude-plugin/plugin.json`, `skills/`, `agents/`, and `resources/`.
+- **Codex:** package `.codex-plugin/plugin.json`, `skills/`, standalone
+  `agents/*.toml`, and `resources/`.
+- **Pi:** project `.pi/skills/<name>/`; package `package.json`, `skills/`, and
+  `resources/`. Pi package profiles do not emit portable agents.
+- **GitHub Copilot:** `.github/skills/<name>/` in the project profile.
+- **Grok Build:** `.grok/skills/<name>/` in the project profile.
+- **Cursor:** package `.cursor-plugin/plugin.json`, `skills/`, and `resources/`.
 
 Every skill output contains `SKILL.md` plus composed regular support files. When
 frontmatter exists, the renderer writes it as compact JSON between `---` lines.
+Package resources are portable directory trees under `resources/<name>/`.
+Agentbundler accepts ordinary YAML frontmatter and normalizes it to JSON for
+output; `agentbundle.json` itself remains strict JSON.
 
 The target directory is a layout contract, not proof of vendor feature parity.
 Copy or package the matching target subtree according to the target's current
@@ -118,14 +122,14 @@ declare no native checks, so it adds no checks today.
 Current target renderers intentionally support:
 
 - one package per target plan;
-- `skill` assets;
+- `skill` assets and portable `resource` directory trees;
+- Claude Markdown agents and Codex standalone TOML agents in package profiles;
 - regular support files;
-- JSON-object frontmatter and Markdown bodies;
+- YAML frontmatter with JSON-compatible values and Markdown bodies;
 - target overlays for frontmatter, heading blocks, files, and deletions.
 
 They do not currently render:
 
-- agent assets;
 - hook assets;
 - scripts as a separate portable asset type;
 - target-native resources;

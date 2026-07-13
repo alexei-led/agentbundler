@@ -74,6 +74,27 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	}
 }
 
+func TestInspectBundleImportsTargetFilteredResources(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/agents/reviewer.md","targets":["claude","codex"]},{"path":"src/resources/templates","targets":["claude","codex","pi"]}]}`)
+	writeFixture(t, workspace, "bundle/src/agents/reviewer.md", "---\nname: reviewer\ndescription: Review code\n---\nReview.\n")
+	writeFixture(t, workspace, "bundle/src/resources/templates/design.md", "# Design\n")
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	if got, want := assetIDs(inventory.Packages[0]), []model.AssetID{"agent/reviewer", "resource/templates"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("asset IDs = %#v, want %#v", got, want)
+	}
+	if got := string(inventory.Packages[0].Assets[1].Base.Files["design.md"]); got != "# Design\n" {
+		t.Fatalf("resource file = %q", got)
+	}
+	if got := inventory.Packages[0].Assets[0].Base.Frontmatter["name"]; got != "reviewer" {
+		t.Fatalf("agent frontmatter = %#v", got)
+	}
+}
+
 func TestInspectBundleRejectsInvalidPackageAndSidecar(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/skills/example","src/skills/example"]}`)

@@ -16,6 +16,7 @@ func Capabilities() []model.CapabilityRule {
 	return []model.CapabilityRule{
 		{Key: "asset.agent", State: model.CapabilityStateUnsupported},
 		{Key: "asset.hook", State: model.CapabilityStateUnsupported},
+		{Key: "asset.resource", State: model.CapabilityStateUnsupported},
 		{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
 		{Key: "asset.skill", State: model.CapabilityStateNative},
 	}

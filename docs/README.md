@@ -18,6 +18,7 @@ renders complete target trees. `build` writes them. `check` compares them. Keep
 `agentbundle.json`, source files, and sidecars in version control; keep the
 configured output directory separate and disposable.
 
-Current renderers support one package of skills and support files. See the
+Current renderers support one package of skills, portable resources, and
+selected native agent forms. See the
 [limitations](targets-and-cli.md#current-limitations) before designing a
-bundle around agents, hooks, scripts, or native plugin resources.
+bundle around hooks, scripts, target-native resources, or aggregation.

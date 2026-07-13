@@ -45,12 +45,20 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 
 	var packages []model.NormalizedPackage
 	for _, sourcePackage := range inventory.Packages {
+		profile := target.Profile
+		if profile == "" {
+			profile = model.TargetProfileProject
+		}
 		pkg := model.NormalizedPackage{
 			Identity: sourcePackage.Identity,
 			Metadata: sourcePackage.Metadata,
 			Target:   target.Target,
+			Profile:  profile,
 		}
 		for _, sourceAsset := range sourcePackage.Assets {
+			if !assetSelectedForTarget(sourceAsset, target.Target) {
+				continue
+			}
 			if gapActions[sourceAsset.Identity] {
 				continue
 			}
@@ -145,6 +153,18 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		}
 	}
 	return excluded, diagnostics
+}
+
+func assetSelectedForTarget(asset model.SourceAsset, target model.TargetID) bool {
+	if len(asset.Targets) == 0 {
+		return true
+	}
+	for _, selected := range asset.Targets {
+		if selected == target {
+			return true
+		}
+	}
+	return false
 }
 
 func overlayForTarget(overlays []model.TargetOverlay, target model.TargetID) *model.TargetOverlay {

@@ -77,9 +77,10 @@ Source kinds:
 - `claude-plugin`: imports `.claude-plugin/plugin.json` and recognized Claude
   plugin assets.
 
-Current renderers emit one selected package containing skills and support files.
-They do not render agents, hooks, scripts as a separate portable asset type,
-native resources, or multiple packages aggregated into one target.
+Current renderers emit one selected package containing skills, portable resources,
+and supported native agent forms. They do not render hooks, scripts as a separate
+portable asset type, target-native resources, or multiple packages aggregated into
+one target.
 
 ## Create a skill source
 
@@ -93,7 +94,8 @@ source/
         └── references.md
 ```
 
-Agentbundler accepts JSON-object frontmatter between the first two `---` lines:
+Agentbundler accepts YAML frontmatter between the first two `---` lines. Values
+must be JSON-compatible; `agentbundle.json` remains strict JSON:
 
 ```md
 ---

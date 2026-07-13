@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/compiler/source/frontmatter"
 )
 
 const diagnosticCodeInvalidBundle = "invalid-bundle-source"
@@ -32,7 +33,30 @@ type inspector struct {
 type packageManifest struct {
 	ID       *string                `json:"id"`
 	Metadata *model.PackageMetadata `json:"metadata"`
-	Assets   *[]string              `json:"assets"`
+	Assets   *[]assetEntry          `json:"assets"`
+}
+
+type assetEntry struct {
+	Path    *string          `json:"path"`
+	Targets []model.TargetID `json:"targets"`
+}
+
+func (entry *assetEntry) UnmarshalJSON(data []byte) error {
+	var path string
+	if err := json.Unmarshal(data, &path); err == nil {
+		entry.Path = &path
+		return nil
+	}
+	var value struct {
+		Path    *string          `json:"path"`
+		Targets []model.TargetID `json:"targets"`
+	}
+	if err := decodeStrictJSON(data, &value); err != nil {
+		return err
+	}
+	entry.Path = value.Path
+	entry.Targets = value.Targets
+	return nil
 }
 
 type assetSidecar struct {
@@ -155,10 +179,14 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 	assets := make([]model.SourceAsset, 0, len(*manifest.Assets))
 	seenPaths := make(map[model.RelativePath]struct{}, len(*manifest.Assets))
 	seenAssets := make(map[model.AssetID]struct{}, len(*manifest.Assets))
-	for _, value := range *manifest.Assets {
-		assetPath, err := model.NewRelativePath(value)
+	for _, entry := range *manifest.Assets {
+		if entry.Path == nil {
+			i.addDiagnostic(packagePath, "asset entry requires path")
+			continue
+		}
+		assetPath, err := model.NewRelativePath(*entry.Path)
 		if err != nil {
-			i.addDiagnostic(packagePath, "asset path %q: %v", value, err)
+			i.addDiagnostic(packagePath, "asset path %q: %v", *entry.Path, err)
 			continue
 		}
 		if _, exists := seenPaths[assetPath]; exists {
@@ -169,6 +197,10 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 		asset, nativeGap, ok := i.inspectAsset(assetPath)
 		if !ok {
 			continue
+		}
+		asset.Targets = append([]model.TargetID(nil), entry.Targets...)
+		if len(asset.Targets) > 0 {
+			sort.Slice(asset.Targets, func(left, right int) bool { return asset.Targets[left] < asset.Targets[right] })
 		}
 		if nativeGap != nil {
 			i.nativeGaps[assetPath] = *nativeGap
@@ -196,27 +228,31 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		return model.SourceAsset{}, nil, false
 	}
 
-	mainPath := model.RelativePath(mainFile)
-	data, ok := i.readRegular(mainPath)
-	if !ok {
-		return model.SourceAsset{}, nil, false
-	}
 	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath][]byte)}
-	if markdown {
-		frontmatter, body, err := parseMarkdown(data)
-		if err != nil {
-			i.addDiagnostic(mainPath, "%v", err)
+	if kind == model.AssetKindResource {
+		i.readSupportFiles(assetDir, &content)
+	} else {
+		mainPath := model.RelativePath(mainFile)
+		data, ok := i.readRegular(mainPath)
+		if !ok {
 			return model.SourceAsset{}, nil, false
 		}
-		content.Frontmatter = frontmatter
-		content.Body = body
-	} else if kind == model.AssetKindNativeResource {
-		content.Files[model.RelativePath(filepath.Base(mainFile))] = append([]byte(nil), data...)
-	} else {
-		content.Body = string(data)
-	}
-	if kind == model.AssetKindSkill {
-		i.readSupportFiles(assetDir, &content)
+		if markdown {
+			frontmatter, body, err := parseMarkdown(data)
+			if err != nil {
+				i.addDiagnostic(mainPath, "%v", err)
+				return model.SourceAsset{}, nil, false
+			}
+			content.Frontmatter = frontmatter
+			content.Body = body
+		} else if kind == model.AssetKindNativeResource {
+			content.Files[model.RelativePath(filepath.Base(mainFile))] = append([]byte(nil), data...)
+		} else {
+			content.Body = string(data)
+		}
+		if kind == model.AssetKindSkill {
+			i.readSupportFiles(assetDir, &content)
+		}
 	}
 
 	asset := model.SourceAsset{
@@ -241,20 +277,25 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 
 func classifyAsset(assetPath string) (model.AssetKind, string, string, string, bool, error) {
 	parts := strings.Split(assetPath, "/")
+	if len(parts) >= 2 && parts[0] == "src" {
+		parts = parts[1:]
+	}
 	switch {
-	case len(parts) == 3 && parts[0] == "src" && parts[1] == "skills":
-		return model.AssetKindSkill, parts[2], assetPath + "/SKILL.md", assetPath, true, nil
-	case len(parts) == 3 && parts[0] == "src" && parts[1] == "agents" && strings.HasSuffix(parts[2], ".md") && strings.TrimSuffix(parts[2], ".md") != "":
-		return model.AssetKindAgent, strings.TrimSuffix(parts[2], ".md"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), true, nil
-	case len(parts) == 3 && parts[0] == "src" && parts[1] == "hooks" && strings.HasSuffix(parts[2], ".json") && strings.TrimSuffix(parts[2], ".json") != "":
-		return model.AssetKindHook, strings.TrimSuffix(parts[2], ".json"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, nil
-	case len(parts) == 4 && parts[0] == "src" && parts[1] == "plugins" && parts[2] != "" && parts[3] != "":
-		if _, err := parseTarget(parts[2]); err != nil {
+	case len(parts) == 2 && parts[0] == "skills":
+		return model.AssetKindSkill, parts[1], assetPath + "/SKILL.md", assetPath, true, nil
+	case len(parts) == 2 && parts[0] == "agents" && strings.HasSuffix(parts[1], ".md") && strings.TrimSuffix(parts[1], ".md") != "":
+		return model.AssetKindAgent, strings.TrimSuffix(parts[1], ".md"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), true, nil
+	case len(parts) == 2 && parts[0] == "resources" && parts[1] != "":
+		return model.AssetKindResource, parts[1], "", assetPath, false, nil
+	case len(parts) == 2 && parts[0] == "hooks" && strings.HasSuffix(parts[1], ".json") && strings.TrimSuffix(parts[1], ".json") != "":
+		return model.AssetKindHook, strings.TrimSuffix(parts[1], ".json"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, nil
+	case len(parts) == 3 && parts[0] == "plugins" && parts[1] != "" && parts[2] != "":
+		if _, err := parseTarget(parts[1]); err != nil {
 			return "", "", "", "", false, err
 		}
-		return model.AssetKindNativeResource, parts[3], assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, nil
+		return model.AssetKindNativeResource, parts[2], assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, nil
 	default:
-		return "", "", "", "", false, fmt.Errorf("asset path %q is not a canonical skill, agent, hook, or native resource", assetPath)
+		return "", "", "", "", false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
 	}
 }
 
@@ -671,29 +712,7 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 }
 
 func parseMarkdown(data []byte) (map[string]any, string, error) {
-	if !utf8.Valid(data) {
-		return nil, "", fmt.Errorf("markdown must be valid UTF-8")
-	}
-	frontmatter := map[string]any{}
-	lines := strings.SplitAfter(string(data), "\n")
-	if len(lines) == 0 || trimLineEnding(lines[0]) != "---" {
-		return frontmatter, string(data), nil
-	}
-	for index := 1; index < len(lines); index++ {
-		if trimLineEnding(lines[index]) != "---" {
-			continue
-		}
-		decoded := make(map[string]any)
-		if err := decodeStrictJSON([]byte(strings.Join(lines[1:index], "")), &decoded); err != nil {
-			return nil, "", fmt.Errorf("frontmatter: %w", err)
-		}
-		return decoded, strings.Join(lines[index+1:], ""), nil
-	}
-	return nil, "", fmt.Errorf("frontmatter opening delimiter has no closing delimiter")
-}
-
-func trimLineEnding(value string) string {
-	return strings.TrimSuffix(strings.TrimSuffix(value, "\n"), "\r")
+	return frontmatter.Parse(data)
 }
 
 func decodeBodyPatch(raw json.RawMessage) (model.BodyPatch, error) {

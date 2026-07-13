@@ -39,7 +39,7 @@ PackageMetadata = Map<String, JsonValue>
 
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
+AssetKind = skill | agent | hook | resource | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
@@ -56,16 +56,17 @@ CapabilityUse = { key: CapabilityKey, location: SourceLocation }
 CapabilityRule = { key: CapabilityKey, state: CapabilityState }
 NativeGapAction = replace | exclude | source-only
 NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+TargetProfile = project | package
+TargetComposition = { target: TargetID, profile: TargetProfile?, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
 BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, targets: [TargetID]?, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, profile: TargetProfile?, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
 
 Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
@@ -130,6 +131,8 @@ All constructors reject empty, NUL-containing, absolute, escaping, or otherwise 
 
 - No model type carries an absolute path, open file handle, process handle, clock, environment map, or target-specific private struct.
 - Lists have deterministic order before crossing a module boundary.
+- A source asset with a non-empty `targets` list is included only for those exact targets. The allow-list is fail-closed and does not support globs or deny rules.
+- `resource` is a portable package-root directory tree. It is distinct from `native-resource`, which remains target-specific and requires native-gap policy.
 - A `PlannedFile` path is relative and cannot contain a path escape.
 - A `NativeCheck.program` is a non-empty executable name containing no NUL, `/`, or `\\`; it is resolved through `PATH`, never as a filesystem path. Every argument contains no NUL. An absent `workingDirectory` means the generated target root; a present value is relative to that root. `location` identifies the adapter declaration that produced the check.
 - A `BuildPlan` contains all selected targets plus compiler-owned files and is the indivisible write/check transaction. Each compiler-file path is relative to the generated-output root; each target file path is relative to its target root. No full destination path may occur more than once.

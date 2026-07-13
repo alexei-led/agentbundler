@@ -129,11 +129,11 @@ or changing package responsibilities.
 
 ## Current boundary
 
-All built-in renderers currently accept one package containing skills. The source
-model is deliberately broader so richer assets and native gaps can be imported,
-validated, and reported, but agents, hooks, scripts, native resources, and
-multi-package aggregation need target-specific rendering contracts before they
-can be emitted safely.
+All built-in renderers currently accept one package containing skills. Package
+profiles additionally render portable resources and supported native agent forms.
+The source model is deliberately broader so richer assets and native gaps can be
+imported, validated, and reported, but hooks, scripts, target-native resources,
+and multi-package aggregation still need target-specific rendering contracts.
 
 For user-facing behavior, see [targets and CLI](targets-and-cli.md). For the
 input contract, see [configuration](configuration.md).

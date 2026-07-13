@@ -54,7 +54,8 @@ The overlay file is JSON. The examples below are valid strict JSON.
 
 ## Frontmatter
 
-Source frontmatter is a JSON object between the first two `---` lines. The
+Source frontmatter is a YAML object between the first two `---` lines. Values
+must be JSON-compatible. The
 patch is recursive: objects merge into objects, other values replace, and
 `null` deletes a key.
 
@@ -65,7 +66,7 @@ Canonical `SKILL.md`:
 {
   "name": "explain-query",
   "description": "Explain SQL queries",
-  "metadata": { "audience": "all", "draft": false }
+  "metadata": { "audience": "all", "draft": false },
 }
 ---
 

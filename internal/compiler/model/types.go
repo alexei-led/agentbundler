@@ -41,6 +41,7 @@ const (
 	AssetKindSkill          AssetKind = "skill"
 	AssetKindAgent          AssetKind = "agent"
 	AssetKindHook           AssetKind = "hook"
+	AssetKindResource       AssetKind = "resource"
 	AssetKindNativeResource AssetKind = "native-resource"
 )
 
@@ -167,9 +168,18 @@ type NativeGapPolicy struct {
 	Replacement *AssetID        `json:"replacement,omitempty"`
 }
 
+// TargetProfile selects the output contract for a target.
+type TargetProfile string
+
+const (
+	TargetProfileProject TargetProfile = "project"
+	TargetProfilePackage TargetProfile = "package"
+)
+
 // TargetComposition contains target-specific composition policy.
 type TargetComposition struct {
 	Target        TargetID          `json:"target"`
+	Profile       TargetProfile     `json:"profile,omitempty"`
 	SkillPreamble *string           `json:"skillPreamble,omitempty"`
 	Capabilities  []CapabilityRule  `json:"capabilities"`
 	NativeGaps    []NativeGapPolicy `json:"nativeGaps"`
@@ -209,6 +219,7 @@ type SourceManifest struct {
 type SourceAsset struct {
 	Identity       AssetID         `json:"identity"`
 	Kind           AssetKind       `json:"kind"`
+	Targets        []TargetID      `json:"targets,omitempty"`
 	Base           AssetContent    `json:"base"`
 	CapabilityUses []CapabilityUse `json:"capabilityUses"`
 	Overlays       []TargetOverlay `json:"overlays"`
@@ -241,6 +252,7 @@ type NormalizedPackage struct {
 	Identity        PackageID         `json:"identity"`
 	Metadata        PackageMetadata   `json:"metadata"`
 	Target          TargetID          `json:"target"`
+	Profile         TargetProfile     `json:"profile,omitempty"`
 	Assets          []NormalizedAsset `json:"assets"`
 	Acknowledgments []Acknowledgment  `json:"acknowledgments"`
 }

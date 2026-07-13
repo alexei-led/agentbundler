@@ -29,7 +29,7 @@ src/plugins/<target>/<name>/...
 <asset-directory>/.agentbundler/targets/<target>/files/...
 ```
 
-`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `bundle.packages` lists exact package-manifest paths. A package manifest is `{ "id": String, "metadata": Object, "assets": [RelativePath] }`; each asset entry is either a skill directory (`src/skills/<name>`) or an exact single-file path (`src/agents/<name>.md`, `src/hooks/<name>.json`, or `src/plugins/<target>/<name>`). A skill entry resolves its directory and `SKILL.md`; single-file entries use their containing directory as the sidecar directory. The canonical parent determines `skill`, `agent`, `hook`, or `native-resource`; identities are the declared package ID and `kind/name`. Unknown fields, duplicate keys, duplicate asset paths, and invalid identities are errors.
+`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `bundle.packages` lists exact package-manifest paths. A package manifest is `{ "id": String, "metadata": Object, "assets": [String | AssetEntry] }`, where `AssetEntry` is `{ "path": RelativePath, "targets": [TargetID]? }`. Each entry is a skill directory (`src/skills/<name>` or `skills/<name>`), an agent file (`src/agents/<name>.md` or `agents/<name>.md`), a portable resource directory (`src/resources/<name>` or `resources/<name>`), an exact hook file, or a target-native resource. Target allow-lists are exact and fail closed. A skill entry resolves its directory and `SKILL.md`; file entries use their containing directory as the sidecar directory. Unknown fields, duplicate keys, duplicate asset paths, and invalid identities are errors.
 
 An asset sidecar is `asset.json` with exactly `{ "capabilities": [String] }`, where each capability string becomes a `CapabilityUse` at the sidecar path. A target sidecar is `<asset-directory>/.agentbundler/targets/<target>.json` with exactly `{ "frontmatterPatch": Object?, "bodyPatch": Object?, "files": Object?, "deletedFiles": [String], "acknowledgments": [Object] }`; absent fields are omitted. `files` maps asset-relative slash paths to UTF-8 strings or base64 objects `{ "base64": String }`; the sibling `files/` tree, when present, overrides same-path JSON entries. Sidecars and support files cannot contain symlinks or paths outside the asset.
 
@@ -39,7 +39,7 @@ An asset sidecar is `asset.json` with exactly `{ "capabilities": [String] }`, wh
 
 ## Encapsulated Knowledge
 
-- Canonical path conventions for `src/skills`, `src/agents`, `src/hooks`, and `src/plugins`.
+- Canonical path conventions for `src/skills`, `src/agents`, `src/resources`, `src/hooks`, and `src/plugins`.
 - Explicit multi-package composition rules.
 - Direct-overlay path resolution and support-file containment.
 - The distinction between portable assets and opaque target-native resources.
@@ -47,6 +47,7 @@ An asset sidecar is `asset.json` with exactly `{ "capabilities": [String] }`, wh
 ## Public Contract
 
 <!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -58,7 +59,7 @@ PackageMetadata = Map<String, JsonValue>
 
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
+AssetKind = skill | agent | hook | resource | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
@@ -80,7 +81,7 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, targets: [TargetID]?, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }

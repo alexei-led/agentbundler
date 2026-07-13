@@ -99,14 +99,19 @@ Package file:
 {
   "id": "team-skills",
   "metadata": {},
-  "assets": ["src/skills/explain-query"]
+  "assets": [
+    "src/skills/explain-query",
+    { "path": "src/agents/reviewer.md", "targets": ["claude", "codex"] },
+    { "path": "src/resources/templates", "targets": ["claude", "codex", "pi"] }
+  ]
 }
 ```
 
 Bundle package assets use exact forms such as `src/skills/<name>`,
-`src/agents/<name>.md`, `src/hooks/<name>.json`, and
-`src/plugins/<target>/<file>`. The current renderers still accept only the
-skill asset form.
+`src/agents/<name>.md`, `src/resources/<name>`, `src/hooks/<name>.json`, and
+`src/plugins/<target>/<file>`. The `src/` prefix is optional. Asset target
+lists are exact allow-lists. Portable resource directories render under
+`resources/` in package profiles; target-native resources remain explicit gaps.
 
 #### Example manifest
 

@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/compiler/source/frontmatter"
 )
 
 type claudeInspector struct {
@@ -379,36 +380,7 @@ func (i *claudeInspector) error(path, message string) {
 }
 
 func parseFrontmatter(markdown []byte) (map[string]any, string, error) {
-	frontmatter := make(map[string]any)
-	firstEnd, firstLine := nextLine(markdown, 0)
-	if firstLine != "---" {
-		return frontmatter, string(markdown), nil
-	}
-	for offset := firstEnd; offset <= len(markdown); {
-		next, line := nextLine(markdown, offset)
-		if line == "---" {
-			if err := decodeStrictJSONObject(markdown[firstEnd:offset], &frontmatter); err != nil {
-				return nil, "", err
-			}
-			return frontmatter, string(markdown[next:]), nil
-		}
-		if next == len(markdown) && offset == len(markdown) {
-			break
-		}
-		offset = next
-	}
-	return nil, "", fmt.Errorf("frontmatter opening delimiter has no closing delimiter")
-}
-
-func nextLine(data []byte, offset int) (int, string) {
-	end := bytes.IndexByte(data[offset:], '\n')
-	if end < 0 {
-		line := strings.TrimSuffix(string(data[offset:]), "\r")
-		return len(data), line
-	}
-	end += offset
-	line := strings.TrimSuffix(string(data[offset:end]), "\r")
-	return end + 1, line
+	return frontmatter.Parse(markdown)
 }
 
 func parseAssetSidecar(data []byte) ([]string, error) {

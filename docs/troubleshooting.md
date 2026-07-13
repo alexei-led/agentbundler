@@ -48,10 +48,10 @@ agentbundler check --json
 
 ## `unsupported capability` or native-gap errors
 
-Current renderers emit one package of skills only. Agents, hooks, scripts,
-native resources, and arbitrary custom capability uses are not rendered. A
-composition policy can classify or resolve a native gap, but it cannot make an
-unsupported asset appear in the output.
+Current renderers emit one package of skills, portable resources, and supported
+native agent forms. Hooks, scripts, target-native resources, and arbitrary custom
+capability uses are not rendered. A composition policy can classify or resolve a
+native gap, but it cannot make an unsupported asset appear in the output.
 
 If the asset is not needed for the target, exclude it in the source/package
 selection or use a target that supports the required representation. Otherwise,
@@ -59,11 +59,12 @@ keep the richer source for a future adapter and publish only the skill subset.
 
 ## Frontmatter parse errors
 
-Frontmatter must be a JSON object between the first two `---` lines:
+Frontmatter must be a YAML object between the first two `---` lines:
 
 ```md
 ---
-{ "name": "demo", "description": "A valid object" }
+name: demo
+description: A valid object
 ---
 
 # Body
@@ -71,9 +72,8 @@ Frontmatter must be a JSON object between the first two `---` lines:
 
 Common causes:
 
-- YAML syntax instead of JSON;
-- a trailing comma;
-- duplicate JSON keys;
+- duplicate YAML keys;
+- aliases, custom tags, timestamps, or non-finite numbers;
 - a non-object value;
 - an invalid UTF-8 bundle Markdown file.
 

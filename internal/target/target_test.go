@@ -31,8 +31,8 @@ func TestResolveBuiltInAdapters(t *testing.T) {
 			if adapter.FormatRevision < 1 {
 				t.Fatalf("Resolve(%q) format revision = %d", targetID, adapter.FormatRevision)
 			}
-			if len(Capabilities(adapter)) != 4 {
-				t.Fatalf("Capabilities(%q) = %#v, want four rules", targetID, Capabilities(adapter))
+			if len(Capabilities(adapter)) != 5 {
+				t.Fatalf("Capabilities(%q) = %#v, want five rules", targetID, Capabilities(adapter))
 			}
 		})
 	}
@@ -51,7 +51,7 @@ func TestCapabilitiesReturnsIndependentRules(t *testing.T) {
 		t.Fatalf("Resolve() diagnostics = %#v", diagnostics)
 	}
 	capabilities := Capabilities(adapter)
-	capabilities[0].State = model.CapabilityStateNative
+	capabilities[0].State = model.CapabilityStateAdvisory
 	if reflect.DeepEqual(capabilities, Capabilities(adapter)) {
 		t.Fatal("Capabilities() returned mutable adapter state")
 	}

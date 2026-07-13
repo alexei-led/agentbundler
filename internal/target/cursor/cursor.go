@@ -3,6 +3,7 @@ package cursor
 
 import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 	"github.com/alexei-led/agentbundler/internal/target/plugin"
 )
 
@@ -12,6 +13,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "asset.skill", State: model.CapabilityStateNative},
 	{Key: "asset.agent", State: model.CapabilityStateUnsupported},
 	{Key: "asset.hook", State: model.CapabilityStateUnsupported},
+	{Key: "asset.resource", State: model.CapabilityStateNative},
 	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
 }
 
@@ -29,6 +31,9 @@ func New() Adapter {
 func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	if adapter.Target != model.TargetCursor || adapter.FormatRevision != formatRevision || !sameCapabilityRules(adapter.Capabilities, capabilityRules) {
 		return model.TargetPlan{Target: model.TargetCursor}, []model.Diagnostic{{Code: "invalid-adapter", Severity: model.SeverityError, Message: "adapter is not the Cursor format revision 2 capability profile"}}
+	}
+	if len(packages) == 1 && packages[0].Profile == model.TargetProfilePackage {
+		return packageoutput.Render(adapter.Target, packages)
 	}
 	if len(packages) != 1 {
 		return plugin.Render(adapter.Target, ".cursor-plugin/plugin.json", packages, nil)
