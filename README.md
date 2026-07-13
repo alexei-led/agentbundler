@@ -1,24 +1,48 @@
-# agentbundler
+# Agentbundler
 
-Compile portable coding-agent assets into deterministic vendor-native target trees.
+[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Usage
+Coding-agent assets are not portable. The same skill gets copied into several
+vendor-specific directory trees, then those generated copies drift from their
+source.
 
-```sh
-go run ./cmd/agentbundler build --root PATH
+Agentbundler compiles one explicit source into deterministic native layouts for
+Claude Code, Codex, Pi, GitHub Copilot, Grok Build, and Cursor. It applies
+target-specific composition rules, renders the selected layouts, records
+input/output hashes, and can prove whether generated output is current.
 
-go run ./cmd/agentbundler check --root PATH --json
-
-go run ./cmd/agentbundler check --root PATH --native
+```text
+source + agentbundle.json
+        │
+        ▼
+ import → compose → render → build or check
+        │
+        └───────────────► native target trees + provenance
 ```
 
-The command reads `agentbundle.json`, supports `build` and read-only `check`, and writes generated output only for `build`. Use repeated `--target` and `--package` flags to select subsets. JSON results go to stdout; human diagnostics go to stderr.
+- `build` stages, verifies, and replaces the generated output tree.
+- `check` compiles in memory and reports missing, changed, or extra output
+  without writing.
+- Unsupported capabilities fail explicitly instead of being silently dropped.
 
-The current lossless subset is skill-only and accepts one source package per target. It emits native skill roots for Claude (`.claude/skills/`), Copilot (`.github/skills/`), Pi (`.pi/skills/`), and Grok (`.grok/skills/`), and native plugin roots for Codex (`.codex-plugin/plugin.json`, `skills/`) and Cursor (`.cursor-plugin/plugin.json`, `skills/`). Agents, hooks, native resources, and multi-package aggregation are rejected until their portable model and native contract are implemented.
+The current lossless target subset supports skills and one source package per
+target. Agents, hooks, native resources, and multi-package aggregation are
+rejected by the target renderers.
 
-## Verification
+## Start
+
+Requires Go 1.26.
 
 ```sh
-go test ./...
-go vet ./...
+go install github.com/alexei-led/agentbundler/cmd/agentbundler@latest
+agentbundler build --root /path/to/project
+agentbundler check --root /path/to/project
 ```
+
+See the [guide](docs/guide.md) for source layout, configuration, target output,
+examples, and architecture.
+
+## License
+
+[MIT](LICENSE)
