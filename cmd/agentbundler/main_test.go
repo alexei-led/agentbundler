@@ -12,6 +12,50 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
+func TestRunHelpListsCommandsAndOptions(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"help"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("help status=%d stderr=%q", status, stderr.String())
+	}
+	for _, want := range []string{"build", "check", "help", "agentbundler help <command>"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("help output missing %q: %q", want, stdout.String())
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("help stderr=%q", stderr.String())
+	}
+}
+
+func TestRunCommandHelpDoesNotNeedManifest(t *testing.T) {
+	for _, command := range []string{"build", "check"} {
+		t.Run(command, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if status := run([]string{command, "--help"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
+				t.Fatalf("help status=%d stderr=%q", status, stderr.String())
+			}
+			for _, want := range []string{"Usage:", "--root DIR", "--target TARGET", "--package ID", "--json"} {
+				if !strings.Contains(stdout.String(), want) {
+					t.Errorf("help output missing %q: %q", want, stdout.String())
+				}
+			}
+			if command == "check" && !strings.Contains(stdout.String(), "--native") {
+				t.Errorf("check help missing --native: %q", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("help stderr=%q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunRejectsUnknownHelpTopic(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"help", "unknown"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 1 || stderr.String() != "USAGE: unknown help topic \"unknown\"\n" {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
 func TestRunBuildThenCheckDetectsRealDrift(t *testing.T) {
 	root := t.TempDir()
 	writeCLIFile(t, root, "agentbundle.json", `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`)

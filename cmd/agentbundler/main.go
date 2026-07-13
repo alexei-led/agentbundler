@@ -49,8 +49,12 @@ func main() {
 }
 
 func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Writer, compile compileFunc) int {
-	if len(args) == 1 && args[0] == "--help" {
-		_, _ = fmt.Fprint(stdout, usage())
+	if help, ok, err := helpText(args); ok {
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "USAGE: %s\n", err)
+			return 1
+		}
+		_, _ = fmt.Fprint(stdout, help)
 		return 0
 	}
 	parsed, err := parseArgs(args)
@@ -239,7 +243,114 @@ func hasError(diagnostics []model.Diagnostic) bool {
 	return false
 }
 
+func helpText(args []string) (string, bool, error) {
+	if len(args) == 0 {
+		return "", false, nil
+	}
+	if len(args) == 1 {
+		switch args[0] {
+		case "--help", "-h", "help":
+			return usage(), true, nil
+		}
+	}
+	if len(args) == 2 && args[0] == "help" {
+		switch args[1] {
+		case "-h", "--help":
+			return usage(), true, nil
+		case "build":
+			return buildHelp(), true, nil
+		case "check":
+			return checkHelp(), true, nil
+		default:
+			return "", true, fmt.Errorf("unknown help topic %q", args[1])
+		}
+	}
+	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {
+		switch args[0] {
+		case "build":
+			return buildHelp(), true, nil
+		case "check":
+			return checkHelp(), true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func usage() string {
-	return "agentbundler build [--root DIR] [--target TARGET]... [--package PACKAGE]... [--json]\n" +
-		"agentbundler check [--root DIR] [--target TARGET]... [--package PACKAGE]... [--native] [--json]\n"
+	return `agentbundler compiles one source bundle into target-specific coding-agent layouts.
+
+Usage:
+  agentbundler <command> [options]
+
+Commands:
+  build    Compile and replace the configured output directory.
+  check    Compare the configured output directory with the current build plan.
+  help     Show help for a command: agentbundler help build|check.
+
+Global help:
+  agentbundler --help
+  agentbundler help
+  agentbundler help <command>
+
+Run "agentbundler help <command>" for command-specific options.
+`
+}
+
+func buildHelp() string {
+	return `Usage:
+  agentbundler build [options]
+
+Compile the selected package and targets, then replace the complete output
+directory configured by agentbundle.json. Use a dedicated generated directory;
+build removes files that are not in the current build plan.
+
+Options:
+  --root DIR       Read agentbundle.json from DIR instead of searching the
+                   current directory and its parents.
+  --target TARGET  Build one declared target. Repeat for multiple targets.
+  --package ID     Build one imported package. Repeat for multiple packages.
+  --json           Write one machine-readable result object to stdout.
+  -h, --help       Show this help.
+
+Targets:
+  claude, codex, pi, copilot, grok, cursor
+
+Examples:
+  agentbundler build
+  agentbundler build --root ./plugin --target pi
+  agentbundler build --target codex --package team-skills --json
+`
+}
+
+func checkHelp() string {
+	return `Usage:
+  agentbundler check [options]
+
+Compare the selected build plan with the configured output directory. check does
+not write files and exits 2 when output is missing, changed, extra, non-regular,
+or symlinked.
+
+Options:
+  --root DIR       Read agentbundle.json from DIR instead of searching the
+                   current directory and its parents.
+  --target TARGET  Check one declared target. Repeat for multiple targets.
+  --package ID     Check one imported package. Repeat for multiple packages.
+  --native         Run declared native checks after output comparison.
+  --json           Write one machine-readable result object to stdout.
+  -h, --help       Show this help.
+
+Targets:
+  claude, codex, pi, copilot, grok, cursor
+
+Exit statuses:
+  0  Output is current.
+  1  Source, validation, capability, render, or write failure.
+  2  Output drift.
+  3  Native verification failure.
+
+Examples:
+  agentbundler check
+  agentbundler check --root ./plugin --target pi
+  agentbundler check --target codex --package team-skills --native --json
+`
 }
