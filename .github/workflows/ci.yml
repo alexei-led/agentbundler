@@ -36,8 +36,9 @@ jobs:
       - name: Install architecture tools
         # zizmor: ignore[adhoc-packages] pinned CI-only analyzers are not app dependencies
         run: |
-          go install "github.com/alexei-led/archfit/cmd/archfit@${ARCHFIT_VERSION}"
-          go install "github.com/sourcegraph/scip-go/cmd/scip-go@${SCIP_GO_VERSION}"
+          go install -ldflags "-X main.version=${ARCHFIT_VERSION}" \
+            "github.com/alexei-led/archfit/cmd/archfit@${ARCHFIT_VERSION}"
+          go install "github.com/scip-code/scip-go/cmd/scip-go@${SCIP_GO_VERSION}"
           npm install --global \
             "@ast-grep/cli@${AST_GREP_VERSION}" \
             "jscpd@${JSCPD_VERSION}"
