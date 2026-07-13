@@ -5,6 +5,9 @@
 .codegraph/
 .archfit-cache/
 
+# Local release communication drafts
+docs/posts/
+
 # Go build and test artifacts
 bin/
 *.test
