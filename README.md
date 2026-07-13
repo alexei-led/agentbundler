@@ -31,12 +31,23 @@ The current lossless target subset supports skills and one source package per
 target. Agents, hooks, native resources, and multi-package aggregation are
 rejected by the target renderers.
 
-## Start
+## Install
+
+```sh
+brew install alexei-led/tap/agentbundler
+```
+
+### Go alternative
 
 Requires Go 1.26.
 
 ```sh
 go install github.com/alexei-led/agentbundler/cmd/agentbundler@latest
+```
+
+## Start
+
+```sh
 agentbundler build --root /path/to/project
 agentbundler check --root /path/to/project
 ```
