@@ -317,9 +317,10 @@ func findHeading(lines []string, path []string) (int, int, error) {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			marker := trimmed[:3]
-			if fence == "" {
+			switch fence {
+			case "":
 				fence = marker
-			} else if fence == marker {
+			case marker:
 				fence = ""
 			}
 			continue

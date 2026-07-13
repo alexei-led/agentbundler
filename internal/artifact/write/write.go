@@ -61,7 +61,7 @@ func ReplaceOutput(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
 	if err != nil {
 		return writeFailure("create staging tree", err)
 	}
-	defer os.RemoveAll(staging)
+	defer func() { _ = os.RemoveAll(staging) }()
 
 	if err := stageFiles(staging, files); err != nil {
 		return writeFailure("stage output", err)
@@ -163,11 +163,11 @@ func writeFile(path string, bytes []byte, executable bool) error {
 		return err
 	}
 	if _, err := file.Write(bytes); err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -338,11 +338,11 @@ func persistJournal(path string, journal replacementJournal) error {
 	}
 	encoder := json.NewEncoder(file)
 	if err := encoder.Encode(journal); err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if err := file.Sync(); err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 	if err := file.Close(); err != nil {

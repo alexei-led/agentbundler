@@ -1,7 +1,16 @@
+# Agent state
 .pi/
 .pi-subagents/
 
 # Go build and test artifacts
 bin/
-coverage.out
 *.test
+coverage.out
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Operating-system metadata
+.DS_Store

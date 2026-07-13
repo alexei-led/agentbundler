@@ -50,7 +50,7 @@ func TestRenderRejectsUnsupportedSubsetAndAggregation(t *testing.T) {
 		name     string
 		packages []model.NormalizedPackage
 	}{
-		{name: "multiple packages", packages: []model.NormalizedPackage{base, model.NormalizedPackage{Identity: "other", Target: model.TargetPi}}},
+		{name: "multiple packages", packages: []model.NormalizedPackage{base, {Identity: "other", Target: model.TargetPi}}},
 		{name: "agent", packages: []model.NormalizedPackage{agent}},
 		{name: "capability", packages: []model.NormalizedPackage{capability}},
 	} {

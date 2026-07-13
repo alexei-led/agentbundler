@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+gofmt_failed=false
+while IFS= read -r -d '' file; do
+	formatted="$(git show ":$file" | gofmt -d)"
+	if [[ -n "$formatted" ]]; then
+		printf 'gofmt required for staged file: %s\n%s\n' "$file" "$formatted" >&2
+		gofmt_failed=true
+	fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '*.go')
+
+if [[ "$gofmt_failed" == true ]]; then
+	printf 'Run gofmt on the listed files, then stage them again.\n' >&2
+	exit 1
+fi
+
+workflow_failed=false
+while IFS= read -r -d '' file; do
+	staged_file="$(mktemp)"
+	trap 'rm -f -- "$staged_file"' EXIT
+	git show ":$file" >"$staged_file"
+	if ! actionlint -no-color "$staged_file"; then
+		workflow_failed=true
+	fi
+	rm -f -- "$staged_file"
+	trap - EXIT
+done < <(git diff --cached --name-only --diff-filter=ACMR -z -- '.github/workflows/*.yml' '.github/workflows/*.yaml')
+
+if [[ "$workflow_failed" == true ]]; then
+	printf 'Fix the staged workflow errors, then stage them again.\n' >&2
+	exit 1
+fi
+
+gitleaks git --pre-commit --staged --redact --verbose

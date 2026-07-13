@@ -310,7 +310,9 @@ func validSHA256(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if !(character >= '0' && character <= '9' || character >= 'a' && character <= 'f') {
+		digit := character >= '0' && character <= '9'
+		lowerHex := character >= 'a' && character <= 'f'
+		if !digit && !lowerHex {
 			return false
 		}
 	}

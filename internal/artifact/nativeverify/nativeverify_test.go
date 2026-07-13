@@ -234,26 +234,26 @@ func TestNativeVerifyHelperProcess(t *testing.T) {
 		if err != nil {
 			os.Exit(2)
 		}
-		fmt.Fprint(os.Stdout, strings.Repeat("s", size))
-		fmt.Fprint(os.Stderr, strings.Repeat("e", size))
+		_, _ = fmt.Fprint(os.Stdout, strings.Repeat("s", size))
+		_, _ = fmt.Fprint(os.Stderr, strings.Repeat("e", size))
 		os.Exit(7)
 	case "large-success":
 		size, err := strconv.Atoi(arguments[1])
 		if err != nil {
 			os.Exit(2)
 		}
-		fmt.Fprint(os.Stdout, strings.Repeat("s", size))
+		_, _ = fmt.Fprint(os.Stdout, strings.Repeat("s", size))
 	case "failure":
-		fmt.Fprint(os.Stdout, "stdout-evidence")
-		fmt.Fprint(os.Stderr, "stderr-evidence")
+		_, _ = fmt.Fprint(os.Stdout, "stdout-evidence")
+		_, _ = fmt.Fprint(os.Stderr, "stderr-evidence")
 		os.Exit(7)
 	case "invalid-utf8":
 		_, _ = os.Stdout.Write([]byte("stdout\n\xff"))
 		_, _ = os.Stderr.Write([]byte("stderr\n\xfe"))
 		os.Exit(7)
 	case "signal":
-		fmt.Fprint(os.Stdout, "stdout-evidence")
-		fmt.Fprint(os.Stderr, "stderr-evidence")
+		_, _ = fmt.Fprint(os.Stdout, "stdout-evidence")
+		_, _ = fmt.Fprint(os.Stderr, "stderr-evidence")
 		process, err := os.FindProcess(os.Getpid())
 		if err != nil || process.Signal(os.Kill) != nil {
 			os.Exit(2)

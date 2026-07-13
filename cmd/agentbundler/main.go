@@ -50,17 +50,17 @@ func main() {
 
 func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Writer, compile compileFunc) int {
 	if len(args) == 1 && args[0] == "--help" {
-		fmt.Fprint(stdout, usage())
+		_, _ = fmt.Fprint(stdout, usage())
 		return 0
 	}
 	parsed, err := parseArgs(args)
 	if err != nil {
-		fmt.Fprintf(stderr, "USAGE: %s\n", err)
+		_, _ = fmt.Fprintf(stderr, "USAGE: %s\n", err)
 		return 1
 	}
 	manifestPath, manifestDirectory, err := locateManifest(parsed.root, workingDirectory)
 	if err != nil {
-		fmt.Fprintf(stderr, "MANIFEST_NOT_FOUND: %s\n", err)
+		_, _ = fmt.Fprintf(stderr, "MANIFEST_NOT_FOUND: %s\n", err)
 		return 1
 	}
 	data, err := os.ReadFile(manifestPath)
@@ -188,18 +188,18 @@ func renderResult(parsed options, stdout, stderr io.Writer, result compiler.Comp
 			output.Diagnostics[i] = jsonDiagnostic{Code: diagnostic.Code, Severity: diagnostic.Severity, Location: diagnostic.Location, Message: diagnostic.Message}
 		}
 		if err := json.NewEncoder(stdout).Encode(output); err != nil {
-			fmt.Fprintf(stderr, "OUTPUT_WRITE_FAILED: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "OUTPUT_WRITE_FAILED: %v\n", err)
 			return 1
 		}
 	} else {
 		for _, diagnostic := range result.Diagnostics {
-			fmt.Fprintln(stderr, formatDiagnostic(diagnostic))
+			_, _ = fmt.Fprintln(stderr, formatDiagnostic(diagnostic))
 		}
 		if !hasError(result.Diagnostics) && !result.Drift && !result.NativeVerificationFailed {
 			if parsed.command == "build" {
-				fmt.Fprintln(stdout, "build: ok")
+				_, _ = fmt.Fprintln(stdout, "build: ok")
 			} else {
-				fmt.Fprintln(stdout, "check: current")
+				_, _ = fmt.Fprintln(stdout, "check: current")
 			}
 		}
 	}

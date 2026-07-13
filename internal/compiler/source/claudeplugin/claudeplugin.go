@@ -254,7 +254,7 @@ func (i *claudeInspector) skills(root string, assets map[model.AssetID]model.Sou
 		}
 		assets[asset.Identity] = asset
 		dir := filepath.Dir(skillFile)
-		filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
 			if err == nil && !entry.IsDir() {
 				recognized[path] = struct{}{}
 			}
@@ -330,7 +330,7 @@ func (i *claudeInspector) hooks(hooks map[string][]hookSpec, assets map[model.As
 
 func (i *claudeInspector) nativeGaps(root string, recognized map[string]struct{}) {
 	claude := model.TargetClaude
-	filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			i.error(i.relativePath(path), "walk source: "+err.Error())
 			return nil

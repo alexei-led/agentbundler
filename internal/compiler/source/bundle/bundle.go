@@ -672,7 +672,7 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 
 func parseMarkdown(data []byte) (map[string]any, string, error) {
 	if !utf8.Valid(data) {
-		return nil, "", fmt.Errorf("Markdown must be valid UTF-8")
+		return nil, "", fmt.Errorf("markdown must be valid UTF-8")
 	}
 	frontmatter := map[string]any{}
 	lines := strings.SplitAfter(string(data), "\n")
