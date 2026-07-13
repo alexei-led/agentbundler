@@ -1,0 +1,135 @@
+# Targets and CLI reference
+
+Agentbundler writes a complete target subtree under `output/<target>/`. The
+paths below are target-relative.
+
+## Target layouts
+
+- **Claude Code:** `.claude/skills/<name>/`. No plugin manifest is generated.
+- **Codex:** `.codex-plugin/plugin.json` and `skills/<name>/`. The manifest
+  includes package name, `./skills`, and supported string metadata.
+- **Pi:** `.pi/skills/<name>/`. TypeScript extensions, themes, and Pi package
+  manifests are not generated.
+- **GitHub Copilot:** `.github/skills/<name>/`. Custom agents are outside the
+  current renderer.
+- **Grok Build:** `.grok/skills/<name>/`. Grok plugins and marketplaces are not
+  generated.
+- **Cursor:** `.cursor-plugin/plugin.json` and `skills/<name>/`. The manifest
+  includes `./skills/` and supported string metadata.
+
+Every skill output contains `SKILL.md` plus composed regular support files. When
+frontmatter exists, the renderer writes it as compact JSON between `---` lines.
+
+The target directory is a layout contract, not proof of vendor feature parity.
+Copy or package the matching target subtree according to the target's current
+runtime documentation.
+
+## Vendor documentation
+
+- [Claude Code plugins](https://code.claude.com/docs/en/plugins) and
+  [skills](https://code.claude.com/docs/en/skills)
+- [Codex skills](https://developers.openai.com/codex/skills)
+- [Pi skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md),
+  [packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md),
+  and [extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md)
+- [GitHub Copilot agent skills](https://docs.github.com/copilot/concepts/agents/about-agent-skills)
+- [Grok Build skills, plugins, and marketplaces](https://docs.x.ai/build/features/skills-plugins-marketplaces)
+- [Cursor rules](https://docs.cursor.com/en/context/rules) and
+  [Agent Skills release notes](https://cursor.com/changelog/2-4)
+- [Agent Skills specification](https://agentskills.io/specification)
+
+These runtimes change independently of Agentbundler. Check their docs before
+adding vendor-specific frontmatter or packaging assumptions.
+
+## Help
+
+Ask the CLI for the command or option details before scripting against it:
+
+```sh
+agentbundler help
+agentbundler help build
+agentbundler help check
+```
+
+`-h` and `--help` also work at the top level and after `build` or `check`.
+Help exits `0` and does not require a manifest.
+
+## Commands
+
+```text
+agentbundler build [--root DIR] [--target TARGET]... [--package PACKAGE]... [--json]
+agentbundler check [--root DIR] [--target TARGET]...
+  [--package PACKAGE]... [--native] [--json]
+```
+
+Examples:
+
+```sh
+agentbundler build
+agentbundler check
+# WARNING: build replaces the complete output directory, even for one target.
+# Keep output in a dedicated generated directory.
+agentbundler build --target pi
+agentbundler check --target codex --package team-skills
+agentbundler check --json
+```
+
+`--root` points to the directory containing `agentbundle.json`. Without it,
+Agentbundler searches the current directory and its parents. `--target` and
+`--package` may be repeated; selectors must be declared and unique. Current
+renderers require exactly one selected package per target plan. Use one package
+selector when building a target; multiple distinct packages are not aggregated.
+
+## Output ownership
+
+`build` stages and replaces the complete configured output directory. `check`
+compares the expected plan without writing. Neither command uses the network.
+
+`generated/.agentbundler/build.json` records the configuration digest, input and
+output hashes, acknowledgments, and output file details. It is compiler metadata,
+not an input file.
+
+## Machine-readable results
+
+With a valid manifest, `--json` writes one result object to stdout. Diagnostics
+are normally written to stderr. The result contains:
+
+- `version`
+- `command`
+- `diagnostics`
+- `drift`
+- `nativeVerificationFailed`
+
+Manifest-discovery failures occur before the result object is created and are
+reported as ordinary diagnostics.
+
+## Exit statuses
+
+- `0`: success; `check` found current output.
+- `1`: source, validation, capability, render, or write failure.
+- `2`: output drift: missing, changed, extra, non-regular, or symlinked entries.
+- `3`: native verification failure.
+
+`--native` is valid only with `check`. Built-in target adapters currently
+declare no native checks, so it adds no checks today.
+
+## Current limitations
+
+Current target renderers intentionally support:
+
+- one package per target plan;
+- `skill` assets;
+- regular support files;
+- JSON-object frontmatter and Markdown bodies;
+- target overlays for frontmatter, heading blocks, files, and deletions.
+
+They do not currently render:
+
+- agent assets;
+- hook assets;
+- scripts as a separate portable asset type;
+- target-native resources;
+- arbitrary custom capability uses;
+- multi-package aggregation;
+- full vendor plugin or extension manifests beyond the generated Codex and
+  Cursor skill manifests.
