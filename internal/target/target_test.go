@@ -51,7 +51,7 @@ func TestCapabilitiesReturnsIndependentRules(t *testing.T) {
 		t.Fatalf("Resolve() diagnostics = %#v", diagnostics)
 	}
 	capabilities := Capabilities(adapter)
-	capabilities[0].State = model.CapabilityStateUnsupported
+	capabilities[0].State = model.CapabilityStateNative
 	if reflect.DeepEqual(capabilities, Capabilities(adapter)) {
 		t.Fatal("Capabilities() returned mutable adapter state")
 	}

@@ -61,7 +61,7 @@ TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [C
 BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
@@ -81,7 +81,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `cursor`. It uses the parent deterministic renderer baseline at `formatRevision: 1` until verified Cursor CLI topology facts are recorded. Capability rules are `asset.skill=native`, `asset.agent=native`, `asset.hook=unsupported`, and `asset.native-resource=unsupported`; it does not invent `.cursor/` paths or Marketplace behavior.
+The adapter's `target` is `cursor` at `formatRevision: 2`. It renders one native plugin with `.cursor-plugin/plugin.json` and `skills/<skill>/SKILL.md` plus support files. Capability rules are `asset.skill=native`; agents, hooks, and native resources are unsupported until their source schemas are modeled. The manifest follows Cursor's plugin schema and uses package identity as `name`.
 
 ## Integrations
 

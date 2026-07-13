@@ -90,7 +90,7 @@ A command creates a compile request and invokes the compiler. The compiler impor
 - Generated output contains no Agentbundler runtime dependency.
 - `check` never writes.
 - Native target package roots contain only target-native files; compiler provenance is outside them.
-- `internal/target` has six direct adapter submodules, one above the 4±1 cognitive guideline. This is a deliberate minor trade-off: each vendor is an independently volatile peer, and adding a grouping module would add distance without a cohesive responsibility. Revisit when a real shared adapter family emerges.
+- `internal/target` has six vendor leaves plus two cohesive shared rendering leaves. The two shared leaves (`skills` and `plugin`) reduce duplicate native-layout logic; vendor behavior remains isolated in each adapter. Revisit the hierarchy when a third reusable renderer family emerges.
 - No production implementation code is authorized until this design and a subsequent implementation plan are approved.
 
 ## Test Specification

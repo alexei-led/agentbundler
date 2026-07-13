@@ -61,7 +61,7 @@ TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [C
 BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
@@ -81,7 +81,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `pi`. It uses the parent deterministic renderer baseline at `formatRevision: 1` until verified Pi metadata and resource-path facts are recorded. Capability rules are `asset.skill=native`, `asset.agent=unsupported`, `asset.hook=unsupported`, and `asset.native-resource=native`. It preserves opaque native resources and never synthesizes agent or hook runtime.
+The adapter's `target` is `pi` at `formatRevision: 2`. It renders exactly one package of `asset.skill` content to `.pi/skills/<skill>/SKILL.md` plus support files. Agents, hooks, and native resources are unsupported until their Pi representations are modeled.
 
 ## Integrations
 

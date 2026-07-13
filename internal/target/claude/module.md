@@ -61,7 +61,7 @@ TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [C
 BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
@@ -81,7 +81,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `claude`. Its target plan uses the parent deterministic renderer baseline at `formatRevision: 1` until verified Claude-native layout facts are recorded. Capability rules are `asset.skill=native`, `asset.agent=native`, `asset.hook=native`, and `asset.native-resource=native`. The baseline `package-index.json` is a metadata placeholder, not a Claude manifest or marketplace claim. It does not edit an adopted canonical Claude source tree.
+The adapter's `target` is `claude` at `formatRevision: 2`. It renders exactly one package of `asset.skill` content to `.claude/skills/<skill>/SKILL.md` plus support files. `asset.agent`, `asset.hook`, and `asset.native-resource` are unsupported. There is no `package-index.json`, manifest, or marketplace claim.
 
 ## Integrations
 

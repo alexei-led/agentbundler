@@ -2,7 +2,7 @@
 
 **Path**: `internal/target/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: repository root
-**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`
+**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`
 
 ## Purpose
 
@@ -62,7 +62,7 @@ TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [C
 BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
@@ -85,23 +85,13 @@ render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 
 `resolve` returns one built-in adapter or a diagnostic. `render` is pure and returns all generated native files, plus optional native checks. An adapter may return a diagnostic for a capability the composition layer should already have rejected; this is a defensive consistency check, not an alternate loss policy.
 
-## Deterministic Renderer Baseline
+## Native Renderer Contract
 
-Until a verified target-primary layout is documented, every built-in adapter uses this target-neutral interchange baseline at `formatRevision: 1`. It is not a claim of vendor-runtime acceptance. Each adapter declares one capability rule for each key: `asset.skill`, `asset.agent`, `asset.hook`, and `asset.native-resource`.
+Every built-in adapter emits a vendor-native, lossless supported subset at `formatRevision: 2`; no target-neutral interchange files exist in that subset. Each adapter accepts exactly one normalized package because native cross-package aggregation has not yet been specified.
 
-For each accepted package, the renderer emits:
+The common skill renderer copies frontmatter, Markdown body, and support files deterministically. Initial roots are `.claude/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md`, `.pi/skills/<name>/SKILL.md`, and `.grok/skills/<name>/SKILL.md`. Codex emits `.codex-plugin/plugin.json` plus `skills/<name>/SKILL.md`; Cursor emits `.cursor-plugin/plugin.json` plus `skills/<name>/SKILL.md`. Plugin identities must meet native plugin-name syntax. JSON frontmatter is a valid YAML flow document and is emitted deterministically.
 
-```text
-packages/<package-segment>/package.json
-packages/<package-segment>/assets/<asset-kind>/<asset-segment>/asset.json
-packages/<package-segment>/assets/<asset-kind>/<asset-segment>/content.md
-packages/<package-segment>/assets/<asset-kind>/<asset-segment>/files/<source-relative-path>
-package-index.json
-```
-
-`package.json` is canonical JSON `{ "identity": PackageID, "metadata": PackageMetadata, "target": TargetID }`. `asset.json` is canonical JSON `{ "capabilityUses": [CapabilityUse], "frontmatter": Map<String, JsonValue>, "identity": AssetID, "kind": AssetKind }`. `content.md` is the exact UTF-8 body; support files are copied byte-for-byte. `package-index.json` is `{ "format": "agentbundler-target-bundle", "formatRevision": 1, "packages": [PackageID], "target": TargetID }`. JSON has UTF-8, sorted object keys, no insignificant whitespace, and one trailing newline.
-
-Package and asset segments percent-encode UTF-8 bytes as uppercase `%HH`, leaving only ASCII letters, digits, `-`, `_`, and `.` literal. Sort packages by identity, assets by identity, capability uses by key then source location, files by path, and target-plan files by path. All baseline files are non-executable and native checks are empty. A target mismatch, non-native/equivalent capability, invalid identity, or duplicate output path returns diagnostics and no plan files.
+Only `asset.skill` and its own `asset.skill` capability use are supported in this slice. Agents, hooks, native resources, undeclared capability uses, invalid native names, output collisions, and multi-package input return diagnostics with no partial plan. Native checks remain empty until an official offline validator is part of the contract.
 
 ## Integrations
 
