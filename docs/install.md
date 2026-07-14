@@ -39,11 +39,13 @@ go build -o ./bin/agbun ./cmd/agbun
 ## Verify the CLI
 
 ```sh
+agbun --version
 agbun --help
+agbun help targets
 ```
 
-The command supports `build` and `check`. See the [CLI reference](targets-and-cli.md)
-for all selectors and exit statuses.
+The command supports `build` and `check`. See the
+[CLI reference](targets-and-cli.md) for all selectors and exit statuses.
 
-**Agent Bundler** is a local compiler. It does not need network access to build or
-check a bundle.
+**Agent Bundler** is a local compiler. It does not need network access to
+build or check a bundle.

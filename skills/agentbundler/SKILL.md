@@ -13,13 +13,18 @@ Treat the configured output directory as compiler-owned build output.
 
 ## Start with help
 
-If command syntax or an option is uncertain, run:
+Explore the installed CLI before guessing syntax:
 
 ```sh
-agbun help
+agbun --version
+agbun --help
 agbun help build
 agbun help check
+agbun help targets
 ```
+
+Help and version commands do not require `agentbundle.json`. Use the version in
+`generated/.agentbundler/build.json` to confirm which compiler produced output.
 
 The CLI has two build commands:
 

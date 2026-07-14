@@ -73,12 +73,18 @@ go install github.com/alexei-led/agentbundler/cmd/agbun@latest
 
 ## Start with an existing bundle
 
-From a directory containing `agentbundle.json`:
+Discover the installed CLI, then build from a directory containing
+`agentbundle.json`:
 
 ```sh
-agbun build
+agbun --version
+agbun --help
 agbun check
+agbun build
 ```
+
+Use `agbun help build`, `agbun help check`, and `agbun help targets` for the
+full command, safety, and target-ID reference.
 
 `build` replaces the configured output directory. Use a dedicated generated
 directory, not a working project root. For a complete first bundle, see the

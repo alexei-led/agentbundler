@@ -86,16 +86,20 @@ adding vendor-specific frontmatter or packaging assumptions.
 
 ## Help
 
-Ask the CLI for the command or option details before scripting against it:
+Ask the CLI before scripting against it. Help and version commands do not require
+a manifest:
 
 ```sh
-agbun help
+agbun --version
+agbun --help
 agbun help build
 agbun help check
+agbun help targets
 ```
 
 `-h` and `--help` also work at the top level and after `build` or `check`.
-Help exits `0` and does not require a manifest.
+`agbun version` is an alias for `agbun --version`. Help exits `0`; invalid command
+or help-topic errors point back to `agbun help`.
 
 ## Commands
 
@@ -129,8 +133,10 @@ selector when building a target; multiple distinct packages are not aggregated.
 compares the expected plan without writing. Neither command uses the network.
 
 `generated/.agentbundler/build.json` records the configuration digest, input and
-output hashes, acknowledgments, and output file details. It is compiler metadata,
-not an input file.
+output hashes, acknowledgments, compiler version, and output file details. It is
+compiler metadata, not an input file. Released `agbun` binaries record their release
+tag; development builds record the module version when available, otherwise
+`agbun-dev`.
 
 ## Machine-readable results
 

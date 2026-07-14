@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alexei-led/agentbundler/internal/buildinfo"
 	"github.com/alexei-led/agentbundler/internal/compiler"
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
@@ -51,16 +52,14 @@ func main() {
 func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Writer, compile compileFunc) int {
 	if help, ok, err := helpText(args); ok {
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "USAGE: %s\n", err)
-			return 1
+			return renderUsageError(stderr, err)
 		}
 		_, _ = fmt.Fprint(stdout, help)
 		return 0
 	}
 	parsed, err := parseArgs(args)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "USAGE: %s\n", err)
-		return 1
+		return renderUsageError(stderr, err)
 	}
 	manifestPath, manifestDirectory, err := locateManifest(parsed.root, workingDirectory)
 	if err != nil {
@@ -88,7 +87,7 @@ func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Wri
 
 func parseArgs(args []string) (options, error) {
 	if len(args) == 0 || (args[0] != "build" && args[0] != "check") {
-		return options{}, errors.New("expected build or check")
+		return options{}, errors.New("expected a command: build or check")
 	}
 	result := options{command: args[0]}
 	seenRoot := false
@@ -234,6 +233,11 @@ func formatDiagnostic(diagnostic model.Diagnostic) string {
 	return fmt.Sprintf("%s%s[%s]: %s", location, diagnostic.Severity, diagnostic.Code, diagnostic.Message)
 }
 
+func renderUsageError(stderr io.Writer, err error) int {
+	_, _ = fmt.Fprintf(stderr, "USAGE: %s\nRun \"agbun help\" for usage.\n", err)
+	return 1
+}
+
 func hasError(diagnostics []model.Diagnostic) bool {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Severity == model.SeverityError {
@@ -251,6 +255,8 @@ func helpText(args []string) (string, bool, error) {
 		switch args[0] {
 		case "--help", "-h", "help":
 			return usage(), true, nil
+		case "--version", "version":
+			return versionText(), true, nil
 		}
 	}
 	if len(args) == 2 && args[0] == "help" {
@@ -261,6 +267,10 @@ func helpText(args []string) (string, bool, error) {
 			return buildHelp(), true, nil
 		case "check":
 			return checkHelp(), true, nil
+		case "targets":
+			return targetsHelp(), true, nil
+		case "version":
+			return versionHelp(), true, nil
 		default:
 			return "", true, fmt.Errorf("unknown help topic %q", args[1])
 		}
@@ -271,28 +281,62 @@ func helpText(args []string) (string, bool, error) {
 			return buildHelp(), true, nil
 		case "check":
 			return checkHelp(), true, nil
+		case "version":
+			return versionHelp(), true, nil
 		}
 	}
 	return "", false, nil
 }
 
 func usage() string {
-	return `agbun compiles one source bundle into target-specific coding-agent layouts.
+	return fmt.Sprintf(`Agent Bundler %s compiles one source bundle into target-specific coding-agent layouts.
 
 Usage:
   agbun <command> [options]
 
+Start here:
+  agbun check             Check whether generated output is current.
+  agbun build             Regenerate the configured output directory.
+  agbun help build        Explore build options and safety notes.
+
 Commands:
-  build    Compile and replace the configured output directory.
-  check    Compare the configured output directory with the current build plan.
-  help     Show help for a command: agbun help build|check.
+  build                   Compile and replace the configured output directory.
+  check                   Compare the build plan with output without writing.
+  help [topic]            Show help: build, check, targets, or version.
+  version                 Print the installed Agent Bundler version.
 
-Global help:
-  agbun --help
-  agbun help
-  agbun help <command>
+Global options:
+  -h, --help              Show this help.
+  --version               Print the installed version.
 
-Run "agbun help <command>" for command-specific options.
+Run "agbun help <topic>" to explore command-specific details.
+`, buildinfo.Version())
+}
+
+func versionText() string {
+	return fmt.Sprintf("agbun %s\n", buildinfo.Version())
+}
+
+func versionHelp() string {
+	return `Usage:
+  agbun version
+  agbun --version
+
+Print the Agent Bundler version. This command does not require agentbundle.json.
+`
+}
+
+func targetsHelp() string {
+	return `Target IDs:
+  claude   Claude Code
+  codex    Codex
+  pi       Pi
+  copilot  GitHub Copilot
+  grok     Grok Build
+  cursor   Cursor
+
+Use target IDs in agentbundle.json and with --target. A target must be declared
+by the manifest before build or check can select it.
 `
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,18 +13,52 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-func TestRunHelpListsCommandsAndOptions(t *testing.T) {
+func TestRunHelpListsCommandsAndDiscoveryTopics(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if status := run([]string{"help"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
 		t.Fatalf("help status=%d stderr=%q", status, stderr.String())
 	}
-	for _, want := range []string{"agbun <command>", "build", "check", "help", "agbun help <command>"} {
+	for _, want := range []string{
+		"Agent Bundler", "agbun <command>", "Start here:", "build", "check", "help [topic]",
+		"version", "--version", "agbun help <topic>",
+	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("help output missing %q: %q", want, stdout.String())
 		}
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("help stderr=%q", stderr.String())
+	}
+}
+
+func TestRunVersionDoesNotNeedManifest(t *testing.T) {
+	for _, args := range [][]string{{"version"}, {"--version"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if status := run(args, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
+				t.Fatalf("version status=%d stderr=%q", status, stderr.String())
+			}
+			if !strings.HasPrefix(stdout.String(), "agbun ") || !strings.HasSuffix(stdout.String(), "\n") {
+				t.Fatalf("version output=%q", stdout.String())
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("version stderr=%q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestRunHelpTopicsDoNotNeedManifest(t *testing.T) {
+	for _, topic := range []string{"build", "check", "targets", "version"} {
+		t.Run(topic, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if status := run([]string{"help", topic}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
+				t.Fatalf("help status=%d stderr=%q", status, stderr.String())
+			}
+			if stdout.Len() == 0 || stderr.Len() != 0 {
+				t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+		})
 	}
 }
 
@@ -49,9 +84,18 @@ func TestRunCommandHelpDoesNotNeedManifest(t *testing.T) {
 	}
 }
 
-func TestRunRejectsUnknownHelpTopic(t *testing.T) {
+func TestRunRejectsUnknownHelpTopicWithDiscoveryHint(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if status := run([]string{"help", "unknown"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 1 || stderr.String() != "USAGE: unknown help topic \"unknown\"\n" {
+	status := run([]string{"help", "unknown"}, t.TempDir(), &stdout, &stderr, compiler.Compile)
+	if status != 1 || !strings.Contains(stderr.String(), `unknown help topic "unknown"`) || !strings.Contains(stderr.String(), `Run "agbun help"`) {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunRejectsUnknownCommandWithDiscoveryHint(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	status := run([]string{"unknown"}, t.TempDir(), &stdout, &stderr, compiler.Compile)
+	if status != 1 || !strings.Contains(stderr.String(), "expected a command") || !strings.Contains(stderr.String(), `Run "agbun help"`) {
 		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 }
@@ -130,6 +174,26 @@ func writeCLIFile(t *testing.T, root, relative, contents string) {
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatalf("WriteFile(%q): %v", path, err)
+	}
+}
+
+func TestReleaseBuildPrintsInjectedVersion(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "agbun")
+	const version = "v9.8.7"
+	build := exec.Command(
+		"go", "build", "-o", binary,
+		"-ldflags", "-X github.com/alexei-led/agentbundler/internal/buildinfo.releaseVersion="+version,
+		".",
+	)
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("release build failed: %v\n%s", err, output)
+	}
+	output, err := exec.Command(binary, "--version").Output()
+	if err != nil {
+		t.Fatalf("release binary --version failed: %v", err)
+	}
+	if got, want := string(output), "agbun "+version+"\n"; got != want {
+		t.Fatalf("release binary version = %q, want %q", got, want)
 	}
 }
 
