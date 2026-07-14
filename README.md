@@ -1,4 +1,4 @@
-# Agentbundler
+# Agent Bundler
 
 [![CI](https://github.com/alexei-led/agentbundler/actions/workflows/ci.yml/badge.svg)](https://github.com/alexei-led/agentbundler/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alexei-led/agentbundler?sort=semver&display_name=tag)](https://github.com/alexei-led/agentbundler/releases)
@@ -23,7 +23,7 @@ may need a different version for an Anthropic model, and vice versa.
 Maintaining copied skills and plugin files for every target is tedious. Copies
 drift. Small target or model differences become manual release work.
 
-Agentbundler keeps one source of truth, then lets you customize the parts that
+**Agent Bundler** keeps one source of truth, then lets you customize the parts that
 actually need to differ: frontmatter, Markdown sections, support files, and
 short target-wide preambles. It renders the result into the directory layout
 expected by Claude Code, Codex, Pi, GitHub Copilot, Grok Build, and Cursor.
@@ -37,8 +37,8 @@ canonical source + manifest
           ├── Claude Code   .claude/skills/…
           ├── Codex         .codex-plugin/ + skills/…
           ├── Pi            .pi/skills/…
-          ├── Copilot      .github/skills/…
-          ├── Grok Build   .grok/skills/…
+          ├── Copilot       .github/{skills,resources}/…
+          ├── Grok Build    .grok/{skills,resources}/…
           └── Cursor       .cursor-plugin/ + skills/…
 ```
 
@@ -46,11 +46,12 @@ canonical source + manifest
 
 Today the target renderers produce one package of **skills**, portable package
 resources, and selected native agent forms. Package profiles emit installable
-Claude, Codex, Pi, and Cursor roots. Hooks, scripts, target-native resources,
+Claude, Codex, Pi, and Cursor roots; Copilot and Grok emit project skill/resource
+trees. Hooks, scripts, target-native resources,
 and multi-package aggregation are not rendered by the current adapters.
 Unsupported capabilities fail instead of being silently discarded.
 
-Agentbundler is a compiler, not an agent runtime, installer, marketplace, or
+**Agent Bundler** is a compiler, not an agent runtime, installer, marketplace, or
 publisher. It creates target-ready files; your project or release workflow
 decides where to install or publish them.
 
@@ -65,7 +66,7 @@ brew install alexei-led/tap/agentbundler
 Or install with Go 1.26+:
 
 ```sh
-go install github.com/alexei-led/agentbundler/cmd/agentbundler@latest
+go install github.com/alexei-led/agentbundler/cmd/agbun@latest
 ```
 
 ## Start with an existing bundle
@@ -73,8 +74,8 @@ go install github.com/alexei-led/agentbundler/cmd/agentbundler@latest
 From a directory containing `agentbundle.json`:
 
 ```sh
-agentbundler build
-agentbundler check
+agbun build
+agbun check
 ```
 
 `build` replaces the configured output directory. Use a dedicated generated
@@ -98,7 +99,7 @@ examples.
 ## Documentation
 
 - [Docs index](docs/README.md)
-- [User guide: how to think about Agentbundler](docs/guide.md)
+- [User guide: how to think about **Agent Bundler**](docs/guide.md)
 - [Install](docs/install.md)
 - [Quick start](docs/quickstart.md)
 - [Configuration and source formats](docs/configuration.md)
@@ -106,7 +107,7 @@ examples.
 - [Targets and CLI reference](docs/targets-and-cli.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Architecture](docs/architecture.md)
-- [Agentbundler Agent Skill](skills/agentbundler/SKILL.md)
+- [**Agent Bundler** Agent Skill](skills/agentbundler/SKILL.md)
 
 ## License
 

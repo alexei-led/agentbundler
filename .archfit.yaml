@@ -1,5 +1,5 @@
 version: 1
-# Agentbundler is one binary with one owner. Module distance therefore follows
+# Agent Bundler is one binary with one owner. Module distance therefore follows
 # code structure. Volatility describes the domain contract: target adapters
 # change with vendor formats; artifact writing is stable infrastructure.
 coupling:
@@ -95,9 +95,9 @@ modules:
   cmd_agentbundler:
     owner: alexei-led
     paths:
-      - cmd/agentbundler/**
+      - cmd/agbun/**
     public:
-      - cmd/agentbundler
+      - cmd/agbun
     role: composition_root
     layer: cmd
     subdomain: generic

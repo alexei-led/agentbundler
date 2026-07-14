@@ -139,7 +139,7 @@ func plannedFiles(plan model.BuildPlan) []stagedFile {
 
 func makeStaging(outputRoot string) (string, error) {
 	parent, base := filepath.Dir(outputRoot), filepath.Base(outputRoot)
-	return os.MkdirTemp(parent, "."+base+".agentbundler-write-staging-")
+	return os.MkdirTemp(parent, "."+base+".agbun-write-staging-")
 }
 
 func stageFiles(staging string, files []stagedFile) error {
@@ -321,13 +321,13 @@ func outputDirectoryExists(outputRoot string) (bool, error) {
 }
 
 func journalPath(outputRoot string) string {
-	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agentbundler-write-journal.json")
+	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agbun-write-journal.json")
 }
 
 func backupPath(outputRoot, staging string) string {
-	prefix := "." + filepath.Base(outputRoot) + ".agentbundler-write-staging-"
+	prefix := "." + filepath.Base(outputRoot) + ".agbun-write-staging-"
 	suffix := strings.TrimPrefix(filepath.Base(staging), prefix)
-	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agentbundler-write-backup-"+suffix)
+	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agbun-write-backup-"+suffix)
 }
 
 func persistJournal(path string, journal replacementJournal) error {
@@ -502,10 +502,10 @@ func validateJournal(outputRoot string, journal replacementJournal) error {
 		return errors.New("output journal belongs to a different output root")
 	}
 	parent, base := filepath.Dir(outputRoot), filepath.Base(outputRoot)
-	if filepath.Dir(journal.Staging) != parent || !strings.HasPrefix(filepath.Base(journal.Staging), "."+base+".agentbundler-write-staging-") {
+	if filepath.Dir(journal.Staging) != parent || !strings.HasPrefix(filepath.Base(journal.Staging), "."+base+".agbun-write-staging-") {
 		return errors.New("output journal has an invalid staging path")
 	}
-	if filepath.Dir(journal.Backup) != parent || !strings.HasPrefix(filepath.Base(journal.Backup), "."+base+".agentbundler-write-backup-") {
+	if filepath.Dir(journal.Backup) != parent || !strings.HasPrefix(filepath.Base(journal.Backup), "."+base+".agbun-write-backup-") {
 		return errors.New("output journal has an invalid backup path")
 	}
 	return nil

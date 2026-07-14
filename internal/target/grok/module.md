@@ -6,12 +6,11 @@
 
 ## Purpose
 
-This module renders Grok Build-native plugin output. Without it, Grok plugin layout and its supported skills, agents, hooks, MCP, and LSP resources would become implicit behavior in portable source.
+This module renders Grok Build project skills and their declared portable resources. Without it, Grok project-root conventions would become implicit behavior in portable source.
 
 ## Functional Responsibilities
 
-- Render Grok-native plugin trees and required metadata.
-- Map supported normalized skills, agents, hooks, and native resources.
+- Render Grok project skills and portable resources under `.grok/`.
 - Declare Grok Build capability rules and format revision.
 - Keep Claude compatibility a source fact, not a reason to reuse Claude output blindly.
 
@@ -21,9 +20,7 @@ This module renders Grok Build-native plugin output. Without it, Grok plugin lay
 
 ## Encapsulated Knowledge
 
-- Grok Build plugin layout and metadata requirements.
-- Grok-specific hook capability and matcher representation.
-- Native resource placement for MCP and LSP features.
+- Grok Build project skill and sibling resource paths.
 - Format revision and optional native validation behavior.
 
 ## Public Contract
@@ -81,7 +78,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `grok` at `formatRevision: 2`. It renders exactly one package of `asset.skill` content to `.grok/skills/<skill>/SKILL.md` plus support files. Agents, hooks, and native resources are unsupported; it makes no Claude-format claim.
+The adapter's `target` is `grok` at `formatRevision: 3`. It renders exactly one project-profile package of `asset.skill` content to `.grok/skills/<skill>/SKILL.md` plus support files and `asset.resource` trees to `.grok/resources/<resource>/`. Agents, hooks, and native resources are unsupported; it makes no Claude-format claim.
 
 ## Integrations
 
@@ -116,18 +113,18 @@ The adapter's `target` is `grok` at `formatRevision: 2`. It renders exactly one 
 
 ### Unit Tests
 
-- **Test name**: Grok manifest rendering is deterministic.
-  - **Scenario**: render equivalent metadata in varied map order.
-  - **Expected behavior**: native manifest bytes match.
-- **Test name**: hook capability is explicit.
-  - **Scenario**: render each known and unsupported portable hook trigger.
-  - **Expected behavior**: supported triggers map once; unsupported triggers diagnose.
+- **Test name**: Grok project tree is deterministic.
+  - **Scenario**: render skills, support files, and a portable resource.
+  - **Expected behavior**: native paths and bytes match.
+- **Test name**: unsupported capability is explicit.
+  - **Scenario**: render an agent or hook.
+  - **Expected behavior**: unsupported components diagnose.
 
 ### Integration Contract Tests
 
-- **Test name**: Grok native components agree with metadata.
-  - **Scenario**: render a package with supported skill, agent, hook, MCP, and LSP content.
-  - **Expected behavior**: every planned component has a coherent native reference.
+- **Test name**: skill/resource references remain valid.
+  - **Scenario**: a generated skill references a declared sibling resource.
+  - **Expected behavior**: both outputs share the `.grok` project root.
 
 ### Boundary Tests
 
@@ -137,6 +134,6 @@ The adapter's `target` is `grok` at `formatRevision: 2`. It renders exactly one 
 
 ### Behavior Tests
 
-- **Test name**: Grok native plugin golden tree.
+- **Test name**: Grok native project golden tree.
   - **Scenario**: render a supported fixture.
-  - **Expected behavior**: generated output follows Grok's native plugin contract and is deterministic.
+  - **Expected behavior**: generated output follows Grok's project skill contract and is deterministic.

@@ -1,6 +1,6 @@
 # Architecture
 
-Agentbundler is a small compiler with explicit boundaries:
+**Agent Bundler** is a small compiler with explicit boundaries:
 
 ```mermaid
 flowchart LR
@@ -33,7 +33,7 @@ flowchart LR
 
 ## Package ownership
 
-- `cmd/agentbundler`: CLI flags, manifest discovery, output channels, and
+- `cmd/agbun`: CLI flags, manifest discovery, output channels, and
   exit statuses.
 - `internal/compiler/model`: manifest, source inventory, overlay, composition,
   and validation types.

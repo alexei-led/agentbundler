@@ -44,7 +44,7 @@ Use `EXPLAIN` before making performance claims.
 
 Frontmatter is a YAML object between the first two `---` lines. Values must be
 JSON-compatible. This is
-Agentbundler's portable input format, not a claim that every agent recognizes
+**Agent Bundler**'s portable input format, not a claim that every agent recognizes
 every possible key.
 
 ## 2. Add a manifest
@@ -77,7 +77,7 @@ root must contain at least one `SKILL.md` somewhere below it.
 Run from `team-skills/`:
 
 ```sh
-agentbundler build
+agbun build
 ```
 
 Expected result:
@@ -106,7 +106,7 @@ Each skill directory contains `SKILL.md` and `references.md`.
 ## 4. Check the output
 
 ```sh
-agentbundler check
+agbun check
 ```
 
 Expected result:

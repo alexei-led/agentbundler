@@ -13,12 +13,14 @@ brew update
 brew upgrade agentbundler
 ```
 
+The formula name follows the repository identifier.
+
 ## Go
 
 Go 1.26 or newer:
 
 ```sh
-go install github.com/alexei-led/agentbundler/cmd/agentbundler@latest
+go install github.com/alexei-led/agentbundler/cmd/agbun@latest
 ```
 
 The installed binary is placed in Go's configured `GOBIN` (or `GOPATH/bin`).
@@ -29,18 +31,18 @@ Make sure that directory is on `PATH`.
 ```sh
 git clone https://github.com/alexei-led/agentbundler.git
 cd agentbundler
-go build -o ./bin/agentbundler ./cmd/agentbundler
-./bin/agentbundler --help
+go build -o ./bin/agbun ./cmd/agbun
+./bin/agbun --help
 ```
 
 ## Verify the CLI
 
 ```sh
-agentbundler --help
+agbun --help
 ```
 
 The command supports `build` and `check`. See the [CLI reference](targets-and-cli.md)
 for all selectors and exit statuses.
 
-Agentbundler is a local compiler. It does not need network access to build or
+**Agent Bundler** is a local compiler. It does not need network access to build or
 check a bundle.

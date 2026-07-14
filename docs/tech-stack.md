@@ -1,6 +1,6 @@
 # Tech Stack
 
-This file is the normative implementation stack for every module in the Agentbundler design tree.
+This file is the normative implementation stack for every module in the **Agent Bundler** design tree.
 
 ## Language and Runtime
 

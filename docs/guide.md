@@ -1,6 +1,6 @@
 # User guide
 
-Agentbundler exists for a boring reason: copying the same coding-agent skill
+**Agent Bundler** exists for a boring reason: copying the same coding-agent skill
 into six vendor-specific trees is easy to start and painful to maintain.
 
 `SKILL.md` gives us a useful shared format for instructions, but it does not
@@ -9,7 +9,7 @@ plugin manifests, extension directories, support files, and how to describe
 hooks, scripts, or agents. Model behavior differs too. A prompt tuned for one
 model family can be weak or noisy for another.
 
-Agentbundler treats the portable source as the canonical version and the agent
+**Agent Bundler** treats the portable source as the canonical version and the agent
 layouts as build artifacts:
 
 ```text
@@ -37,7 +37,7 @@ source + agentbundle.json
 The output is compiler-owned. Keep it in a dedicated directory. Do not edit it
 by hand or point `output` at a project root containing unrelated agent files.
 
-## What Agentbundler does today
+## What Agent Bundler does today
 
 The current adapters render one package containing skills, portable package
 resources, and supported native agent forms into target-native project or

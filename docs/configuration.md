@@ -1,6 +1,6 @@
 # Configuration and source formats
 
-Agentbundler reads one strict JSON file named `agentbundle.json`. Unknown
+**Agent Bundler** reads one strict JSON file named `agentbundle.json`. Unknown
 fields, duplicate keys, unsafe paths, and invalid target names fail validation.
 
 ## Manifest shape
@@ -101,7 +101,7 @@ Package file:
   "metadata": {},
   "assets": [
     "src/skills/explain-query",
-    { "path": "src/agents/reviewer.md", "targets": ["claude", "codex"] },
+    { "path": "src/agents/reviewer.md", "targets": ["claude", "codex", "pi"] },
     { "path": "src/resources/templates", "targets": ["claude", "codex", "pi"] }
   ]
 }
@@ -145,8 +145,8 @@ A manifest may describe more than one bundle package. Current renderers render
 one package per target plan. Select a package explicitly when needed:
 
 ```sh
-agentbundler build --package team-skills
-agentbundler check --target codex --package team-skills
+agbun build --package team-skills
+agbun check --target codex --package team-skills
 ```
 
 Selectors must name manifest-declared targets or imported package IDs. Repeated

@@ -1,11 +1,11 @@
 ---
 name: agentbundler
-description: Build and verify coding-agent skill bundles with Agentbundler. Use when configuring agentbundle.json, creating or updating skills-repository, bundle, or Claude-plugin sources, selecting targets or packages, applying target overlays, generating output, checking drift, or diagnosing Agentbundler CLI failures.
+description: Build and verify coding-agent skill bundles with **Agent Bundler**. Use when configuring agentbundle.json, creating or updating skills-repository, bundle, or Claude-plugin sources, selecting targets or packages, applying target overlays, generating output, checking drift, or diagnosing **Agent Bundler** CLI failures.
 license: MIT
-compatibility: Requires the agentbundler CLI on PATH. Commands are local and do not need network access. Use a dedicated generated output directory.
+compatibility: Requires the `agbun` CLI on PATH. Commands are local and do not need network access. Use a dedicated generated output directory.
 ---
 
-# Agentbundler
+# Agent Bundler
 
 Use this skill to operate the `agentbundler` CLI and maintain its source bundle.
 Treat `agentbundle.json` and the configured source root as the source of truth.
@@ -16,9 +16,9 @@ Treat the configured output directory as compiler-owned build output.
 If command syntax or an option is uncertain, run:
 
 ```sh
-agentbundler help
-agentbundler help build
-agentbundler help check
+agbun help
+agbun help build
+agbun help check
 ```
 
 The CLI has two build commands:
@@ -94,7 +94,7 @@ source/
         └── references.md
 ```
 
-Agentbundler accepts YAML frontmatter between the first two `---` lines. Values
+**Agent Bundler** accepts YAML frontmatter between the first two `---` lines. Values
 must be JSON-compatible; `agentbundle.json` remains strict JSON:
 
 ```md
@@ -108,7 +108,7 @@ Explain the query, then identify correctness and performance risks.
 ```
 
 The renderer writes present frontmatter as compact JSON. Do not assume a
-vendor-specific frontmatter key is supported just because Agentbundler accepts
+vendor-specific frontmatter key is supported just because **Agent Bundler** accepts
 it; verify it in the target agent's documentation.
 
 ## Apply target-specific changes
@@ -168,28 +168,28 @@ list every required rule when declaring `capabilities`.
 Build all targets declared by the manifest:
 
 ```sh
-agentbundler build
+agbun build
 ```
 
 Build selected output. Remember that `build` still replaces the complete output
 directory, including output for targets not selected:
 
 ```sh
-agentbundler build --root ./plugin --target pi
+agbun build --root ./plugin --target pi
 ```
 
 Check without writing:
 
 ```sh
-agentbundler check
-agentbundler check --target pi --package team-skills
-agentbundler check --json
+agbun check
+agbun check --target pi --package team-skills
+agbun check --json
 ```
 
 Use `--native` only with `check`:
 
 ```sh
-agentbundler check --native
+agbun check --native
 ```
 
 Use `--json` when another tool needs structured results. With a discoverable
@@ -207,9 +207,9 @@ Exit statuses:
 Normal workflow after source/config changes:
 
 1. Inspect the manifest and target/package selection.
-2. Run `agentbundler check` to see whether output is stale.
-3. Run `agentbundler build` using the dedicated output directory.
-4. Run `agentbundler check` again.
+2. Run `agbun check` to see whether output is stale.
+3. Run `agbun build` using the dedicated output directory.
+4. Run `agbun check` again.
 5. Inspect generated target paths and report any unsupported source assets.
 
 ## Diagnose failures
@@ -225,7 +225,7 @@ Normal workflow after source/config changes:
   package of skills only. A policy can classify a gap but cannot make an
   unsupported agent, hook, script, or native resource renderable.
 - Target not recognizing files: confirm the generated target path, then check
-  the target agent's current runtime documentation. Agentbundler creates files;
+  the target agent's current runtime documentation. **Agent Bundler** creates files;
   it does not install, enable, or register an agent plugin.
 
 When reporting a failure, include the command, exit status, relevant diagnostic,

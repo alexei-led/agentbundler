@@ -8,13 +8,13 @@ import (
 
 const (
 	Target         = model.TargetGrok
-	FormatRevision = 2
+	FormatRevision = 3
 )
 
 var capabilityRules = []model.CapabilityRule{
 	{Key: "asset.agent", State: model.CapabilityStateUnsupported},
 	{Key: "asset.hook", State: model.CapabilityStateUnsupported},
-	{Key: "asset.resource", State: model.CapabilityStateUnsupported},
+	{Key: "asset.resource", State: model.CapabilityStateNative},
 	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
 	{Key: "asset.skill", State: model.CapabilityStateNative},
 }
@@ -30,7 +30,7 @@ func Capabilities() []model.CapabilityRule {
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
 func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return skills.Render(adapter.Target(), ".grok/skills", packages)
+	return skills.RenderProject(adapter.Target(), ".grok/skills", ".grok/resources", packages)
 }
 func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	return New().Render(packages)

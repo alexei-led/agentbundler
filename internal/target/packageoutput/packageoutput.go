@@ -78,6 +78,13 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 			}
 			return add(files, paths, model.RelativePath("agents/"+name+".md"), data)
 		}
+		if target == model.TargetPi {
+			data, err := piSubagent(asset.Content.Frontmatter, asset.Content.Body)
+			if err != nil {
+				return err
+			}
+			return add(files, paths, model.RelativePath("agents/"+name+".md"), data)
+		}
 		if target == model.TargetCodex {
 			data, err := codexAgent(asset)
 			if err != nil {
@@ -136,7 +143,11 @@ func manifest(target model.TargetID, pkg model.NormalizedPackage) ([]byte, error
 	case model.TargetPi:
 		copyMetadata(base, pkg.Metadata, "version", "description", "keywords", "license", "homepage", "repository")
 		base["keywords"] = appendKeywords(base["keywords"])
-		base["pi"] = map[string]any{"skills": []string{"./skills"}}
+		pi := map[string]any{"skills": []string{"./skills"}}
+		if packageHasAsset(pkg, model.AssetKindAgent) {
+			pi["subagents"] = map[string]any{"agents": []string{"./agents"}}
+		}
+		base["pi"] = pi
 	case model.TargetCursor:
 		copyMetadata(base, pkg.Metadata, "version", "description", "displayName", "homepage", "repository", "license", "keywords")
 		base["skills"] = "./skills/"
@@ -174,6 +185,15 @@ func orderedManifest(values map[string]any, target model.TargetID) map[string]an
 	return values
 }
 
+func packageHasAsset(pkg model.NormalizedPackage, kind model.AssetKind) bool {
+	for _, asset := range pkg.Assets {
+		if asset.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
 func appendKeywords(value any) []string {
 	if values, ok := value.([]any); ok {
 		result := make([]string, 0, len(values))
@@ -199,6 +219,78 @@ func markdown(frontmatter map[string]any, body string) ([]byte, error) {
 		return nil, err
 	}
 	return []byte("---\n" + string(encoded) + "\n---\n" + body), nil
+}
+
+func piSubagent(frontmatter map[string]any, body string) ([]byte, error) {
+	keys := make([]string, 0, len(frontmatter))
+	for key := range frontmatter {
+		if key == "sandbox_mode" {
+			continue
+		}
+		if !validPiSubagentKey(key) {
+			return nil, fmt.Errorf("Pi subagent frontmatter key %q is invalid", key)
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	keys = prioritizePiSubagentKeys(keys)
+
+	lines := make([]string, 0, len(keys)+2)
+	lines = append(lines, "---")
+	for _, key := range keys {
+		value, err := piSubagentValue(frontmatter[key])
+		if err != nil {
+			return nil, fmt.Errorf("Pi subagent frontmatter %q: %w", key, err)
+		}
+		lines = append(lines, key+": "+value)
+	}
+	lines = append(lines, "---")
+	return []byte(strings.Join(lines, "\n") + "\n" + body), nil
+}
+
+func validPiSubagentKey(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if !(character >= 'a' && character <= 'z') && !(character >= 'A' && character <= 'Z') && !(character >= '0' && character <= '9') && character != '_' && character != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func prioritizePiSubagentKeys(keys []string) []string {
+	result := make([]string, 0, len(keys))
+	for _, priority := range []string{"name", "description"} {
+		for _, key := range keys {
+			if key == priority {
+				result = append(result, key)
+			}
+		}
+	}
+	for _, key := range keys {
+		if key != "name" && key != "description" {
+			result = append(result, key)
+		}
+	}
+	return result
+}
+
+func piSubagentValue(value any) (string, error) {
+	var text string
+	switch value := value.(type) {
+	case string:
+		text = value
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+		text = fmt.Sprint(value)
+	default:
+		return "", fmt.Errorf("must be a scalar")
+	}
+	if strings.ContainsAny(text, "\r\n") {
+		return "", fmt.Errorf("must be single-line")
+	}
+	return text, nil
 }
 
 func codexAgent(asset model.NormalizedAsset) ([]byte, error) {

@@ -110,7 +110,7 @@ The adapter's `target` is `cursor` at `formatRevision: 2`. It renders one native
 
 - Marketplace packaging is not inferred from CLI support.
 - Unsupported hook triggers fail rather than generating an approximate hook.
-- Direct bundle output remains target-native and has no Agentbundler runtime.
+- Direct bundle output remains target-native and has no **Agent Bundler** runtime.
 
 ## Test Specification
 

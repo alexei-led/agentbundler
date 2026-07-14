@@ -10,9 +10,9 @@ This module owns the shared lossless skill rendering algorithm. Without it, four
 
 ## Functional Responsibilities
 
-- Render one normalized package of skill assets below a caller-provided native skill root.
-- Preserve frontmatter, body, and support files.
-- Reject unsupported kinds, capability uses, invalid skill identities, collisions, and multi-package aggregation.
+- Render one normalized package of skill and portable resource assets below caller-provided native project roots.
+- Preserve frontmatter, body, support files, and package resources.
+- Reject unsupported kinds, capability uses, invalid identities, collisions, and multi-package aggregation.
 
 ## Subdomain Classification
 
@@ -20,12 +20,12 @@ This module owns the shared lossless skill rendering algorithm. Without it, four
 
 ## Encapsulated Knowledge
 
-- Native-skill path construction and collision detection.
+- Native skill and sibling resource path construction and collision detection.
 - Deterministic JSON-flow YAML frontmatter encoding.
 
 ## Public Contract
 
-`render(TargetID, skillRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]`. It accepts exactly one package and only `skill/<name>` assets with `asset.skill` capability uses. It emits `<skillRoot>/<name>/SKILL.md` and support files.
+`render(TargetID, skillRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]` accepts exactly one skills-only package. `renderProject(TargetID, skillRoot, resourceRoot, [NormalizedPackage])` additionally accepts `resource/<name>` assets. Both emit `<skillRoot>/<name>/SKILL.md` and skill support files; project rendering emits resources at `<resourceRoot>/<name>/`.
 
 ## Integrations
 
@@ -72,3 +72,6 @@ This module owns the shared lossless skill rendering algorithm. Without it, four
 - **Test name**: support files preserved.
   - **Scenario**: render a skill with binary support files.
   - **Expected behavior**: bytes are unchanged.
+- **Test name**: package resources are siblings of skills.
+  - **Scenario**: render a portable resource beside a project skill root.
+  - **Expected behavior**: resource paths preserve skill-relative references.

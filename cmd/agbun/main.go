@@ -277,28 +277,28 @@ func helpText(args []string) (string, bool, error) {
 }
 
 func usage() string {
-	return `agentbundler compiles one source bundle into target-specific coding-agent layouts.
+	return `agbun compiles one source bundle into target-specific coding-agent layouts.
 
 Usage:
-  agentbundler <command> [options]
+  agbun <command> [options]
 
 Commands:
   build    Compile and replace the configured output directory.
   check    Compare the configured output directory with the current build plan.
-  help     Show help for a command: agentbundler help build|check.
+  help     Show help for a command: agbun help build|check.
 
 Global help:
-  agentbundler --help
-  agentbundler help
-  agentbundler help <command>
+  agbun --help
+  agbun help
+  agbun help <command>
 
-Run "agentbundler help <command>" for command-specific options.
+Run "agbun help <command>" for command-specific options.
 `
 }
 
 func buildHelp() string {
 	return `Usage:
-  agentbundler build [options]
+  agbun build [options]
 
 Compile the selected package and targets, then replace the complete output
 directory configured by agentbundle.json. Use a dedicated generated directory;
@@ -316,15 +316,15 @@ Targets:
   claude, codex, pi, copilot, grok, cursor
 
 Examples:
-  agentbundler build
-  agentbundler build --root ./plugin --target pi
-  agentbundler build --target codex --package team-skills --json
+  agbun build
+  agbun build --root ./plugin --target pi
+  agbun build --target codex --package team-skills --json
 `
 }
 
 func checkHelp() string {
 	return `Usage:
-  agentbundler check [options]
+  agbun check [options]
 
 Compare the selected build plan with the configured output directory. check does
 not write files and exits 2 when output is missing, changed, extra, non-regular,
@@ -349,8 +349,8 @@ Exit statuses:
   3  Native verification failure.
 
 Examples:
-  agentbundler check
-  agentbundler check --root ./plugin --target pi
-  agentbundler check --target codex --package team-skills --native --json
+  agbun check
+  agbun check --root ./plugin --target pi
+  agbun check --target codex --package team-skills --native --json
 `
 }

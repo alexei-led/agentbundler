@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with the exact diagnostic. Agentbundler fails closed for invalid source,
+Start with the exact diagnostic. **Agent Bundler** fails closed for invalid source,
 unsupported capability use, and output drift.
 
 ## `MANIFEST_NOT_FOUND`
@@ -15,11 +15,11 @@ MANIFEST_NOT_FOUND: ...
 with `--root`:
 
 ```sh
-agentbundler build --root /path/to/project
+agbun build --root /path/to/project
 ```
 
 `--root` is resolved relative to the current working directory. Without it,
-Agentbundler searches the current directory and its parents.
+**Agent Bundler** searches the current directory and its parents.
 
 ## `build` replaces files you expected to keep
 
@@ -36,14 +36,14 @@ a separate release step.
 **Symptom:** `check` exits `2` or reports missing, changed, extra, non-regular,
 or symlinked entries.
 
-**Fix:** run `agentbundler build`, then inspect the generated tree. If the
+**Fix:** run `agbun build`, then inspect the generated tree. If the
 source or manifest changed, a stale output is expected. If a hand-written file
 was added below `output`, remove it or move it outside the compiler-owned tree.
 
 Use JSON output after the manifest is discoverable:
 
 ```sh
-agentbundler check --json
+agbun check --json
 ```
 
 ## `unsupported capability` or native-gap errors
@@ -77,7 +77,7 @@ Common causes:
 - a non-object value;
 - an invalid UTF-8 bundle Markdown file.
 
-Vendor-specific keys are not validated by Agentbundler. The target runtime still
+Vendor-specific keys are not validated by **Agent Bundler**. The target runtime still
 needs to support them.
 
 ## Section patch does not apply
@@ -105,7 +105,7 @@ file is a no-op.
 Selectors must match values declared or imported by the manifest:
 
 ```sh
-agentbundler build --target pi --package team-skills
+agbun build --target pi --package team-skills
 ```
 
 Targets are `claude`, `codex`, `pi`, `copilot`, `grok`, and `cursor`. Duplicate
@@ -121,7 +121,7 @@ components, duplicate separators, and symlinks are rejected intentionally.
 
 First confirm the generated target-relative path in
 [targets and CLI](targets-and-cli.md). Then verify the target's current runtime
-documentation. Agentbundler creates files; it does not install, enable, or
+documentation. **Agent Bundler** creates files; it does not install, enable, or
 register an agent plugin.
 
 If the path is correct but the feature is ignored, inspect frontmatter keys and

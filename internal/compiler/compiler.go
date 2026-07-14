@@ -78,12 +78,14 @@ func Compile(request CompileRequest) CompilationResult {
 		return result
 	}
 
+	adapterRevisions := make(map[model.TargetID]int, len(selectedTargets))
 	for _, targetID := range selectedTargets {
 		adapter, adapterDiagnostics := target.Resolve(targetID)
 		result.Diagnostics = append(result.Diagnostics, adapterDiagnostics...)
 		if hasErrors(adapterDiagnostics) {
 			continue
 		}
+		adapterRevisions[targetID] = adapter.FormatRevision
 		policy := compositionPolicy(request.Manifest, targetID, target.Capabilities(adapter))
 		packages, composeDiagnostics := composition.Compose(inventory, policy)
 		result.Diagnostics = append(result.Diagnostics, composeDiagnostics...)
@@ -101,7 +103,7 @@ func Compile(request CompileRequest) CompilationResult {
 		return result
 	}
 	sort.Slice(result.Plan.Targets, func(i, j int) bool { return result.Plan.Targets[i].Target < result.Plan.Targets[j].Target })
-	provenancePlan, provenanceDiagnostics := artifact.Provenance(result.Plan, buildProvenance(request.Manifest, inventory, result.Plan))
+	provenancePlan, provenanceDiagnostics := artifact.Provenance(result.Plan, buildProvenance(request.Manifest, inventory, result.Plan, adapterRevisions))
 	result.Diagnostics = append(result.Diagnostics, provenanceDiagnostics...)
 	if hasErrors(provenanceDiagnostics) {
 		return result
@@ -238,14 +240,14 @@ func nativeChecks(plan model.BuildPlan) []model.NativeCheck {
 	return checks
 }
 
-func buildProvenance(manifest model.SourceManifest, inventory model.SourceInventory, plan model.BuildPlan) artifact.ProvenanceInput {
+func buildProvenance(manifest model.SourceManifest, inventory model.SourceInventory, plan model.BuildPlan, adapterRevisions map[model.TargetID]int) artifact.ProvenanceInput {
 	configuration, _ := json.Marshal(manifest)
-	input := artifact.ProvenanceInput{CompilerVersion: "agentbundler-dev", Configuration: configuration}
+	input := artifact.ProvenanceInput{CompilerVersion: "agbun-dev", Configuration: configuration}
 	for _, file := range inventory.Inputs {
 		input.Inputs = append(input.Inputs, artifact.ProvenanceInputFile{Path: file.Path, SHA256: file.SHA256})
 	}
 	for _, targetPlan := range plan.Targets {
-		input.AdapterRevisions = append(input.AdapterRevisions, artifact.AdapterRevision{Target: targetPlan.Target, Revision: 1})
+		input.AdapterRevisions = append(input.AdapterRevisions, artifact.AdapterRevision{Target: targetPlan.Target, Revision: adapterRevisions[targetPlan.Target]})
 		for _, pkg := range inventory.Packages {
 			for _, asset := range pkg.Assets {
 				for _, overlay := range asset.Overlays {

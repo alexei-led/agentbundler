@@ -1,4 +1,4 @@
-// Package bundle imports Agentbundler's canonical bundle source layout.
+// Package bundle imports Agent Bundler's canonical bundle source layout.
 package bundle
 
 import (

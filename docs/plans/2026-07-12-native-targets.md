@@ -2,7 +2,7 @@
 
 ## Decision
 
-Agentbundler will emit vendor-native output. The first release is a **lossless supported subset**:
+**Agent Bundler** will emit vendor-native output. The first release is a **lossless supported subset**:
 
 - Render only asset kinds and capability uses whose native representation is documented and represented by the normalized model.
 - Reject unsupported or insufficiently modeled assets. Do not retain agentbundler sidecars in a native target tree.

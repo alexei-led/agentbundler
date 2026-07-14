@@ -34,10 +34,40 @@ func TestRenderProducesDeterministicNativeSkillTree(t *testing.T) {
 	}
 }
 
+func TestRenderProducesSiblingResourceTree(t *testing.T) {
+	pkg := model.NormalizedPackage{
+		Identity: "demo",
+		Target:   model.TargetCopilot,
+		Assets: []model.NormalizedAsset{
+			{
+				Identity: "skill/guide",
+				Kind:     model.AssetKindSkill,
+				Content:  model.AssetContent{Body: "# Guide\n", Files: map[model.RelativePath][]byte{}},
+			},
+			{
+				Identity: "resource/templates",
+				Kind:     model.AssetKindResource,
+				Content:  model.AssetContent{Files: map[model.RelativePath][]byte{"report.md": []byte("# Report\n")}},
+			},
+		},
+	}
+	plan, diagnostics := RenderProject(model.TargetCopilot, ".github/skills", ".github/resources", []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	got := []model.RelativePath{plan.Files[0].Path, plan.Files[1].Path}
+	want := []model.RelativePath{".github/resources/templates/report.md", ".github/skills/guide/SKILL.md"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("paths = %#v, want %#v", got, want)
+	}
+}
+
 func TestRenderRejectsUnsupportedSubsetAndAggregation(t *testing.T) {
 	base := model.NormalizedPackage{Identity: "demo", Target: model.TargetPi}
 	agent := base
 	agent.Assets = []model.NormalizedAsset{{Identity: "agent/reviewer", Kind: model.AssetKindAgent}}
+	resource := base
+	resource.Assets = []model.NormalizedAsset{{Identity: "resource/templates", Kind: model.AssetKindResource}}
 	capability := base
 	capability.Assets = []model.NormalizedAsset{{
 		Identity: "skill/guide",
@@ -52,6 +82,7 @@ func TestRenderRejectsUnsupportedSubsetAndAggregation(t *testing.T) {
 	}{
 		{name: "multiple packages", packages: []model.NormalizedPackage{base, {Identity: "other", Target: model.TargetPi}}},
 		{name: "agent", packages: []model.NormalizedPackage{agent}},
+		{name: "resource without project resource root", packages: []model.NormalizedPackage{resource}},
 		{name: "capability", packages: []model.NormalizedPackage{capability}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

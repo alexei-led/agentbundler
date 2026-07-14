@@ -1,8 +1,8 @@
-# Implement Agentbundler
+# Implement Agent Bundler
 
 ## Overview
 
-Agentbundler is a standalone Go compiler for coding-agent packages. It turns an explicit source repository into deterministic, target-native package trees without becoming a package manager, installer, registry, or universal runtime. Without this module, each repository must maintain target-specific compiler logic and cannot prove that generated output is current.
+**Agent Bundler** is a standalone Go compiler for coding-agent packages. It turns an explicit source repository into deterministic, target-native package trees without becoming a package manager, installer, registry, or universal runtime. Without this module, each repository must maintain target-specific compiler logic and cannot prove that generated output is current.
 
 - Design tree: `./` — 21 modules in 6 waves, ordered bottom-up by both module height and required Go import dependencies. `internal/compiler/model` is implemented before Go consumers; parent facades remain strictly after every child.
 - All design modules are in scope; the repository currently contains design documents only
@@ -31,11 +31,11 @@ Agentbundler is a standalone Go compiler for coding-agent packages. It turns an 
 
 ## Implementation Steps
 
-### Task 1 [Wave 4]: Implement `cmd/agentbundler/`
+### Task 1 [Wave 4]: Implement `cmd/agbun/`
 
-- [x] Read `cmd/agentbundler/module.md` in full — it is the complete and only spec for this task
+- [x] Read `cmd/agbun/module.md` in full — it is the complete and only spec for this task
 - [x] Assess test value from this module's Test Specification; add focused tests only for material logic, boundaries, contracts, composition, or regression risk
-- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `cmd/agentbundler/`
+- [x] Implement the module per its Functional Responsibilities, Public Contract, and Constraints and Invariants inside `cmd/agbun/`
 - [x] Run relevant verification, including `go test` for any tests added or affected
 
 ⚠️ Resolved design prerequisite: concrete command grammar, `agentbundle.json` discovery/schema, output rendering, and the compiler Go boundary are now normative.

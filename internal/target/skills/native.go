@@ -13,6 +13,18 @@ import (
 // Render emits one native skill-root tree. Native targets currently have no
 // portable multi-package aggregation contract, so exactly one package is accepted.
 func Render(target model.TargetID, root string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+	return render(target, root, "", packages)
+}
+
+// RenderProject emits skills and declared portable resources beneath one native project root.
+func RenderProject(target model.TargetID, skillRoot, resourceRoot string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+	if resourceRoot == "" {
+		return empty(target), []model.Diagnostic{diagnostic("invalid-resource-root", "native project resource root must not be empty")}
+	}
+	return render(target, skillRoot, resourceRoot, packages)
+}
+
+func render(target model.TargetID, root, resourceRoot string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	if len(packages) != 1 {
 		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", "target-native skill output requires exactly one package")}
 	}
@@ -29,39 +41,56 @@ func Render(target model.TargetID, root string, packages []model.NormalizedPacka
 	files := make([]model.PlannedFile, 0, len(assets))
 	paths := make(map[model.RelativePath]struct{})
 	for _, asset := range assets {
-		if asset.Kind != model.AssetKindSkill {
-			return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support %q", target, "asset."+string(asset.Kind)))}
-		}
+		expectedCapability := model.CapabilityKey("asset." + string(asset.Kind))
 		for _, use := range asset.CapabilityUses {
-			if use.Key != "asset.skill" {
+			if use.Key != expectedCapability {
 				return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support capability %q", target, use.Key))}
 			}
 		}
-		name := strings.TrimPrefix(string(asset.Identity), string(model.AssetKindSkill)+"/")
+		name := strings.TrimPrefix(string(asset.Identity), string(asset.Kind)+"/")
 		if name == "" || strings.Contains(name, "/") {
-			return empty(target), []model.Diagnostic{diagnostic("invalid-skill-identity", fmt.Sprintf("skill identity %q cannot be rendered as a native skill directory", asset.Identity))}
+			return empty(target), []model.Diagnostic{diagnostic("invalid-asset-identity", fmt.Sprintf("asset identity %q cannot be rendered as a native directory", asset.Identity))}
 		}
-		base := strings.TrimSuffix(root, "/") + "/" + name
-		content, err := markdown(asset.Content.Frontmatter, asset.Content.Body)
-		if err != nil {
-			return empty(target), []model.Diagnostic{diagnostic("invalid-skill-frontmatter", err.Error())}
-		}
-		if err := add(&files, paths, model.RelativePath(base+"/SKILL.md"), content); err != nil {
-			return empty(target), []model.Diagnostic{diagnostic("duplicate-output-path", err.Error())}
-		}
-		supportPaths := make([]model.RelativePath, 0, len(asset.Content.Files))
-		for path := range asset.Content.Files {
-			supportPaths = append(supportPaths, path)
-		}
-		sort.Slice(supportPaths, func(i, j int) bool { return supportPaths[i] < supportPaths[j] })
-		for _, path := range supportPaths {
-			if err := add(&files, paths, model.RelativePath(base+"/"+string(path)), asset.Content.Files[path]); err != nil {
+
+		var base string
+		switch asset.Kind {
+		case model.AssetKindSkill:
+			base = strings.TrimSuffix(root, "/") + "/" + name
+			content, err := markdown(asset.Content.Frontmatter, asset.Content.Body)
+			if err != nil {
+				return empty(target), []model.Diagnostic{diagnostic("invalid-skill-frontmatter", err.Error())}
+			}
+			if err := add(&files, paths, model.RelativePath(base+"/SKILL.md"), content); err != nil {
 				return empty(target), []model.Diagnostic{diagnostic("duplicate-output-path", err.Error())}
 			}
+		case model.AssetKindResource:
+			if resourceRoot == "" {
+				return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support %q", target, expectedCapability))}
+			}
+			base = strings.TrimSuffix(resourceRoot, "/") + "/" + name
+		default:
+			return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support %q", target, expectedCapability))}
+		}
+		if err := addSupportFiles(&files, paths, base, asset.Content.Files); err != nil {
+			return empty(target), []model.Diagnostic{diagnostic("duplicate-output-path", err.Error())}
 		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return model.TargetPlan{Target: target, Packages: []model.PackageID{pkg.Identity}, Files: files, NativeChecks: []model.NativeCheck{}}, nil
+}
+
+func addSupportFiles(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, base string, supportFiles map[model.RelativePath][]byte) error {
+	supportPaths := make([]model.RelativePath, 0, len(supportFiles))
+	for path := range supportFiles {
+		supportPaths = append(supportPaths, path)
+	}
+	sort.Slice(supportPaths, func(i, j int) bool { return supportPaths[i] < supportPaths[j] })
+	for _, path := range supportPaths {
+		if err := add(files, paths, model.RelativePath(base+"/"+string(path)), supportFiles[path]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func markdown(frontmatter map[string]any, body string) ([]byte, error) {

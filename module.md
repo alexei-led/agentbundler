@@ -1,17 +1,17 @@
-# Agentbundler
+# Agent Bundler
 
 **Path**: repository root — the module's code is everything in this folder and transparent subfolders, excluding child module folders
 **Parent**: none (root)
-**Submodules**: `cmd/agentbundler`, `internal/compiler`, `internal/target`, `internal/artifact`
+**Submodules**: `cmd/agbun`, `internal/compiler`, `internal/target`, `internal/artifact`
 
 ## Purpose
 
-Agentbundler is a standalone Go compiler for coding-agent packages. It turns an explicit source repository into deterministic, target-native package trees without becoming a package manager, installer, registry, or universal runtime. Without this module, each repository must maintain target-specific compiler logic and cannot prove that generated output is current.
+**Agent Bundler** is a standalone Go compiler for coding-agent packages. It turns an explicit source repository into deterministic, target-native package trees without becoming a package manager, installer, registry, or universal runtime. Without this module, each repository must maintain target-specific compiler logic and cannot prove that generated output is current.
 
 ## Functional Responsibilities
 
 - Expose the `build` and `check` product operations.
-- Accept clean Agentbundler bundles and low-friction adopted repositories.
+- Accept clean **Agent Bundler** bundles and low-friction adopted repositories.
 - Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, and Cursor CLI.
 - Preserve native semantics where possible and fail on unsupported or unacknowledged semantic loss.
 - Produce reproducible generated trees and provenance outside native package roots.
@@ -41,7 +41,7 @@ check [--root path] [--target id] [--package id] [--native] [--json]
 
 ## Integrations
 
-- **Counterpart**: `cmd/agentbundler`
+- **Counterpart**: `cmd/agbun`
   - **Direction**: the command module implements this module's CLI contract.
   - **Strength**: contract.
   - **LCA / Rank / Distance**: root / 1 / 1.
@@ -67,7 +67,7 @@ check [--root path] [--target id] [--package id] [--native] [--json]
 
 ```text
 root
-├── cmd/agentbundler        command parsing and presentation
+├── cmd/agbun        command parsing and presentation
 ├── internal/compiler       source import, composition, orchestration
 │   └── model               immutable normalized contracts
 ├── internal/target         adapter registry and vendor semantics
@@ -87,7 +87,7 @@ A command creates a compile request and invokes the compiler. The compiler impor
 
 - Normal builds use no network, clock, hostname, locale, absolute source path, Git state, or mutable environment as an output input.
 - The compiler never silently drops security, permission, sandbox, hook, or capability semantics.
-- Generated output contains no Agentbundler runtime dependency.
+- Generated output contains no **Agent Bundler** runtime dependency.
 - `check` never writes.
 - Native target package roots contain only target-native files; compiler provenance is outside them.
 - `internal/target` has six vendor leaves plus two cohesive shared rendering leaves. The two shared leaves (`skills` and `plugin`) reduce duplicate native-layout logic; vendor behavior remains isolated in each adapter. Revisit the hierarchy when a third reusable renderer family emerges.

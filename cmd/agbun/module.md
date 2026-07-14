@@ -1,6 +1,6 @@
 # Command Interface
 
-**Path**: `cmd/agentbundler/` — the module's code is everything in this folder and transparent subfolders
+**Path**: `cmd/agbun/` — the module's code is everything in this folder and transparent subfolders
 **Parent**: repository root
 **Submodules**: none (leaf)
 
@@ -87,9 +87,9 @@ compile(CompileRequest) -> CompilationResult
 ### Command Grammar and Manifest
 
 ```text
-agentbundler build [--root DIR] [--target TARGET]... [--package PACKAGE]... [--json]
-agentbundler check [--root DIR] [--target TARGET]... [--package PACKAGE]... [--native] [--json]
-agentbundler --help
+agbun build [--root DIR] [--target TARGET]... [--package PACKAGE]... [--json]
+agbun check [--root DIR] [--target TARGET]... [--package PACKAGE]... [--native] [--json]
+agbun --help
 ```
 
 - The verb is the first argument. Other than the standalone `--help`, flags follow the verb and positional arguments are invalid.

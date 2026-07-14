@@ -6,7 +6,7 @@
 
 ## Purpose
 
-This module imports Agentbundler's clean canonical bundle layout. Without it, owned repositories such as migrated `cc-thingz` and `architect` would need compatibility scripts or target-specific build logic.
+This module imports **Agent Bundler**'s clean canonical bundle layout. Without it, owned repositories such as migrated `cc-thingz` and `architect` would need compatibility scripts or target-specific build logic.
 
 ## Functional Responsibilities
 

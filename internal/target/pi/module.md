@@ -10,9 +10,10 @@ This module renders Pi-native package output. Without it, Pi package metadata, s
 
 ## Functional Responsibilities
 
-- Render Pi package metadata and supported skill trees.
+- Render Pi package metadata and supported skill/resource trees.
+- Render package agents in the `pi-subagents` discovery format when agent assets are selected.
 - Copy Pi-native extensions, prompts, themes, and declared resources as target-native content.
-- Declare that Pi core does not provide the same portable agent and declarative hook contracts as other targets.
+- Declare that Pi core does not provide the same portable declarative hook contract as other targets.
 - Provide optional Pi native verification where a stable command is available.
 
 ## Subdomain Classification
@@ -23,7 +24,7 @@ This module renders Pi-native package output. Without it, Pi package metadata, s
 
 - Pi package layout and metadata.
 - Pi-native resource placement.
-- The boundary between portable skills and extension-provided agent or hook behavior.
+- The boundary between portable skills, `pi-subagents` package agents, and extension-provided hook behavior.
 - Pi-specific capability limitations and diagnostics.
 
 ## Public Contract
@@ -81,7 +82,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `pi` at `formatRevision: 2`. It renders exactly one package of `asset.skill` content to `.pi/skills/<skill>/SKILL.md` plus support files. Agents, hooks, and native resources are unsupported until their Pi representations are modeled.
+The adapter's `target` is `pi` at `formatRevision: 3`. In a package profile, it renders skills, resources, and `asset.agent` content. An agent renders to `agents/<name>.md`; the generated `package.json` declares `pi.subagents.agents: ["./agents"]`, requiring the `pi-subagents` package at runtime. Project profiles remain skills-only. Hooks and native resources are unsupported until their Pi representations are modeled.
 
 ## Integrations
 
@@ -108,9 +109,9 @@ The adapter's `target` is `pi` at `formatRevision: 2`. It renders exactly one pa
 
 ## Constraints and Invariants
 
-- No generated universal hook runner or subagent runtime is allowed.
+- No generated universal hook runner or subagent runtime is allowed; package agents require an installed `pi-subagents` runtime.
 - Pi-native extension code is opaque target content, not normalized portable behavior.
-- A portable hook or agent unsupported by Pi core fails unless explicit policy and Pi-native replacement resource exist.
+- A portable hook unsupported by Pi core fails unless explicit policy and Pi-native replacement resource exist.
 - The adapter must not inject repository-specific Pi instruction policy.
 
 ## Test Specification
@@ -120,9 +121,12 @@ The adapter's `target` is `pi` at `formatRevision: 2`. It renders exactly one pa
 - **Test name**: Pi package metadata is deterministic.
   - **Scenario**: render equivalent package metadata from different map order.
   - **Expected behavior**: native package metadata bytes match.
-- **Test name**: unsupported portable agent fails.
-  - **Scenario**: render a portable agent without Pi-native replacement.
-  - **Expected behavior**: diagnostic identifies the unsupported capability.
+- **Test name**: package subagent registration.
+  - **Scenario**: render a package-profile agent.
+  - **Expected behavior**: output includes `agents/<name>.md` and `pi.subagents.agents` registration.
+- **Test name**: project-profile agent rejection.
+  - **Scenario**: render a portable agent in a project profile.
+  - **Expected behavior**: diagnostic identifies the unsupported package-only layout.
 
 ### Integration Contract Tests
 

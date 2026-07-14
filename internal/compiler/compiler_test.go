@@ -1,11 +1,13 @@
 package compiler
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/pi"
 )
 
 func TestCompileRejectsNativeVerifyForBuild(t *testing.T) {
@@ -35,6 +37,36 @@ func TestCompileBuildsMinimalSkillsRepositoryForEveryTarget(t *testing.T) {
 	}
 }
 
+func TestCompileRecordsResolvedAdapterRevision(t *testing.T) {
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(workspace),
+		Manifest:      skillsManifest(model.TargetPi),
+		Mode:          BuildModeBuild,
+	})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+
+	data, err := os.ReadFile(filepath.Join(workspace, "generated/.agentbundler/build.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var provenance struct {
+		Outputs []struct {
+			Target          model.TargetID `json:"target"`
+			AdapterRevision int            `json:"adapterRevision"`
+		} `json:"outputs"`
+	}
+	if err := json.Unmarshal(data, &provenance); err != nil {
+		t.Fatal(err)
+	}
+	if len(provenance.Outputs) != 1 || provenance.Outputs[0].Target != model.TargetPi || provenance.Outputs[0].AdapterRevision != pi.FormatRevision {
+		t.Fatalf("provenance outputs = %#v", provenance.Outputs)
+	}
+}
+
 func TestCompileRejectsSymlinkedOutputAncestor(t *testing.T) {
 	workspace := t.TempDir()
 	outside := t.TempDir()
@@ -53,7 +85,7 @@ func TestCompileRejectsSymlinkedOutputAncestor(t *testing.T) {
 func TestCompileRejectsCapabilityUnsupportedBySelectedTarget(t *testing.T) {
 	workspace := t.TempDir()
 	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
-	writeCompilerFixture(t, workspace, "source/.agentbundler/assets/skill/demo/asset.json", `{"capabilities":["asset.agent"]}`)
+	writeCompilerFixture(t, workspace, "source/.agentbundler/assets/skill/demo/asset.json", `{"capabilities":["asset.hook"]}`)
 
 	result := Compile(CompileRequest{
 		WorkspaceRoot: filepath.Clean(workspace),

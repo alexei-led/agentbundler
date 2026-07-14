@@ -1,4 +1,4 @@
-# Agentbundler documentation
+# Agent Bundler documentation
 
 Start here if you already know the project and need the right page.
 
@@ -13,7 +13,7 @@ Start here if you already know the project and need the right page.
 
 ## The short version
 
-Agentbundler imports a canonical source, applies target-specific overlays, and
+**Agent Bundler** imports a canonical source, applies target-specific overlays, and
 renders complete target trees. `build` writes them. `check` compares them. Keep
 `agentbundle.json`, source files, and sidecars in version control; keep the
 configured output directory separate and disposable.

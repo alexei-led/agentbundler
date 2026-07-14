@@ -199,7 +199,7 @@ Before encoding the provenance JSON, order arrays by ascending UTF-8 byte sequen
 
 - Provenance must be reproducible from identical inputs and compiler revision.
 - `.agentbundler/build.json` is a reserved compiler-file path relative to the operational output root; no literal `dist` path is assumed.
-- It is not an Agentbundler dependency lockfile and does not resolve packages.
+- It is not an **Agent Bundler** dependency lockfile and does not resolve packages.
 - Its own hash is omitted to avoid recursion.
 - It cannot include secrets from source or environment.
 

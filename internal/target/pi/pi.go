@@ -9,11 +9,11 @@ import (
 
 const (
 	Target         = model.TargetPi
-	FormatRevision = 2
+	FormatRevision = 3
 )
 
 var capabilityRules = []model.CapabilityRule{
-	{Key: "asset.agent", State: model.CapabilityStateUnsupported},
+	{Key: "asset.agent", State: model.CapabilityStateEquivalent},
 	{Key: "asset.hook", State: model.CapabilityStateUnsupported},
 	{Key: "asset.resource", State: model.CapabilityStateNative},
 	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},

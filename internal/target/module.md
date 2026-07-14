@@ -87,11 +87,11 @@ render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 
 ## Native Renderer Contract
 
-Every built-in adapter emits a vendor-native, lossless supported subset at `formatRevision: 2`; no target-neutral interchange files exist in that subset. Each adapter accepts exactly one normalized package because native cross-package aggregation has not yet been specified.
+Every built-in adapter emits a vendor-native, lossless supported subset and declares a positive format revision; no target-neutral interchange files exist in that subset. Each adapter accepts exactly one normalized package because native cross-package aggregation has not yet been specified.
 
-The common skill renderer copies frontmatter, Markdown body, and support files deterministically. Initial roots are `.claude/skills/<name>/SKILL.md`, `.github/skills/<name>/SKILL.md`, `.pi/skills/<name>/SKILL.md`, and `.grok/skills/<name>/SKILL.md`. Codex emits `.codex-plugin/plugin.json` plus `skills/<name>/SKILL.md`; Cursor emits `.cursor-plugin/plugin.json` plus `skills/<name>/SKILL.md`. Plugin identities must meet native plugin-name syntax. JSON frontmatter is a valid YAML flow document and is emitted deterministically.
+The common project renderer copies frontmatter, Markdown body, support files, and declared portable resources deterministically. Copilot roots are `.github/{skills,resources}/`; Grok roots are `.grok/{skills,resources}/`. Package profiles emit Claude, Codex, Pi, and Cursor roots with their target manifests, skills, resources, and supported agent forms. Plugin identities must meet native plugin-name syntax. JSON frontmatter is a valid YAML flow document and is emitted deterministically.
 
-Only `asset.skill` and its own `asset.skill` capability use are supported in this slice. Agents, hooks, native resources, undeclared capability uses, invalid native names, output collisions, and multi-package input return diagnostics with no partial plan. Native checks remain empty until an official offline validator is part of the contract.
+Each adapter enforces its declared capability subset. Unsupported assets, native resources, undeclared capability uses, invalid native names, output collisions, and multi-package input return diagnostics with no partial plan. Native checks remain empty until an official offline validator is part of the contract.
 
 ## Integrations
 

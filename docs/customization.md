@@ -103,7 +103,7 @@ The generated Pi frontmatter is equivalent to:
 }
 ```
 
-Agentbundler does not validate vendor-specific frontmatter keys. Add a key only
+**Agent Bundler** does not validate vendor-specific frontmatter keys. Add a key only
 when the target agent documents it, and test the generated tree with that
 agent.
 
@@ -253,7 +253,9 @@ Use `exclude` when the gap should not enter the target package, `source-only`
 when it should remain documented but not emitted, or `replace` with an existing
 asset as fallback. Every applicable source gap needs one matching policy.
 
-Policy does not make an agent, hook, script, or native resource renderable. The
-current renderers still accept one package of skills only.
+Policy does not make a hook, script, or native resource renderable. Package
+profiles render Claude, Codex, and Pi agents; Pi agents use `pi-subagents` and
+therefore require that runtime package. Current renderers still accept one
+package per target plan.
 
 Next: [target layouts and CLI](targets-and-cli.md).

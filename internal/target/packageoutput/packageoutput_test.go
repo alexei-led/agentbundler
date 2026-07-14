@@ -52,10 +52,38 @@ func TestRenderCodexPackageAgentIsStandaloneTOML(t *testing.T) {
 	t.Fatal("standalone agent is missing")
 }
 
-func TestRenderPiPackageRejectsAgent(t *testing.T) {
-	_, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{packageFixture(model.TargetPi)})
-	if len(diagnostics) == 0 || diagnostics[0].Code != "invalid-package-output" {
-		t.Fatalf("diagnostics = %#v, want invalid-package-output", diagnostics)
+func TestRenderPiPackageRegistersSubagents(t *testing.T) {
+	plan, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{packageFixture(model.TargetPi)})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+
+	files := make(map[model.RelativePath][]byte, len(plan.Files))
+	for _, file := range plan.Files {
+		files[file.Path] = file.Bytes
+	}
+	agent, ok := files["agents/reviewer.md"]
+	if !ok {
+		t.Fatal("Pi subagent is missing")
+	}
+	if !containsAll(string(agent), "name: reviewer", "description: Review code", "inheritSkills: true") {
+		t.Fatalf("Pi subagent = %q", agent)
+	}
+	if contains(string(agent), "sandbox_mode") {
+		t.Fatalf("Pi subagent includes Codex-only sandbox mode: %q", agent)
+	}
+
+	var manifest map[string]any
+	if err := json.Unmarshal(files["package.json"], &manifest); err != nil {
+		t.Fatalf("manifest JSON: %v", err)
+	}
+	pi, ok := manifest["pi"].(map[string]any)
+	if !ok {
+		t.Fatalf("Pi manifest = %#v", manifest)
+	}
+	subagents, ok := pi["subagents"].(map[string]any)
+	if !ok || !reflect.DeepEqual(subagents["agents"], []any{"./agents"}) {
+		t.Fatalf("Pi subagent registration = %#v", pi)
 	}
 }
 
@@ -70,7 +98,7 @@ func packageFixture(target model.TargetID) model.NormalizedPackage {
 		},
 		Assets: []model.NormalizedAsset{
 			{Identity: "skill/demo", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "demo", "description": "Demo"}, Body: "Use demo.\n", Files: map[model.RelativePath][]byte{}}},
-			{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"}, Body: "Review.\n", Files: map[model.RelativePath][]byte{}}},
+			{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code", "inheritSkills": true, "sandbox_mode": "read-only"}, Body: "Review.\n", Files: map[model.RelativePath][]byte{}}},
 			{Identity: "resource/templates", Kind: model.AssetKindResource, Content: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{"design.md": []byte("# Design\n")}}},
 		},
 	}

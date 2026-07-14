@@ -17,7 +17,7 @@ func TestRunHelpListsCommandsAndOptions(t *testing.T) {
 	if status := run([]string{"help"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
 		t.Fatalf("help status=%d stderr=%q", status, stderr.String())
 	}
-	for _, want := range []string{"build", "check", "help", "agentbundler help <command>"} {
+	for _, want := range []string{"agbun <command>", "build", "check", "help", "agbun help <command>"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("help output missing %q: %q", want, stdout.String())
 		}

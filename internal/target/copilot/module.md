@@ -6,13 +6,13 @@
 
 ## Purpose
 
-This module renders GitHub Copilot CLI-native plugin output. Without it, Copilot plugin manifests and component conventions would leak into portable source or other target layouts.
+This module renders GitHub Copilot project skills and their declared portable resources. Without it, Copilot project-root conventions would leak into portable source or other target layouts.
 
 ## Functional Responsibilities
 
-- Render Copilot plugin metadata and supported agents, skills, hooks, MCP, extensions, and LSP resources.
+- Render Copilot skills and portable resources under the project `.github/` root.
 - Declare per-component Copilot capability rules.
-- Generate only documented Copilot-native paths and formats.
+- Generate only documented or package-internal Copilot project paths and formats.
 
 ## Subdomain Classification
 
@@ -20,9 +20,8 @@ This module renders GitHub Copilot CLI-native plugin output. Without it, Copilot
 
 ## Encapsulated Knowledge
 
-- Copilot CLI plugin manifest fields.
-- Component paths and native metadata.
-- Hook event capability mapping.
+- Copilot project skill and sibling resource paths.
+- Native skill metadata.
 - Optional native verification command behavior.
 
 ## Public Contract
@@ -80,7 +79,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `copilot` at `formatRevision: 2`. It renders exactly one package of `asset.skill` content to `.github/skills/<skill>/SKILL.md` plus support files. `asset.agent`, `asset.hook`, and `asset.native-resource` are unsupported. There is no generic package index or plugin-manifest claim.
+The adapter's `target` is `copilot` at `formatRevision: 3`. It renders exactly one project-profile package of `asset.skill` content to `.github/skills/<skill>/SKILL.md` plus support files and `asset.resource` trees to `.github/resources/<resource>/`. `asset.agent`, `asset.hook`, and `asset.native-resource` are unsupported. There is no generic package index or plugin-manifest claim.
 
 ## Integrations
 
@@ -115,18 +114,18 @@ The adapter's `target` is `copilot` at `formatRevision: 2`. It renders exactly o
 
 ### Unit Tests
 
-- **Test name**: Copilot manifest is complete.
-  - **Scenario**: render minimum supported package metadata.
-  - **Expected behavior**: required plugin fields are emitted once in deterministic order.
+- **Test name**: project skill tree is complete.
+  - **Scenario**: render skills, support files, and a portable resource.
+  - **Expected behavior**: deterministic `.github/skills` and `.github/resources` paths are emitted.
 - **Test name**: capability matrix is enforced.
   - **Scenario**: render every unsupported component cell.
   - **Expected behavior**: no unsupported file is planned.
 
 ### Integration Contract Tests
 
-- **Test name**: mixed Copilot plugin components.
-  - **Scenario**: render supported skills, agents, hooks, and MCP resources.
-  - **Expected behavior**: plan paths and manifest entries agree.
+- **Test name**: skill/resource references remain valid.
+  - **Scenario**: a generated skill references a declared sibling resource.
+  - **Expected behavior**: both outputs share the `.github` project root.
 
 ### Boundary Tests
 
@@ -136,6 +135,6 @@ The adapter's `target` is `copilot` at `formatRevision: 2`. It renders exactly o
 
 ### Behavior Tests
 
-- **Test name**: Copilot golden plugin.
+- **Test name**: Copilot golden project tree.
   - **Scenario**: render a supported fixture.
-  - **Expected behavior**: generated tree follows the documented Copilot plugin layout and parses natively.
+  - **Expected behavior**: generated tree follows the Copilot project skill layout.

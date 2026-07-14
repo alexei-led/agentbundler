@@ -112,7 +112,7 @@ func TestReplaceOutputRecoversFallbackJournal(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			output := filepath.Join(t.TempDir(), "generated")
-			staging := filepath.Join(filepath.Dir(output), ".generated.agentbundler-write-staging-interrupted")
+			staging := filepath.Join(filepath.Dir(output), ".generated.agbun-write-staging-interrupted")
 			backup := backupPath(output, staging)
 			mustMkdir(t, staging)
 
