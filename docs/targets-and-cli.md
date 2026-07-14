@@ -136,7 +136,7 @@ compares the expected plan without writing. Neither command uses the network.
 output hashes, acknowledgments, compiler version, and output file details. It is
 compiler metadata, not an input file. Released `agbun` binaries record their release
 tag; development builds record the module version when available, otherwise
-`agbun-dev`.
+`agbun-dev`. Release CI executes the Linux/amd64 binary to verify that contract.
 
 ## Machine-readable results
 

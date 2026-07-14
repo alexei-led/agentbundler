@@ -81,7 +81,7 @@ jobs:
             -ldflags="-s -w -X github.com/alexei-led/agentbundler/internal/buildinfo.releaseVersion=${GITHUB_REF_NAME}" \
             -o "$binary" \
             ./cmd/agbun
-          if [[ "$GOOS" == "linux" ]]; then
+          if [[ "$GOOS" == "linux" && "$GOARCH" == "amd64" ]]; then
             test "$("$binary" --version)" = "agbun ${GITHUB_REF_NAME}"
           fi
       - name: Upload binary
