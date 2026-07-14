@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/artifact"
+	"github.com/alexei-led/agentbundler/internal/buildinfo"
 	"github.com/alexei-led/agentbundler/internal/compiler/composition"
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/compiler/source"
@@ -242,7 +243,7 @@ func nativeChecks(plan model.BuildPlan) []model.NativeCheck {
 
 func buildProvenance(manifest model.SourceManifest, inventory model.SourceInventory, plan model.BuildPlan, adapterRevisions map[model.TargetID]int) artifact.ProvenanceInput {
 	configuration, _ := json.Marshal(manifest)
-	input := artifact.ProvenanceInput{CompilerVersion: "agbun-dev", Configuration: configuration}
+	input := artifact.ProvenanceInput{CompilerVersion: buildinfo.Version(), Configuration: configuration}
 	for _, file := range inventory.Inputs {
 		input.Inputs = append(input.Inputs, artifact.ProvenanceInputFile{Path: file.Path, SHA256: file.SHA256})
 	}
