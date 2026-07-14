@@ -44,13 +44,14 @@ func Render(target model.TargetID, packages []model.NormalizedPackage) (model.Ta
 		return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 	}
 	manifestPath := model.RelativePath(".claude-plugin/plugin.json")
-	if target == model.TargetCodex {
+	switch target {
+	case model.TargetCodex:
 		manifestPath = ".codex-plugin/plugin.json"
-	} else if target == model.TargetPi {
+	case model.TargetPi:
 		manifestPath = "package.json"
-	} else if target == model.TargetCopilot {
+	case model.TargetCopilot:
 		manifestPath = "plugin.json"
-	} else if target == model.TargetCursor {
+	case model.TargetCursor:
 		manifestPath = ".cursor-plugin/plugin.json"
 	}
 	if err := add(&plan.Files, paths, manifestPath, manifest); err != nil {
@@ -288,7 +289,7 @@ func piSubagent(frontmatter map[string]any, body string) ([]byte, error) {
 			continue
 		}
 		if !validPiSubagentKey(key) {
-			return nil, fmt.Errorf("Pi subagent frontmatter key %q is invalid", key)
+			return nil, fmt.Errorf("pi subagent frontmatter key %q is invalid", key)
 		}
 		keys = append(keys, key)
 	}
@@ -300,7 +301,7 @@ func piSubagent(frontmatter map[string]any, body string) ([]byte, error) {
 	for _, key := range keys {
 		value, err := piSubagentValue(frontmatter[key])
 		if err != nil {
-			return nil, fmt.Errorf("Pi subagent frontmatter %q: %w", key, err)
+			return nil, fmt.Errorf("pi subagent frontmatter %q: %w", key, err)
 		}
 		lines = append(lines, key+": "+value)
 	}
@@ -313,7 +314,10 @@ func validPiSubagentKey(value string) bool {
 		return false
 	}
 	for _, character := range value {
-		if !(character >= 'a' && character <= 'z') && !(character >= 'A' && character <= 'Z') && !(character >= '0' && character <= '9') && character != '_' && character != '-' {
+		if (character < 'a' || character > 'z') &&
+			(character < 'A' || character > 'Z') &&
+			(character < '0' || character > '9') &&
+			character != '_' && character != '-' {
 			return false
 		}
 	}
