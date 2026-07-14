@@ -2,7 +2,7 @@
 
 **Path**: `internal/target/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: repository root
-**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`
+**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`
 
 ## Purpose
 
@@ -41,7 +41,7 @@ PackageMetadata = Map<String, JsonValue>
 
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
+AssetKind = skill | agent | hook | resource | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
@@ -89,7 +89,7 @@ render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 
 Every built-in adapter emits a vendor-native, lossless supported subset and declares a positive format revision; no target-neutral interchange files exist in that subset. Each adapter accepts exactly one normalized package because native cross-package aggregation has not yet been specified.
 
-The common project renderer copies frontmatter, Markdown body, support files, and declared portable resources deterministically. Copilot roots are `.github/{skills,resources}/`; Grok roots are `.grok/{skills,resources}/`. Package profiles emit Claude, Codex, Pi, and Cursor roots with their target manifests, skills, resources, and supported agent forms. Plugin identities must meet native plugin-name syntax. JSON frontmatter is a valid YAML flow document and is emitted deterministically.
+The common project renderer copies frontmatter, Markdown body, support files, and declared portable resources deterministically. Copilot roots are `.github/{skills,resources}/`; Grok roots are `.grok/{skills,resources}/`. Package profiles emit Claude, Codex, Pi, GitHub Copilot, and Cursor roots with target manifests, skills, resources, a generated `README.md`, and supported agent forms. Pi copies validated package dependencies for runtime requirements. Plugin identities must meet native plugin-name syntax. JSON frontmatter is a valid YAML flow document and is emitted deterministically.
 
 Each adapter enforces its declared capability subset. Unsupported assets, native resources, undeclared capability uses, invalid native names, output collisions, and multi-package input return diagnostics with no partial plan. Native checks remain empty until an official offline validator is part of the contract.
 

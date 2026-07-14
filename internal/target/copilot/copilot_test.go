@@ -17,6 +17,27 @@ func TestRenderUsesCopilotNativeSkillRoot(t *testing.T) {
 	}
 }
 
+func TestRenderPackageProfileProducesPluginAndAgent(t *testing.T) {
+	pkg := skillPackage()[0]
+	pkg.Profile = model.TargetProfilePackage
+	pkg.Assets[0] = model.NormalizedAsset{
+		Identity: "agent/reviewer",
+		Kind:     model.AssetKindAgent,
+		Content: model.AssetContent{
+			Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"},
+			Body:        "Review.\n",
+			Files:       map[model.RelativePath][]byte{},
+		},
+	}
+	plan, diagnostics := Render([]model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	if got, want := []model.RelativePath{plan.Files[0].Path, plan.Files[1].Path, plan.Files[2].Path, plan.Files[3].Path}, []model.RelativePath{"README.md", "agents/reviewer.agent.md", "plugin.json", "resources/templates/report.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("paths = %#v, want %#v", got, want)
+	}
+}
+
 func TestCapabilitiesSupportPortableResources(t *testing.T) {
 	for _, rule := range Capabilities() {
 		if rule.Key == "asset.resource" {
@@ -29,7 +50,7 @@ func TestCapabilitiesSupportPortableResources(t *testing.T) {
 	t.Fatal("resource capability is missing")
 }
 
-func TestRenderRejectsNonSkillAssets(t *testing.T) {
+func TestRenderProjectProfileRejectsAgent(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Assets[0].Kind = model.AssetKindAgent
 	pkg.Assets[0].Identity = "agent/reviewer"

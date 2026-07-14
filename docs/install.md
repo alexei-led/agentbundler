@@ -13,7 +13,8 @@ brew update
 brew upgrade agentbundler
 ```
 
-The formula name follows the repository identifier.
+The formula name follows the repository identifier; it installs the `agbun`
+executable.
 
 ## Go
 

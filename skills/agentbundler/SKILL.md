@@ -78,9 +78,10 @@ Source kinds:
   plugin assets.
 
 Current renderers emit one selected package containing skills, portable resources,
-and supported native agent forms. They do not render hooks, scripts as a separate
-portable asset type, target-native resources, or multiple packages aggregated into
-one target.
+and supported native agent forms. Package profiles support Claude, Codex, Pi,
+GitHub Copilot, and Cursor. Grok emits project-local skills/resources and accepts
+a Claude-compatible package root. Renderers do not generate marketplaces, install
+packages, or run built-in vendor validation.
 
 ## Create a skill source
 
@@ -222,8 +223,9 @@ Normal workflow after source/config changes:
 - Section patch errors: use the exact heading path once; do not use Setext
   headings or anchors inside fenced code.
 - Unsupported capability/native-gap errors: current renderers support one
-  package of skills only. A policy can classify a gap but cannot make an
-  unsupported agent, hook, script, or native resource renderable.
+  package of skills, portable resources, and only the target agent forms listed
+  in the target-layout docs. A policy can classify a gap but cannot make an
+  unsupported hook, script, or native resource renderable.
 - Target not recognizing files: confirm the generated target path, then check
   the target agent's current runtime documentation. **Agent Bundler** creates files;
   it does not install, enable, or register an agent plugin.

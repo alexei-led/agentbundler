@@ -113,6 +113,11 @@ Bundle package assets use exact forms such as `src/skills/<name>`,
 lists are exact allow-lists. Portable resource directories render under
 `resources/` in package profiles; target-native resources remain explicit gaps.
 
+Pi package metadata may include a `dependencies` object with package-name keys
+and non-empty string versions. **Agent Bundler** writes it only to Pi
+`package.json`; use it to ship runtime package prerequisites such as
+`pi-subagents` alongside generated subagents.
+
 #### Example manifest
 
 ```json

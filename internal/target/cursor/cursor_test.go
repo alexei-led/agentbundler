@@ -21,7 +21,32 @@ func TestRenderUsesCursorPluginLayout(t *testing.T) {
 	}
 }
 
-func TestRenderRejectsUnsupportedAgent(t *testing.T) {
+func TestRenderPackageProfileIncludesAgent(t *testing.T) {
+	pkg := skillPackage()[0]
+	pkg.Profile = model.TargetProfilePackage
+	pkg.Assets = append(pkg.Assets, model.NormalizedAsset{
+		Identity: "agent/reviewer",
+		Kind:     model.AssetKindAgent,
+		Content: model.AssetContent{
+			Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"},
+			Body:        "Review.\n",
+			Files:       map[model.RelativePath][]byte{},
+		},
+	})
+	plan, diagnostics := New().Render([]model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	paths := make([]model.RelativePath, len(plan.Files))
+	for index, file := range plan.Files {
+		paths[index] = file.Path
+	}
+	if !reflect.DeepEqual(paths, []model.RelativePath{".cursor-plugin/plugin.json", "README.md", "agents/reviewer.md", "skills/guide/SKILL.md", "skills/guide/docs/readme.md"}) {
+		t.Fatalf("paths = %#v", paths)
+	}
+}
+
+func TestRenderProjectProfileRejectsAgent(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Assets[0].Identity = "agent/reviewer"
 	pkg.Assets[0].Kind = model.AssetKindAgent

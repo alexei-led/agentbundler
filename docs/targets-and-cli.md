@@ -14,13 +14,20 @@ produce installable target roots:
   `agents/*.toml`, and `resources/`.
 - **Pi:** project `.pi/skills/<name>/`; package `package.json`, `skills/`,
   `resources/`, and—when agent assets are selected—`agents/`. **Agent Bundler**
-  registers package agents through `pi.subagents.agents`, which requires
-  [`pi-subagents`](https://github.com/nicobailon/pi-subagents).
-- **GitHub Copilot:** `.github/skills/<name>/` and declared portable resources
-  under `.github/resources/<name>/` in the project profile.
+  registers package agents through `pi.subagents.agents`. Add `pi-subagents` to
+  package metadata `dependencies` when the package includes agents.
+- **GitHub Copilot:** project `.github/skills/<name>/` and declared portable
+  resources under `.github/resources/<name>/`; package `plugin.json`, `skills/`,
+  `agents/*.agent.md`, and `resources/`.
 - **Grok Build:** `.grok/skills/<name>/` and declared portable resources under
-  `.grok/resources/<name>/` in the project profile.
-- **Cursor:** package `.cursor-plugin/plugin.json`, `skills/`, and `resources/`.
+  `.grok/resources/<name>/` in the project profile. Grok can also install a
+  Claude-compatible package root directly.
+- **Cursor:** package `.cursor-plugin/plugin.json`, `skills/`, `agents/*.md`,
+  and `resources/`.
+
+Every package profile also includes a generated `README.md` using its package
+metadata. Marketplace manifests remain repository integration metadata; **Agent
+Bundler** does not generate or publish marketplaces.
 
 Every skill output contains `SKILL.md` plus composed regular support files. When
 frontmatter exists, the renderer writes it as compact JSON between `---` lines.
@@ -142,5 +149,10 @@ They do not currently render:
 - target-native resources;
 - arbitrary custom capability uses;
 - multi-package aggregation;
-- full vendor plugin or extension manifests beyond the generated Codex and
-  Cursor skill manifests.
+- marketplace manifests, publishing, installation, or built-in vendor CLI
+  validation.
+
+Use a repository-owned marketplace manifest and CI smoke tests when distributing
+an output. `agbun check --native` runs only explicitly declared native checks;
+built-in target adapters do not declare vendor checks because vendor CLIs are
+optional local dependencies.

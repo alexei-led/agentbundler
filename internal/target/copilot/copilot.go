@@ -3,18 +3,19 @@ package copilot
 
 import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 	"github.com/alexei-led/agentbundler/internal/target/skills"
 )
 
 const (
 	Target         = model.TargetCopilot
-	FormatRevision = 3
+	FormatRevision = 4
 )
 
-// Capabilities returns Copilot's lossless native skill subset.
+// Capabilities returns Copilot's supported package asset capabilities.
 func Capabilities() []model.CapabilityRule {
 	return []model.CapabilityRule{
-		{Key: "asset.agent", State: model.CapabilityStateUnsupported},
+		{Key: "asset.agent", State: model.CapabilityStateNative},
 		{Key: "asset.hook", State: model.CapabilityStateUnsupported},
 		{Key: "asset.resource", State: model.CapabilityStateNative},
 		{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
@@ -22,7 +23,10 @@ func Capabilities() []model.CapabilityRule {
 	}
 }
 
-// Render emits skills in Copilot's project skill root.
+// Render emits either an installable Copilot plugin or project-local skills.
 func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+	if len(packages) == 1 && packages[0].Profile == model.TargetProfilePackage {
+		return packageoutput.Render(Target, packages)
+	}
 	return skills.RenderProject(Target, ".github/skills", ".github/resources", packages)
 }
