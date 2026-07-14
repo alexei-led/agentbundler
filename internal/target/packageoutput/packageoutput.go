@@ -44,6 +44,9 @@ func Render(target model.TargetID, packages []model.NormalizedPackage) (model.Ta
 		root := packageRoot(len(packages), pkg.Identity)
 		for _, asset := range sortedAssets(pkg.Assets) {
 			if err := renderAsset(&plan.Files, paths, target, root, asset); err != nil {
+				if fieldError, ok := err.(*unsupportedAgentFieldError); ok {
+					return empty(target), []model.Diagnostic{fieldError.diagnostic()}
+				}
 				return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 			}
 		}
@@ -110,6 +113,7 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 		if target == model.TargetClaude || target == model.TargetCopilot || target == model.TargetCursor {
 			frontmatter, err := agentFrontmatter(target, asset.Content.Frontmatter)
 			if err != nil {
+				setUnsupportedAgentFieldAsset(err, asset.Identity)
 				return err
 			}
 			data, err := markdown(frontmatter, asset.Content.Body)
@@ -125,6 +129,7 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 		if target == model.TargetPi {
 			frontmatter, err := agentFrontmatter(target, asset.Content.Frontmatter)
 			if err != nil {
+				setUnsupportedAgentFieldAsset(err, asset.Identity)
 				return err
 			}
 			data, err := piSubagent(frontmatter, asset.Content.Body)
@@ -150,11 +155,39 @@ func agentFrontmatter(target model.TargetID, source map[string]any) (map[string]
 	result := make(map[string]any, len(source))
 	for key, value := range source {
 		if key == "sandbox_mode" && target != model.TargetCodex {
-			return nil, fmt.Errorf("agent frontmatter field %q has security semantics unsupported by target %q; remove it with a target overlay or exclude the agent", key, target)
+			return nil, &unsupportedAgentFieldError{Target: target, Field: key}
 		}
 		result[key] = value
 	}
 	return result, nil
+}
+
+type unsupportedAgentFieldError struct {
+	Target model.TargetID
+	Asset  model.AssetID
+	Field  string
+}
+
+func setUnsupportedAgentFieldAsset(err error, asset model.AssetID) {
+	if fieldError, ok := err.(*unsupportedAgentFieldError); ok {
+		fieldError.Asset = asset
+	}
+}
+
+func (e *unsupportedAgentFieldError) Error() string {
+	return fmt.Sprintf("agent %q field %q is unsupported by target %q", e.Asset, e.Field, e.Target)
+}
+
+func (e *unsupportedAgentFieldError) diagnostic() model.Diagnostic {
+	return model.Diagnostic{
+		Code:     "unsupported-agent-field",
+		Severity: model.SeverityError,
+		Message:  e.Error(),
+		Hint:     `move "sandbox_mode" from base agent frontmatter to <agent-directory>/.agentbundler/targets/codex.json: {"frontmatterPatch":{"sandbox_mode":"read-only"}}`,
+		Asset:    e.Asset,
+		Field:    e.Field,
+		Targets:  []model.TargetID{e.Target},
+	}
 }
 
 func renderSkill(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, packageRoot string, asset model.NormalizedAsset, root string) error {

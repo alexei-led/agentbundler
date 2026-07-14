@@ -4,11 +4,29 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/target/pi"
 )
+
+func TestConsolidateDiagnosticsGroupsUnsupportedAgentFieldTargets(t *testing.T) {
+	diagnostics := consolidateDiagnostics([]model.Diagnostic{
+		{Code: "unsupported-agent-field", Severity: model.SeverityError, Asset: "agent/demo", Field: "sandbox_mode", Targets: []model.TargetID{model.TargetPi}, Hint: "move it"},
+		{Code: "unsupported-agent-field", Severity: model.SeverityError, Asset: "agent/demo", Field: "sandbox_mode", Targets: []model.TargetID{model.TargetClaude}, Hint: "move it"},
+	})
+	if len(diagnostics) != 1 {
+		t.Fatalf("consolidateDiagnostics() = %#v", diagnostics)
+	}
+	if !reflect.DeepEqual(diagnostics[0].Targets, []model.TargetID{model.TargetClaude, model.TargetPi}) {
+		t.Fatalf("targets = %#v", diagnostics[0].Targets)
+	}
+	want := `agent "agent/demo" field "sandbox_mode" is unsupported by targets: claude, pi`
+	if diagnostics[0].Message != want || diagnostics[0].Hint != "move it" {
+		t.Fatalf("diagnostic = %#v", diagnostics[0])
+	}
+}
 
 func TestCompileRejectsNativeVerifyForBuild(t *testing.T) {
 	result := Compile(CompileRequest{Mode: BuildModeBuild, NativeVerify: true})

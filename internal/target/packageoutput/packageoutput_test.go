@@ -174,8 +174,11 @@ func TestRenderRejectsUnsupportedSandboxSemantics(t *testing.T) {
 			pkg := packageFixture(target)
 			pkg.Assets[1].Content.Frontmatter["sandbox_mode"] = "read-only"
 			_, diagnostics := Render(target, []model.NormalizedPackage{pkg})
-			if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "security semantics") {
+			if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-agent-field" {
 				t.Fatalf("Render() diagnostics = %#v", diagnostics)
+			}
+			if diagnostics[0].Asset != "agent/reviewer" || diagnostics[0].Field != "sandbox_mode" || !reflect.DeepEqual(diagnostics[0].Targets, []model.TargetID{target}) || diagnostics[0].Hint == "" {
+				t.Fatalf("Render() diagnostic = %#v", diagnostics[0])
 			}
 		})
 	}

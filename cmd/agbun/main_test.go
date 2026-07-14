@@ -13,6 +13,17 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
+func TestFormatDiagnosticIncludesActionableHint(t *testing.T) {
+	diagnostic := model.Diagnostic{
+		Code: "unsupported-agent-field", Severity: model.SeverityError,
+		Message: "field is unsupported", Hint: "move it to a target sidecar",
+	}
+	want := "error[unsupported-agent-field]: field is unsupported\n  hint: move it to a target sidecar"
+	if got := formatDiagnostic(diagnostic); got != want {
+		t.Fatalf("formatDiagnostic() = %q, want %q", got, want)
+	}
+}
+
 func TestRunHelpListsCommandsAndDiscoveryTopics(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if status := run([]string{"help"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
@@ -145,6 +156,27 @@ func TestRunMapsManifestAndSelectors(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"command":"check"`) || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunJSONIncludesStructuredDiagnosticHint(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "agentbundle.json", `{"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base.json"]}}`)
+	var stdout, stderr bytes.Buffer
+	status := run([]string{"check", "--json"}, root, &stdout, &stderr, func(compiler.CompileRequest) compiler.CompilationResult {
+		return compiler.CompilationResult{Diagnostics: []model.Diagnostic{{
+			Code: "unsupported-agent-field", Severity: model.SeverityError,
+			Message: "unsupported field", Hint: "move it", Asset: "agent/demo",
+			Field: "sandbox_mode", Targets: []model.TargetID{model.TargetClaude},
+		}}}
+	})
+	if status != 1 || stderr.Len() != 0 {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{`"hint":"move it"`, `"asset":"agent/demo"`, `"field":"sandbox_mode"`, `"targets":["claude"]`} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("JSON output missing %q: %q", want, stdout.String())
+		}
 	}
 }
 

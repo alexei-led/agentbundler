@@ -48,14 +48,33 @@ agbun check --json
 
 ## `unsupported capability` or native-gap errors
 
-Current renderers emit one package of skills, portable resources, and supported
-native agent forms. Hooks, scripts, target-native resources, and arbitrary custom
-capability uses are not rendered. A composition policy can classify or resolve a
+Current renderers emit skills, portable resources, and supported native agent
+forms. Installable profiles may emit multiple self-contained package roots.
+Hooks, scripts, target-native resources, and arbitrary custom capability uses are
+not rendered. A composition policy can classify or resolve a
 native gap, but it cannot make an unsupported asset appear in the output.
 
 If the asset is not needed for the target, exclude it in the source/package
 selection or use a target that supports the required representation. Otherwise,
 keep the richer source for a future adapter and publish only the skill subset.
+
+## `unsupported-agent-field`
+
+Security-sensitive agent fields are target-specific. For example,
+`sandbox_mode` is a Codex agent field and must not appear in shared base
+frontmatter. Put it in the agent's Codex sidecar:
+
+```json
+{
+  "frontmatterPatch": {
+    "sandbox_mode": "read-only"
+  }
+}
+```
+
+For a bundle agent file, save this as
+`<agent-directory>/.agentbundler/targets/codex.json`. Alternatively, exclude the
+agent from targets that cannot preserve the field's semantics.
 
 ## Frontmatter parse errors
 
@@ -77,8 +96,9 @@ Common causes:
 - a non-object value;
 - an invalid UTF-8 bundle Markdown file.
 
-Vendor-specific keys are not validated by **Agent Bundler**. The target runtime still
-needs to support them.
+Known security-sensitive target fields fail when another target cannot preserve
+their semantics. Other vendor-specific keys are not exhaustively validated; the
+target runtime still needs to support them.
 
 ## Section patch does not apply
 

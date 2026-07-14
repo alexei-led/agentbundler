@@ -100,6 +100,7 @@ func Compile(request CompileRequest) CompilationResult {
 		}
 		result.Plan.Targets = append(result.Plan.Targets, targetPlan)
 	}
+	result.Diagnostics = consolidateDiagnostics(result.Diagnostics)
 	if hasErrors(result.Diagnostics) {
 		return result
 	}
@@ -262,6 +263,44 @@ func buildProvenance(manifest model.SourceManifest, inventory model.SourceInvent
 		}
 	}
 	return input
+}
+
+func consolidateDiagnostics(diagnostics []model.Diagnostic) []model.Diagnostic {
+	result := make([]model.Diagnostic, 0, len(diagnostics))
+	indexes := make(map[string]int)
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code != "unsupported-agent-field" || diagnostic.Asset == "" || diagnostic.Field == "" {
+			result = append(result, diagnostic)
+			continue
+		}
+		key := diagnostic.Code + "\x00" + string(diagnostic.Asset) + "\x00" + diagnostic.Field
+		if index, exists := indexes[key]; exists {
+			result[index].Targets = append(result[index].Targets, diagnostic.Targets...)
+			continue
+		}
+		indexes[key] = len(result)
+		result = append(result, diagnostic)
+	}
+	for index := range result {
+		diagnostic := &result[index]
+		if diagnostic.Code != "unsupported-agent-field" {
+			continue
+		}
+		sort.Slice(diagnostic.Targets, func(left, right int) bool { return diagnostic.Targets[left] < diagnostic.Targets[right] })
+		uniqueTargets := diagnostic.Targets[:0]
+		for _, targetID := range diagnostic.Targets {
+			if len(uniqueTargets) == 0 || uniqueTargets[len(uniqueTargets)-1] != targetID {
+				uniqueTargets = append(uniqueTargets, targetID)
+			}
+		}
+		diagnostic.Targets = uniqueTargets
+		targets := make([]string, len(diagnostic.Targets))
+		for targetIndex, targetID := range diagnostic.Targets {
+			targets[targetIndex] = string(targetID)
+		}
+		diagnostic.Message = fmt.Sprintf("agent %q field %q is unsupported by targets: %s", diagnostic.Asset, diagnostic.Field, strings.Join(targets, ", "))
+	}
+	return result
 }
 
 func hasErrors(diagnostics []model.Diagnostic) bool {

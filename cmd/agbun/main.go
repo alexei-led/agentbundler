@@ -38,6 +38,10 @@ type jsonDiagnostic struct {
 	Severity model.Severity        `json:"severity"`
 	Location *model.SourceLocation `json:"location"`
 	Message  string                `json:"message"`
+	Hint     string                `json:"hint,omitempty"`
+	Asset    model.AssetID         `json:"asset,omitempty"`
+	Field    string                `json:"field,omitempty"`
+	Targets  []model.TargetID      `json:"targets,omitempty"`
 }
 
 func main() {
@@ -188,7 +192,12 @@ func renderResult(parsed options, stdout, stderr io.Writer, result compiler.Comp
 	if parsed.jsonOutput {
 		output := jsonResult{Version: 1, Command: parsed.command, Diagnostics: make([]jsonDiagnostic, len(result.Diagnostics)), Drift: result.Drift, NativeVerificationFailed: result.NativeVerificationFailed}
 		for i, diagnostic := range result.Diagnostics {
-			output.Diagnostics[i] = jsonDiagnostic{Code: diagnostic.Code, Severity: diagnostic.Severity, Location: diagnostic.Location, Message: diagnostic.Message}
+			output.Diagnostics[i] = jsonDiagnostic{
+				Code: diagnostic.Code, Severity: diagnostic.Severity,
+				Location: diagnostic.Location, Message: diagnostic.Message,
+				Hint: diagnostic.Hint, Asset: diagnostic.Asset, Field: diagnostic.Field,
+				Targets: diagnostic.Targets,
+			}
 		}
 		if err := json.NewEncoder(stdout).Encode(output); err != nil {
 			_, _ = fmt.Fprintf(stderr, "OUTPUT_WRITE_FAILED: %v\n", err)
@@ -230,7 +239,11 @@ func formatDiagnostic(diagnostic model.Diagnostic) string {
 		}
 		location += ": "
 	}
-	return fmt.Sprintf("%s%s[%s]: %s", location, diagnostic.Severity, diagnostic.Code, diagnostic.Message)
+	formatted := fmt.Sprintf("%s%s[%s]: %s", location, diagnostic.Severity, diagnostic.Code, diagnostic.Message)
+	if diagnostic.Hint != "" {
+		formatted += "\n  hint: " + diagnostic.Hint
+	}
+	return formatted
 }
 
 func renderUsageError(stderr io.Writer, err error) int {

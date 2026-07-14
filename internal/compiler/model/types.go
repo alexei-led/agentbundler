@@ -263,6 +263,10 @@ type Diagnostic struct {
 	Severity Severity        `json:"severity"`
 	Location *SourceLocation `json:"location,omitempty"`
 	Message  string          `json:"message"`
+	Hint     string          `json:"hint,omitempty"`
+	Asset    AssetID         `json:"asset,omitempty"`
+	Field    string          `json:"field,omitempty"`
+	Targets  []TargetID      `json:"targets,omitempty"`
 }
 
 // PlannedFile describes one generated file.

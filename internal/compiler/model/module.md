@@ -68,7 +68,7 @@ SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: 
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, profile: TargetProfile?, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
 
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
+Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String, hint: String?, asset: AssetID?, field: String?, targets: [TargetID]? }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
 NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
 TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
