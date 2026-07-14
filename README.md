@@ -54,7 +54,8 @@ Unsupported capabilities fail instead of being silently discarded.
 
 **Agent Bundler** is a compiler, not an agent runtime, installer, marketplace, or
 publisher. It creates target-ready files; your project or release workflow
-decides where to install or publish them.
+decides where to install or publish them. Run repository-owned vendor smoke tests
+before publishing; see [Targets and CLI](docs/targets-and-cli.md).
 
 ## Install
 

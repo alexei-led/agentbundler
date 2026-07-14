@@ -211,7 +211,10 @@ Normal workflow after source/config changes:
 2. Run `agbun check` to see whether output is stale.
 3. Run `agbun build` using the dedicated output directory.
 4. Run `agbun check` again.
-5. Inspect generated target paths and report any unsupported source assets.
+5. For a distributed package, run repository-owned vendor smoke tests. `agbun
+check --native` runs only declared checks; built-in adapters do not invoke
+   optional vendor CLIs.
+6. Inspect generated target paths and report any unsupported source assets.
 
 ## Diagnose failures
 
@@ -228,7 +231,8 @@ Normal workflow after source/config changes:
   unsupported hook, script, or native resource renderable.
 - Target not recognizing files: confirm the generated target path, then check
   the target agent's current runtime documentation. **Agent Bundler** creates files;
-  it does not install, enable, or register an agent plugin.
+  it does not install, enable, or register an agent plugin. Validate a published
+  package with the repository's target-specific vendor smoke tests.
 
 When reporting a failure, include the command, exit status, relevant diagnostic,
 manifest path, selected target/package, and whether output was changed.

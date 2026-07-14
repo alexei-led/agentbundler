@@ -39,6 +39,33 @@ The target directory is a layout contract, not proof of vendor feature parity.
 Copy or package the matching target subtree according to the target's current
 runtime documentation.
 
+## Distribution smoke tests
+
+`agbun check` verifies source-to-output drift only. Before publishing a package,
+run vendor checks in the owning repository. Use disposable configuration or
+workspace directories for commands that install a plugin.
+
+```sh
+# Claude-compatible package, including Grok Build.
+claude plugin validate dist/claude
+grok plugin validate dist/claude
+
+# GitHub Copilot package, through the repository-owned marketplace.
+copilot plugin marketplace add /path/to/repository
+copilot plugin install package-id@marketplace-id
+
+# Cursor package. A prompt proves the package loaded without enabling writes.
+mkdir -p /tmp/cursor-package-smoke
+cursor-agent --plugin-dir dist/cursor \
+  --workspace /tmp/cursor-package-smoke --print --mode ask --trust \
+  'State the installed plugin name and one available skill.'
+```
+
+Codex discovers standalone agents from `.codex/agents/` or `~/.codex/agents/`,
+not from a plugin manifest. Pi packages with generated agents require the
+`pi-subagents` dependency declared in their package metadata. Keep those
+integration steps and any marketplace manifest outside compiler output.
+
 ## Vendor documentation
 
 - [Claude Code plugins](https://code.claude.com/docs/en/plugins) and
@@ -136,8 +163,9 @@ Current target renderers intentionally support:
 - one package per target plan;
 - `skill` assets and portable `resource` directory trees, including sibling
   project resources for Copilot and Grok;
-- Claude Markdown agents, Codex standalone TOML agents, and Pi subagent
-  Markdown agents in package profiles;
+- Claude Markdown agents, Codex standalone TOML agents, Pi subagent Markdown
+  agents, GitHub Copilot `.agent.md` agents, and Cursor Markdown agents in
+  package profiles;
 - regular support files;
 - YAML frontmatter with JSON-compatible values and Markdown bodies;
 - target overlays for frontmatter, heading blocks, files, and deletions.
