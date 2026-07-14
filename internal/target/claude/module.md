@@ -81,7 +81,12 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `claude` at `formatRevision: 2`. It renders exactly one package of `asset.skill` content to `.claude/skills/<skill>/SKILL.md` plus support files. `asset.agent`, `asset.hook`, and `asset.native-resource` are unsupported. There is no `package-index.json`, manifest, or marketplace claim.
+The adapter's `target` is `claude` at `formatRevision: 2`. Project profiles render one
+package of `asset.skill` content to `.claude/skills/<skill>/SKILL.md` plus support
+files. Installable package profiles render supported assets under a flat root for
+one package or a package-ID root for multiple packages. `asset.hook` and
+`asset.native-resource` remain unsupported. Marketplace claims stay outside the
+adapter.
 
 ## Integrations
 

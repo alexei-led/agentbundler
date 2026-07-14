@@ -24,10 +24,13 @@ flowchart LR
 3. **Source importers** read one of `skills-repository`, `bundle`, or
    `claude-plugin` and normalize packages, assets, metadata, frontmatter, body,
    support files, capabilities, and native gaps.
-4. **Composition** clones one package for a target, applies its overlay and
-   preamble, checks capability acknowledgments, and resolves native-gap policy.
-5. **Target renderers** turn the normalized package into a target-relative
-   `BuildPlan`. They do not write files.
+4. **Composition** clones each selected package for a target, applies overlays
+   and preambles, checks capability acknowledgments, and resolves native-gap
+   policy.
+5. **Target renderers** turn normalized packages into a target-relative
+   distribution `BuildPlan`. Installable profiles keep package roots separate;
+   project profiles retain their target-specific package contract. Renderers do
+   not write files.
 6. **Artifact handling** adds provenance, stages output for `build`, or compares
    the plan against existing files for `check`.
 
@@ -129,11 +132,12 @@ or changing package responsibilities.
 
 ## Current boundary
 
-All built-in renderers currently accept one package containing skills. Package
-profiles additionally render portable resources and supported native agent forms.
-The source model is deliberately broader so richer assets and native gaps can be
-imported, validated, and reported, but hooks, scripts, target-native resources,
-and multi-package aggregation still need target-specific rendering contracts.
+Project renderers accept one package containing skills. Installable package
+profiles additionally render portable resources, supported native agent forms,
+and multiple self-contained package roots. The source model is deliberately
+broader so richer assets and native gaps can be imported, validated, and reported,
+but hooks, scripts, and target-native resources still need target-specific
+rendering contracts.
 
 For user-facing behavior, see [targets and CLI](targets-and-cli.md). For the
 input contract, see [configuration](configuration.md).

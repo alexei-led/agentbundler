@@ -10,8 +10,8 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-// Render emits one native skill-root tree. Native targets currently have no
-// portable multi-package aggregation contract, so exactly one package is accepted.
+// Render emits one native skill-root tree. Project output remains single-package;
+// installable multi-package output is handled by packageoutput.
 func Render(target model.TargetID, root string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	return render(target, root, "", packages)
 }

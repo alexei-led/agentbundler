@@ -32,7 +32,7 @@ func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPl
 	if adapter.Target != model.TargetCursor || adapter.FormatRevision != formatRevision || !sameCapabilityRules(adapter.Capabilities, capabilityRules) {
 		return model.TargetPlan{Target: model.TargetCursor}, []model.Diagnostic{{Code: "invalid-adapter", Severity: model.SeverityError, Message: "adapter is not the Cursor format revision 3 capability profile"}}
 	}
-	if len(packages) == 1 && packages[0].Profile == model.TargetProfilePackage {
+	if packagesHaveProfile(packages, model.TargetProfilePackage) {
 		return packageoutput.Render(adapter.Target, packages)
 	}
 	if len(packages) != 1 {
@@ -50,6 +50,18 @@ func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPl
 
 func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	return Render(adapter, packages)
+}
+
+func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {
+	if len(packages) == 0 {
+		return false
+	}
+	for _, pkg := range packages {
+		if pkg.Profile != profile {
+			return false
+		}
+	}
+	return true
 }
 
 func sameCapabilityRules(left, right []model.CapabilityRule) bool {

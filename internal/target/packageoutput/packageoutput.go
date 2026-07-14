@@ -10,75 +10,109 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-// Render emits one installable package root for a supported target.
+// Render emits one or more self-contained installable package roots for a supported target.
+// A single package keeps the target's historical flat layout. Multiple packages are
+// namespaced by package ID so each root can be installed independently.
 func Render(target model.TargetID, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	if len(packages) != 1 {
-		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", "installable target output requires exactly one package")}
+	if len(packages) == 0 {
+		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", "installable target output requires at least one package")}
 	}
-	pkg := packages[0]
-	if diagnostics := model.ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
-		return empty(target), diagnostics
-	}
-	if pkg.Target != target {
-		return empty(target), []model.Diagnostic{diagnostic("target-mismatch", fmt.Sprintf("package %q targets %q, not %q", pkg.Identity, pkg.Target, target))}
-	}
-	if pkg.Profile != model.TargetProfilePackage {
-		return empty(target), []model.Diagnostic{diagnostic("invalid-target-profile", fmt.Sprintf("target %q requires package profile", target))}
+	for _, pkg := range packages {
+		if diagnostics := model.ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
+			return empty(target), diagnostics
+		}
+		if pkg.Target != target {
+			return empty(target), []model.Diagnostic{diagnostic("target-mismatch", fmt.Sprintf("package %q targets %q, not %q", pkg.Identity, pkg.Target, target))}
+		}
+		if pkg.Profile != model.TargetProfilePackage {
+			return empty(target), []model.Diagnostic{diagnostic("invalid-target-profile", fmt.Sprintf("target %q requires package profile", target))}
+		}
 	}
 	if target != model.TargetClaude && target != model.TargetCodex && target != model.TargetPi && target != model.TargetCopilot && target != model.TargetCursor {
 		return empty(target), []model.Diagnostic{diagnostic("unsupported-target-profile", fmt.Sprintf("target %q has no installable package layout", target))}
 	}
 
-	plan := model.TargetPlan{Target: target, Packages: []model.PackageID{pkg.Identity}, Files: []model.PlannedFile{}, NativeChecks: []model.NativeCheck{}}
+	orderedPackages := append([]model.NormalizedPackage(nil), packages...)
+	sort.Slice(orderedPackages, func(left, right int) bool { return orderedPackages[left].Identity < orderedPackages[right].Identity })
+	packageIDs := make([]model.PackageID, 0, len(orderedPackages))
+	for _, pkg := range orderedPackages {
+		packageIDs = append(packageIDs, pkg.Identity)
+	}
+	plan := model.TargetPlan{Target: target, Packages: packageIDs, Files: []model.PlannedFile{}, NativeChecks: []model.NativeCheck{}}
 	paths := make(map[model.RelativePath]struct{})
-	for _, asset := range sortedAssets(pkg.Assets) {
-		if err := renderAsset(&plan.Files, paths, target, asset); err != nil {
+	for _, pkg := range orderedPackages {
+		root := packageRoot(len(packages), pkg.Identity)
+		for _, asset := range sortedAssets(pkg.Assets) {
+			if err := renderAsset(&plan.Files, paths, target, root, asset); err != nil {
+				return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
+			}
+		}
+		manifestBytes, err := manifest(target, pkg)
+		if err != nil {
+			return empty(target), []model.Diagnostic{diagnostic("invalid-package-manifest", err.Error())}
+		}
+		if err := add(&plan.Files, paths, rootedPath(root, "README.md"), packageReadme(pkg)); err != nil {
 			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 		}
-	}
-	manifest, err := manifest(target, pkg)
-	if err != nil {
-		return empty(target), []model.Diagnostic{diagnostic("invalid-package-manifest", err.Error())}
-	}
-	if err := add(&plan.Files, paths, "README.md", packageReadme(pkg)); err != nil {
-		return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
-	}
-	manifestPath := model.RelativePath(".claude-plugin/plugin.json")
-	switch target {
-	case model.TargetCodex:
-		manifestPath = ".codex-plugin/plugin.json"
-	case model.TargetPi:
-		manifestPath = "package.json"
-	case model.TargetCopilot:
-		manifestPath = "plugin.json"
-	case model.TargetCursor:
-		manifestPath = ".cursor-plugin/plugin.json"
-	}
-	if err := add(&plan.Files, paths, manifestPath, manifest); err != nil {
-		return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
+		if err := add(&plan.Files, paths, rootedPath(root, manifestPath(target)), manifestBytes); err != nil {
+			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
+		}
 	}
 	sort.Slice(plan.Files, func(left, right int) bool { return plan.Files[left].Path < plan.Files[right].Path })
 	return plan, nil
 }
 
-func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, target model.TargetID, asset model.NormalizedAsset) error {
+func packageRoot(packageCount int, packageID model.PackageID) string {
+	if packageCount == 1 {
+		return ""
+	}
+	return string(packageID)
+}
+
+func rootedPath(root, value string) model.RelativePath {
+	if root == "" {
+		return model.RelativePath(value)
+	}
+	return model.RelativePath(root + "/" + value)
+}
+
+func manifestPath(target model.TargetID) string {
+	switch target {
+	case model.TargetCodex:
+		return ".codex-plugin/plugin.json"
+	case model.TargetPi:
+		return "package.json"
+	case model.TargetCopilot:
+		return "plugin.json"
+	case model.TargetCursor:
+		return ".cursor-plugin/plugin.json"
+	default:
+		return ".claude-plugin/plugin.json"
+	}
+}
+
+func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, target model.TargetID, root string, asset model.NormalizedAsset) error {
 	name := strings.TrimPrefix(string(asset.Identity), string(asset.Kind)+"/")
 	if name == "" || strings.Contains(name, "/") {
 		return fmt.Errorf("asset identity %q cannot be rendered in a package root", asset.Identity)
 	}
 	switch asset.Kind {
 	case model.AssetKindSkill:
-		return renderSkill(files, paths, asset, "skills/"+name)
+		return renderSkill(files, paths, root, asset, "skills/"+name)
 	case model.AssetKindResource:
 		for path, data := range asset.Content.Files {
-			if err := add(files, paths, model.RelativePath("resources/"+name+"/"+string(path)), data); err != nil {
+			if err := add(files, paths, rootedPath(root, "resources/"+name+"/"+string(path)), data); err != nil {
 				return err
 			}
 		}
 		return nil
 	case model.AssetKindAgent:
 		if target == model.TargetClaude || target == model.TargetCopilot || target == model.TargetCursor {
-			data, err := markdown(agentFrontmatter(asset.Content.Frontmatter), asset.Content.Body)
+			frontmatter, err := agentFrontmatter(target, asset.Content.Frontmatter)
+			if err != nil {
+				return err
+			}
+			data, err := markdown(frontmatter, asset.Content.Body)
 			if err != nil {
 				return err
 			}
@@ -86,21 +120,25 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 			if target == model.TargetCopilot {
 				extension = ".agent.md"
 			}
-			return add(files, paths, model.RelativePath("agents/"+name+extension), data)
+			return add(files, paths, rootedPath(root, "agents/"+name+extension), data)
 		}
 		if target == model.TargetPi {
-			data, err := piSubagent(asset.Content.Frontmatter, asset.Content.Body)
+			frontmatter, err := agentFrontmatter(target, asset.Content.Frontmatter)
 			if err != nil {
 				return err
 			}
-			return add(files, paths, model.RelativePath("agents/"+name+".md"), data)
+			data, err := piSubagent(frontmatter, asset.Content.Body)
+			if err != nil {
+				return err
+			}
+			return add(files, paths, rootedPath(root, "agents/"+name+".md"), data)
 		}
 		if target == model.TargetCodex {
 			data, err := codexAgent(asset)
 			if err != nil {
 				return err
 			}
-			return add(files, paths, model.RelativePath("agents/"+name+".toml"), data)
+			return add(files, paths, rootedPath(root, "agents/"+name+".toml"), data)
 		}
 		return fmt.Errorf("target %q does not support package agent asset %q", target, asset.Identity)
 	default:
@@ -108,27 +146,27 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 	}
 }
 
-func agentFrontmatter(source map[string]any) map[string]any {
+func agentFrontmatter(target model.TargetID, source map[string]any) (map[string]any, error) {
 	result := make(map[string]any, len(source))
 	for key, value := range source {
-		if key == "sandbox_mode" {
-			continue
+		if key == "sandbox_mode" && target != model.TargetCodex {
+			return nil, fmt.Errorf("agent frontmatter field %q has security semantics unsupported by target %q; remove it with a target overlay or exclude the agent", key, target)
 		}
 		result[key] = value
 	}
-	return result
+	return result, nil
 }
 
-func renderSkill(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, asset model.NormalizedAsset, root string) error {
+func renderSkill(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, packageRoot string, asset model.NormalizedAsset, root string) error {
 	data, err := markdown(asset.Content.Frontmatter, asset.Content.Body)
 	if err != nil {
 		return err
 	}
-	if err := add(files, paths, model.RelativePath(root+"/SKILL.md"), data); err != nil {
+	if err := add(files, paths, rootedPath(packageRoot, root+"/SKILL.md"), data); err != nil {
 		return err
 	}
 	for path, data := range asset.Content.Files {
-		if err := add(files, paths, model.RelativePath(root+"/"+string(path)), data); err != nil {
+		if err := add(files, paths, rootedPath(packageRoot, root+"/"+string(path)), data); err != nil {
 			return err
 		}
 	}

@@ -39,15 +39,15 @@ by hand or point `output` at a project root containing unrelated agent files.
 
 ## What Agent Bundler does today
 
-The current adapters render one package containing skills, portable package
-resources, and supported native agent forms into target-native project or
-installable package layouts. They do not install an agent, run a model, publish
-a marketplace package, or promise that every target supports every frontmatter
-key.
+The current adapters render skills, portable package resources, and supported
+native agent forms into target-native project or installable package layouts.
+Installable profiles can render multiple self-contained packages under
+package-owned roots. They do not install an agent, run a model, publish a
+marketplace package, or promise that every target supports every frontmatter key.
 
 The source model can recognize richer assets and native gaps. The current target
-renderers reject hooks, scripts, target-native resources, and multi-package
-aggregation. That boundary is intentional and explicit in the compiler errors.
+renderers still reject hooks, scripts, and target-native resources. Unsupported
+capabilities fail explicitly in the compiler.
 
 ## Choose your next page
 

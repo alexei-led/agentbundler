@@ -39,15 +39,81 @@ func TestRenderClaudePackageWithSkillsAgentsAndResources(t *testing.T) {
 	}
 }
 
+func TestRenderMultiplePackagesAreSelfContainedAndNamespaced(t *testing.T) {
+	first := packageFixture(model.TargetClaude)
+	second := packageFixture(model.TargetClaude)
+	second.Identity = "second"
+	second.Metadata["description"] = "Second package"
+
+	plan, diagnostics := Render(model.TargetClaude, []model.NormalizedPackage{first, second})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	want := []model.RelativePath{
+		"demo/.claude-plugin/plugin.json",
+		"demo/README.md",
+		"demo/agents/reviewer.md",
+		"demo/resources/templates/design.md",
+		"demo/skills/demo/SKILL.md",
+		"second/.claude-plugin/plugin.json",
+		"second/README.md",
+		"second/agents/reviewer.md",
+		"second/resources/templates/design.md",
+		"second/skills/demo/SKILL.md",
+	}
+	paths := make([]model.RelativePath, len(plan.Files))
+	for index, file := range plan.Files {
+		paths[index] = file.Path
+	}
+	if !reflect.DeepEqual(paths, want) {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+
+	reversed, reversedDiagnostics := Render(model.TargetClaude, []model.NormalizedPackage{second, first})
+	if len(reversedDiagnostics) != 0 {
+		t.Fatalf("reversed Render() diagnostics = %#v", reversedDiagnostics)
+	}
+	if !reflect.DeepEqual(plan.Files, reversed.Files) {
+		t.Fatal("package order changed generated output")
+	}
+}
+
+func TestRenderDuplicatePackageRootsFailClosed(t *testing.T) {
+	first := packageFixture(model.TargetClaude)
+	second := packageFixture(model.TargetClaude)
+	_, diagnostics := Render(model.TargetClaude, []model.NormalizedPackage{first, second})
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "generated output path") {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestRenderMultiplePackagesForEveryInstallableTarget(t *testing.T) {
+	for _, target := range []model.TargetID{
+		model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetCursor,
+	} {
+		t.Run(string(target), func(t *testing.T) {
+			first := packageFixture(target)
+			second := packageFixture(target)
+			second.Identity = "second"
+			_, diagnostics := Render(target, []model.NormalizedPackage{first, second})
+			if len(diagnostics) != 0 {
+				t.Fatalf("Render() diagnostics = %#v", diagnostics)
+			}
+		})
+	}
+}
+
 func TestRenderCodexPackageAgentIsStandaloneTOML(t *testing.T) {
-	plan, diagnostics := Render(model.TargetCodex, []model.NormalizedPackage{packageFixture(model.TargetCodex)})
+	pkg := packageFixture(model.TargetCodex)
+	pkg.Assets[1].Content.Frontmatter["sandbox_mode"] = "read-only"
+	plan, diagnostics := Render(model.TargetCodex, []model.NormalizedPackage{pkg})
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
 	for _, file := range plan.Files {
 		if file.Path == "agents/reviewer.toml" {
 			text := string(file.Bytes)
-			if !containsAll(text, `name = "reviewer"`, `description = "Review code"`, `developer_instructions = """`) {
+			if !containsAll(text, `name = "reviewer"`, `description = "Review code"`, `sandbox_mode = "read-only"`, `developer_instructions = """`) {
 				t.Fatalf("agent TOML = %q", text)
 			}
 			return
@@ -102,6 +168,19 @@ func TestRenderPiPackageRejectsInvalidDependencies(t *testing.T) {
 	}
 }
 
+func TestRenderRejectsUnsupportedSandboxSemantics(t *testing.T) {
+	for _, target := range []model.TargetID{model.TargetClaude, model.TargetPi, model.TargetCopilot, model.TargetCursor} {
+		t.Run(string(target), func(t *testing.T) {
+			pkg := packageFixture(target)
+			pkg.Assets[1].Content.Frontmatter["sandbox_mode"] = "read-only"
+			_, diagnostics := Render(target, []model.NormalizedPackage{pkg})
+			if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "security semantics") {
+				t.Fatalf("Render() diagnostics = %#v", diagnostics)
+			}
+		})
+	}
+}
+
 func TestRenderPiPackageRegistersSubagents(t *testing.T) {
 	plan, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{packageFixture(model.TargetPi)})
 	if len(diagnostics) != 0 {
@@ -115,9 +194,6 @@ func TestRenderPiPackageRegistersSubagents(t *testing.T) {
 	}
 	if !containsAll(string(agent), "name: reviewer", "description: Review code", "inheritSkills: true") {
 		t.Fatalf("Pi subagent = %q", agent)
-	}
-	if contains(string(agent), "sandbox_mode") {
-		t.Fatalf("Pi subagent includes Codex-only sandbox mode: %q", agent)
 	}
 
 	var manifest map[string]any
@@ -157,7 +233,7 @@ func packageFixture(target model.TargetID) model.NormalizedPackage {
 		},
 		Assets: []model.NormalizedAsset{
 			{Identity: "skill/demo", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "demo", "description": "Demo"}, Body: "Use demo.\n", Files: map[model.RelativePath][]byte{}}},
-			{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code", "inheritSkills": true, "sandbox_mode": "read-only"}, Body: "Review.\n", Files: map[model.RelativePath][]byte{}}},
+			{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code", "inheritSkills": true}, Body: "Review.\n", Files: map[model.RelativePath][]byte{}}},
 			{Identity: "resource/templates", Kind: model.AssetKindResource, Content: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{"design.md": []byte("# Design\n")}}},
 		},
 	}

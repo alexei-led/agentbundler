@@ -123,9 +123,9 @@ agbun check --json
 
 `--root` points to the directory containing `agentbundle.json`. Without it,
 **Agent Bundler** searches the current directory and its parents. `--target` and
-`--package` may be repeated; selectors must be declared and unique. Current
-renderers require exactly one selected package per target plan. Use one package
-selector when building a target; multiple distinct packages are not aggregated.
+`--package` may be repeated; selectors must be declared and unique. Installable
+package profiles render one package at the historical flat root, or multiple
+packages under deterministic self-contained package-ID roots.
 
 ## Output ownership
 
@@ -166,7 +166,8 @@ declare no native checks, so it adds no checks today.
 
 Current target renderers intentionally support:
 
-- one package per target plan;
+- one flat package or multiple self-contained package-ID roots in installable profiles;
+  with multiple packages, each package is rendered below its package ID;
 - `skill` assets and portable `resource` directory trees, including sibling
   project resources for Copilot and Grok;
 - Claude Markdown agents, Codex standalone TOML agents, Pi subagent Markdown
@@ -182,7 +183,6 @@ They do not currently render:
 - scripts as a separate portable asset type;
 - target-native resources;
 - arbitrary custom capability uses;
-- multi-package aggregation;
 - marketplace manifests, publishing, installation, or built-in vendor CLI
   validation.
 

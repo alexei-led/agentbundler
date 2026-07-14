@@ -25,8 +25,20 @@ func Capabilities() []model.CapabilityRule {
 
 // Render emits either an installable Copilot plugin or project-local skills.
 func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	if len(packages) == 1 && packages[0].Profile == model.TargetProfilePackage {
+	if packagesHaveProfile(packages, model.TargetProfilePackage) {
 		return packageoutput.Render(Target, packages)
 	}
 	return skills.RenderProject(Target, ".github/skills", ".github/resources", packages)
+}
+
+func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {
+	if len(packages) == 0 {
+		return false
+	}
+	for _, pkg := range packages {
+		if pkg.Profile != profile {
+			return false
+		}
+	}
+	return true
 }

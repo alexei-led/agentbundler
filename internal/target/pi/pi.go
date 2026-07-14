@@ -31,11 +31,23 @@ func Capabilities() []model.CapabilityRule {
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
 func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	if len(packages) == 1 && packages[0].Profile == model.TargetProfilePackage {
+	if packagesHaveProfile(packages, model.TargetProfilePackage) {
 		return packageoutput.Render(adapter.Target(), packages)
 	}
 	return skills.Render(adapter.Target(), ".pi/skills", packages)
 }
 func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	return New().Render(packages)
+}
+
+func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {
+	if len(packages) == 0 {
+		return false
+	}
+	for _, pkg := range packages {
+		if pkg.Profile != profile {
+			return false
+		}
+	}
+	return true
 }

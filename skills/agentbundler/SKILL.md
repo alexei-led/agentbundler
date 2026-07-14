@@ -82,11 +82,12 @@ Source kinds:
 - `claude-plugin`: imports `.claude-plugin/plugin.json` and recognized Claude
   plugin assets.
 
-Current renderers emit one selected package containing skills, portable resources,
-and supported native agent forms. Package profiles support Claude, Codex, Pi,
-GitHub Copilot, and Cursor. Grok emits project-local skills/resources and accepts
-a Claude-compatible package root. Renderers do not generate marketplaces, install
-packages, or run built-in vendor validation.
+Current renderers emit skills, portable resources, and supported native agent
+forms. Package profiles support Claude, Codex, Pi, GitHub Copilot, and Cursor;
+multiple packages are emitted under self-contained package-ID roots. Grok emits
+project-local skills/resources and accepts a Claude-compatible package root.
+Renderers do not generate marketplaces, install packages, or run built-in vendor
+validation.
 
 ## Create a skill source
 

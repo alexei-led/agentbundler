@@ -10,9 +10,10 @@ This module owns the shared lossless skill rendering algorithm. Without it, four
 
 ## Functional Responsibilities
 
-- Render one normalized package of skill and portable resource assets below caller-provided native project roots.
+- Render normalized skill and portable resource assets below caller-provided native project roots.
 - Preserve frontmatter, body, support files, and package resources.
-- Reject unsupported kinds, capability uses, invalid identities, collisions, and multi-package aggregation.
+- Reject unsupported kinds, capability uses, invalid identities, collisions, and
+  multi-package project output.
 
 ## Subdomain Classification
 
@@ -25,7 +26,12 @@ This module owns the shared lossless skill rendering algorithm. Without it, four
 
 ## Public Contract
 
-`render(TargetID, skillRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]` accepts exactly one skills-only package. `renderProject(TargetID, skillRoot, resourceRoot, [NormalizedPackage])` additionally accepts `resource/<name>` assets. Both emit `<skillRoot>/<name>/SKILL.md` and skill support files; project rendering emits resources at `<resourceRoot>/<name>/`.
+`render(TargetID, skillRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]` accepts
+one skills-only project package. `renderProject(TargetID, skillRoot, resourceRoot,
+[NormalizedPackage])` additionally accepts `resource/<name>` assets. Both emit
+`<skillRoot>/<name>/SKILL.md` and skill support files; project rendering emits
+resources at `<resourceRoot>/<name>/`. Installable package aggregation belongs to
+`internal/target/packageoutput`.
 
 ## Integrations
 

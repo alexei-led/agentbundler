@@ -44,12 +44,13 @@ canonical source + manifest
 
 ## Current scope
 
-Today the target renderers produce one package of **skills**, portable package
-resources, and selected native agent forms. Package profiles emit installable
-Claude, Codex, Pi, GitHub Copilot, and Cursor roots; Grok emits a project
-skill/resource tree and accepts the Claude-compatible package format. Hooks,
-scripts, target-native resources, and multi-package aggregation are not rendered
-by the current adapters.
+Today the target renderers produce **skills**, portable package resources, and
+selected native agent forms. Package profiles emit installable Claude, Codex,
+Pi, GitHub Copilot, and Cursor roots; one package keeps its historical flat root,
+while multiple packages are self-contained below package-ID roots. Grok emits a
+project skill/resource tree and accepts the Claude-compatible package format.
+Hooks, scripts, and target-native resources are not rendered by the current
+adapters.
 Unsupported capabilities fail instead of being silently discarded.
 
 **Agent Bundler** is a compiler, not an agent runtime, installer, marketplace, or

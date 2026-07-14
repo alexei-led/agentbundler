@@ -41,5 +41,13 @@ func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagn
 }
 
 func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {
-	return len(packages) == 1 && packages[0].Profile == profile
+	if len(packages) == 0 {
+		return false
+	}
+	for _, pkg := range packages {
+		if pkg.Profile != profile {
+			return false
+		}
+	}
+	return true
 }
