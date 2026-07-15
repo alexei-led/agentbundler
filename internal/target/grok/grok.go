@@ -3,23 +3,16 @@ package grok
 
 import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 	"github.com/alexei-led/agentbundler/internal/target/skills"
 )
 
 const (
 	Target         = model.TargetGrok
-	FormatRevision = 3
+	FormatRevision = 4
 )
 
-var capabilityRules = []model.CapabilityRule{
-	{Key: "asset.agent", State: model.CapabilityStateUnsupported},
-	{Key: "asset.hook", State: model.CapabilityStateUnsupported},
-	{Key: "asset.resource", State: model.CapabilityStateNative},
-	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
-	{Key: "asset.skill", State: model.CapabilityStateNative},
-}
-
-// Adapter renders Grok's lossless native skill subset.
+// Adapter renders Grok project skills and installable plugins.
 type Adapter struct{}
 
 func New() Adapter                     { return Adapter{} }
@@ -30,8 +23,44 @@ func Capabilities() []model.CapabilityRule {
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
 func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
+		plan, diagnostics := packageoutput.RenderWithCodec(input, PackageCodec())
+		if len(diagnostics) != 0 {
+			return plan, diagnostics
+		}
+		plan.NativeChecks = nativeChecks(plan.Packages)
+		return plan, nil
+	}
 	return skills.RenderProject(adapter.Target(), ".grok/skills", ".grok/resources", input.Packages)
 }
 func Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	return New().Render(input)
+}
+
+func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {
+	if len(packages) == 0 {
+		return false
+	}
+	for _, pkg := range packages {
+		if pkg.Profile != profile {
+			return false
+		}
+	}
+	return true
+}
+
+func nativeChecks(packages []model.PackageID) []model.NativeCheck {
+	checks := make([]model.NativeCheck, 0, len(packages))
+	for _, identity := range packages {
+		root := "."
+		if len(packages) > 1 {
+			root = string(identity)
+		}
+		checks = append(checks, model.NativeCheck{
+			Program:   "grok",
+			Arguments: []string{"plugin", "validate", root},
+			Location:  model.SourceLocation{Path: "internal/target/grok/codec.go"},
+		})
+	}
+	return checks
 }

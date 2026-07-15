@@ -1,0 +1,261 @@
+package grok
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
+)
+
+const (
+	grokPluginRoot = "${GROK_PLUGIN_ROOT}"
+	grokHooksPath  = "hooks/hooks.json"
+)
+
+var capabilityRules = []model.CapabilityRule{
+	{Key: "asset.agent", State: model.CapabilityStateNative},
+	{Key: "asset.hook", State: model.CapabilityStateNative},
+	{Key: "asset.resource", State: model.CapabilityStateNative},
+	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
+	{Key: "asset.skill", State: model.CapabilityStateNative},
+	{Key: "hook.async", State: model.CapabilityStateUnsupported},
+	{Key: "hook.command.exec", State: model.CapabilityStateNative},
+	{Key: "hook.command.shell", State: model.CapabilityStateNative},
+	{Key: "hook.decision.block", State: model.CapabilityStateNative},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
+	{Key: "hook.event.notification", State: model.CapabilityStateNative},
+	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
+	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
+	{Key: "hook.event.post-tool-failure", State: model.CapabilityStateNative},
+	{Key: "hook.event.pre-compact", State: model.CapabilityStateNative},
+	{Key: "hook.event.pre-tool", State: model.CapabilityStateNative},
+	{Key: "hook.event.prompt-submit", State: model.CapabilityStateNative},
+	{Key: "hook.event.session-end", State: model.CapabilityStateNative},
+	{Key: "hook.event.session-start", State: model.CapabilityStateNative},
+	{Key: "hook.event.stop", State: model.CapabilityStateNative},
+	{Key: "hook.failure.closed", State: model.CapabilityStateUnsupported},
+	{Key: "hook.matcher.tool-category", State: model.CapabilityStateNative},
+}
+
+// PackageCodec owns Grok's Claude-compatible plugin serialization.
+func PackageCodec() packageoutput.Codec {
+	return packageoutput.Codec{
+		Target:          Target,
+		ManifestPath:    ".claude-plugin/plugin.json",
+		AgentRoot:       "agents",
+		HookPayloadRoot: "hooks",
+		Capabilities:    append([]model.CapabilityRule(nil), capabilityRules...),
+		Manifest:        manifest,
+		Agent:           markdownAgent,
+		Hooks:           hookManifest,
+		ValidatePackage: validatePackage,
+	}
+}
+
+func markdownAgent(asset model.NormalizedAsset) ([]byte, string, error) {
+	frontmatter := make(map[string]any, len(asset.Content.Frontmatter))
+	for key, value := range asset.Content.Frontmatter {
+		if key == "sandbox_mode" {
+			return nil, "", &packageoutput.UnsupportedAgentFieldError{Target: Target, Field: key}
+		}
+		frontmatter[key] = value
+	}
+	data, err := packageoutput.Markdown(frontmatter, asset.Content.Body)
+	return data, ".md", err
+}
+
+func manifest(pkg model.NormalizedPackage) ([]byte, error) {
+	values := packageoutput.ManifestBase(pkg)
+	packageoutput.CopyMetadata(values, pkg.Metadata, "version", "description", "author", "license", "homepage", "repository", "keywords")
+	if value, ok := values["author"]; ok {
+		values["author"] = packageoutput.PersonMetadata(value)
+	}
+	if packageoutput.PackageHasAsset(pkg, model.AssetKindHook) {
+		values["hooks"] = "./" + grokHooksPath
+	}
+	values["$schema"] = "https://json.schemastore.org/claude-code-plugin-manifest.json"
+	return packageoutput.ManifestJSON(values)
+}
+
+type nativeHookManifest struct {
+	Hooks map[string][]nativeHookGroup `json:"hooks"`
+}
+
+type nativeHookGroup struct {
+	Matcher string              `json:"matcher,omitempty"`
+	Hooks   []nativeHookHandler `json:"hooks"`
+}
+
+type nativeHookHandler struct {
+	Type    string    `json:"type"`
+	Command string    `json:"command"`
+	Args    *[]string `json:"args,omitempty"`
+	Timeout any       `json:"timeout"`
+}
+
+func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManifest, error) {
+	manifest := nativeHookManifest{Hooks: make(map[string][]nativeHookGroup)}
+	for _, hook := range input.Hooks() {
+		descriptor := hook.Descriptor()
+		event, ok := grokEvent(descriptor.Event)
+		if !ok {
+			return packageoutput.HookManifest{}, fmt.Errorf("hook %q event %q is unsupported by Grok", descriptor.Identity, descriptor.Event)
+		}
+		matcher, err := grokMatcher(descriptor)
+		if err != nil {
+			return packageoutput.HookManifest{}, err
+		}
+		handler, err := grokCommand(descriptor, hook)
+		if err != nil {
+			return packageoutput.HookManifest{}, err
+		}
+		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookGroup{Matcher: matcher, Hooks: []nativeHookHandler{handler}})
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		return packageoutput.HookManifest{}, err
+	}
+	return packageoutput.HookManifest{Path: grokHooksPath, Bytes: append(data, '\n')}, nil
+}
+
+func grokCommand(descriptor model.HookDescriptor, hook packageoutput.HookInput) (nativeHookHandler, error) {
+	handler := nativeHookHandler{Type: "command", Timeout: grokTimeout(descriptor.TimeoutMilliseconds)}
+	switch descriptor.Handler.Mode {
+	case model.HookHandlerModeExec:
+		if descriptor.Handler.Program == nil {
+			return nativeHookHandler{}, fmt.Errorf("hook %q exec handler has no program", descriptor.Identity)
+		}
+		handler.Command = *descriptor.Handler.Program
+		arguments := make([]string, 0, len(descriptor.Handler.Arguments))
+		for _, argument := range descriptor.Handler.Arguments {
+			switch {
+			case argument.Literal != nil:
+				arguments = append(arguments, *argument.Literal)
+			case argument.PackageFile != nil:
+				packagePath, ok := packageFilePath(hook, *argument.PackageFile)
+				if !ok {
+					return nativeHookHandler{}, fmt.Errorf("hook %q package file %q is missing from its rendered payload", descriptor.Identity, *argument.PackageFile)
+				}
+				arguments = append(arguments, grokPluginRoot+"/"+string(packagePath))
+			default:
+				return nativeHookHandler{}, fmt.Errorf("hook %q has an invalid command argument", descriptor.Identity)
+			}
+		}
+		handler.Args = &arguments
+	case model.HookHandlerModeShell:
+		if descriptor.Handler.ShellCommand == nil {
+			return nativeHookHandler{}, fmt.Errorf("hook %q shell handler has no command", descriptor.Identity)
+		}
+		handler.Command = *descriptor.Handler.ShellCommand
+	default:
+		return nativeHookHandler{}, fmt.Errorf("hook %q handler mode %q is unsupported by Grok", descriptor.Identity, descriptor.Handler.Mode)
+	}
+	return handler, nil
+}
+
+func packageFilePath(hook packageoutput.HookInput, path model.RelativePath) (model.RelativePath, bool) {
+	for _, file := range hook.PayloadFiles() {
+		if file.Path() == path {
+			return file.PackagePath(), true
+		}
+	}
+	return "", false
+}
+
+func grokTimeout(milliseconds int) any {
+	if milliseconds%1_000 == 0 {
+		return milliseconds / 1_000
+	}
+	return float64(milliseconds) / 1_000
+}
+
+func grokEvent(event model.HookEvent) (string, bool) {
+	value, ok := map[model.HookEvent]string{
+		model.HookEventSessionStart:    "SessionStart",
+		model.HookEventSessionEnd:      "SessionEnd",
+		model.HookEventPromptSubmit:    "UserPromptSubmit",
+		model.HookEventPreTool:         "PreToolUse",
+		model.HookEventPostTool:        "PostToolUse",
+		model.HookEventPostToolFailure: "PostToolUseFailure",
+		model.HookEventStop:            "Stop",
+		model.HookEventNotification:    "Notification",
+		model.HookEventPreCompact:      "PreCompact",
+		model.HookEventPostCompact:     "PostCompact",
+	}[event]
+	return value, ok
+}
+
+func grokMatcher(descriptor model.HookDescriptor) (string, error) {
+	if descriptor.Matcher == nil {
+		return "", nil
+	}
+	var names []string
+	for _, tool := range descriptor.Matcher.Tools {
+		switch tool {
+		case model.HookToolCategoryCommand:
+			names = append(names, "Bash")
+		case model.HookToolCategoryRead:
+			names = append(names, "Read")
+		case model.HookToolCategoryWrite:
+			names = append(names, "Write")
+		case model.HookToolCategoryEdit:
+			names = append(names, "Edit", "NotebookEdit")
+		case model.HookToolCategorySearch:
+			names = append(names, "Glob", "Grep")
+		case model.HookToolCategoryWeb:
+			names = append(names, "WebFetch", "WebSearch")
+		case model.HookToolCategoryTask:
+			names = append(names, "Task", "Agent")
+		case model.HookToolCategoryMCP:
+			names = append(names, "^mcp__.*$")
+		default:
+			return "", fmt.Errorf("hook %q tool category %q has no lossless Grok matcher", descriptor.Identity, tool)
+		}
+	}
+	return strings.Join(names, "|"), nil
+}
+
+func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
+	for _, asset := range pkg.Assets {
+		if asset.Kind != model.AssetKindHook || asset.Hook == nil {
+			continue
+		}
+		descriptor := asset.Hook
+		if _, ok := grokEvent(descriptor.Event); !ok {
+			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("event %q is unsupported by Grok", descriptor.Event))}
+		}
+		if descriptor.Asynchronous {
+			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("hook.async is unsupported for Grok event %q", descriptor.Event))}
+		}
+		if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
+			return []model.Diagnostic{hookDiagnostic(asset, "hook.failure.closed is unsupported because Grok hook timeouts, crashes, and malformed output fail open")}
+		}
+		if descriptor.Matcher != nil {
+			if _, err := grokMatcher(*descriptor); err != nil {
+				return []model.Diagnostic{hookDiagnostic(asset, err.Error())}
+			}
+		}
+		for _, use := range asset.CapabilityUses {
+			switch use.Key {
+			case "hook.decision.block":
+				if descriptor.Event != model.HookEventPreTool {
+					return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Grok pre-tool hooks", use.Key))}
+				}
+			case "hook.decision.rewrite-input":
+				return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is unsupported because Grok supports only explicit allow or deny", use.Key))}
+			}
+		}
+	}
+	return nil
+}
+
+func hookDiagnostic(asset model.NormalizedAsset, message string) model.Diagnostic {
+	location := model.CloneSourceLocation(asset.Hook.Location)
+	return model.Diagnostic{
+		Code: "unsupported-hook-semantics", Severity: model.SeverityError,
+		Location: &location, Message: fmt.Sprintf("hook %q: %s", asset.Identity, message),
+		Asset: asset.Identity, Targets: []model.TargetID{Target},
+	}
+}
