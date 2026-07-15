@@ -517,6 +517,24 @@ func TestValidateNormalizedPackageAcceptsTypedHooks(t *testing.T) {
 	}
 }
 
+func TestValidateNormalizedPackageAcceptsRepeatedExecArguments(t *testing.T) {
+	t.Parallel()
+
+	format := "%s %s"
+	value := "value"
+	asset := validHookAsset()
+	asset.Hook.Handler.Program = stringPointer("printf")
+	asset.Hook.Handler.Arguments = []HookArgument{
+		{Literal: &format},
+		{Literal: &value},
+		{Literal: &value},
+	}
+	pkg := NormalizedPackage{Identity: "base", Target: TargetClaude, Assets: []NormalizedAsset{asset}}
+	if diagnostics := ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
+		t.Fatalf("ValidateNormalizedPackage() diagnostics = %#v", diagnostics)
+	}
+}
+
 func TestValidateNormalizedPackageRejectsMalformedHookDescriptors(t *testing.T) {
 	t.Parallel()
 
@@ -550,9 +568,6 @@ func TestValidateNormalizedPackageRejectsMalformedHookDescriptors(t *testing.T) 
 		}},
 		{name: "package file missing", mutate: func(asset *NormalizedAsset) {
 			asset.Hook.Handler.Arguments[0] = HookArgument{PackageFile: relativePathPointer("scripts/missing.sh")}
-		}},
-		{name: "duplicate argument", mutate: func(asset *NormalizedAsset) {
-			asset.Hook.Handler.Arguments = append(asset.Hook.Handler.Arguments, asset.Hook.Handler.Arguments[0])
 		}},
 		{name: "invalid file origin", mutate: func(asset *NormalizedAsset) {
 			content := asset.Content.Files["scripts/run.sh"]

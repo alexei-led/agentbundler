@@ -1,0 +1,28 @@
+{
+  "config": {
+    "version": 1,
+    "hooks": [
+      {
+        "identity": "hook/ä",
+        "location": { "path": "src/hooks/ä/hook.json", "line": null, "column": null },
+        "event": "session-start",
+        "handler": { "mode": "exec", "program": "true", "arguments": [] },
+        "timeoutMilliseconds": 1000,
+        "asynchronous": false,
+        "failurePolicy": "open",
+        "order": 10
+      },
+      {
+        "identity": "hook/z",
+        "location": { "path": "src/hooks/z/hook.json", "line": null, "column": null },
+        "event": "session-start",
+        "handler": { "mode": "exec", "program": "true", "arguments": [] },
+        "timeoutMilliseconds": 1000,
+        "asynchronous": false,
+        "failurePolicy": "open",
+        "order": 10
+      }
+    ]
+  },
+  "expectedIdentities": ["hook/z", "hook/ä"]
+}

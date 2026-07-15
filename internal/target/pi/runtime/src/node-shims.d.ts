@@ -20,6 +20,7 @@ declare module "node:path" {
   export function relative(from: string, to: string): string;
 }
 declare const process: {
+  pid: number;
   platform: string;
-  kill(pid: number, signal: string): void;
+  kill(pid: number, signal: string | number): void;
 };

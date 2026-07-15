@@ -63,6 +63,7 @@ export const runProcess: ProcessRunner = async (command, options) => {
     const stdout: Uint8Array[] = [];
     const stderr: Uint8Array[] = [];
     let settled = false;
+    let failure: Error | undefined;
     let terminationStarted = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -72,11 +73,10 @@ export const runProcess: ProcessRunner = async (command, options) => {
       options.signal?.removeEventListener("abort", onAbort);
     };
     const fail = (error: Error): void => {
-      if (settled) return;
-      settled = true;
+      if (settled || failure !== undefined) return;
+      failure = error;
       terminate();
       cleanup(false);
-      reject(error);
     };
     const terminate = (): void => {
       if (terminationStarted) return;
@@ -85,6 +85,7 @@ export const runProcess: ProcessRunner = async (command, options) => {
       killTimer = setTimeout(() => signalChild(child, "SIGKILL"), KILL_GRACE_MILLISECONDS);
     };
     const collect = (target: Uint8Array[], chunk: Uint8Array, stream: "stdout" | "stderr"): void => {
+      if (failure !== undefined) return;
       const next = (stream === "stdout" ? stdoutBytes : stderrBytes) + chunk.byteLength;
       if (stream === "stdout") stdoutBytes = next; else stderrBytes = next;
       if (next > limit) {
@@ -104,6 +105,10 @@ export const runProcess: ProcessRunner = async (command, options) => {
       if (settled) return;
       settled = true;
       cleanup();
+      if (failure !== undefined) {
+        reject(failure);
+        return;
+      }
       resolvePromise({
         exitCode,
         signal,

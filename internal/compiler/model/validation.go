@@ -555,20 +555,14 @@ func validateHookCommand(identity AssetID, command HookCommand, files map[Relati
 		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q handler mode %q is invalid", identity, command.Mode))
 	}
 
-	arguments := make(map[string]struct{}, len(command.Arguments))
 	for index, argument := range command.Arguments {
-		kind := ""
-		value := ""
 		switch {
 		case argument.Literal != nil && argument.PackageFile == nil:
-			kind = "literal"
-			value = *argument.Literal
-			if strings.ContainsRune(value, '\x00') {
+			if strings.ContainsRune(*argument.Literal, '\x00') {
 				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d literal contains NUL", identity, index))
 			}
 		case argument.Literal == nil && argument.PackageFile != nil:
-			kind = "packageFile"
-			value = string(*argument.PackageFile)
+			value := string(*argument.PackageFile)
 			if err := validateRelativePath(value); err != nil {
 				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d packageFile: %v", identity, index, err))
 			} else if _, ok := files[*argument.PackageFile]; !ok {
@@ -576,13 +570,7 @@ func validateHookCommand(identity AssetID, command HookCommand, files map[Relati
 			}
 		default:
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d must contain exactly one of literal or packageFile", identity, index))
-			continue
 		}
-		key := kind + "\x00" + value
-		if _, ok := arguments[key]; ok {
-			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d duplicates %s %q", identity, index, kind, value))
-		}
-		arguments[key] = struct{}{}
 	}
 	return diagnostics
 }

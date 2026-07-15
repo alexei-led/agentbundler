@@ -1,3 +1,8 @@
+declare module "node:fs" {
+  export function readFileSync(path: string, encoding: "utf8"): string;
+  export function rmSync(path: string, options?: { force?: boolean }): void;
+}
+
 declare module "bun:test" {
   export function describe(name: string, body: () => void): void;
   export function test(name: string, body: () => unknown | Promise<unknown>): void;
