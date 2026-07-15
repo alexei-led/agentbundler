@@ -40,7 +40,7 @@ modules:
       - internal/compiler/model
     layer: model
     subdomain: core
-    volatility: medium
+    volatility: high
     deploy_unit: agentbundler
   composition:
     owner: alexei-led
@@ -60,7 +60,7 @@ modules:
       - internal/compiler/source
     layer: stage
     subdomain: core
-    volatility: medium
+    volatility: high
     deploy_unit: agentbundler
   target:
     owner: alexei-led
@@ -69,7 +69,7 @@ modules:
     public:
       - internal/target
     layer: stage
-    subdomain: supporting
+    subdomain: core
     volatility: high
     deploy_unit: agentbundler
   artifact:
@@ -79,8 +79,8 @@ modules:
     public:
       - internal/artifact
     layer: stage
-    subdomain: generic
-    volatility: low
+    subdomain: supporting
+    volatility: medium
     deploy_unit: agentbundler
   compiler:
     owner: alexei-led
@@ -90,7 +90,7 @@ modules:
       - internal/compiler
     layer: compiler
     subdomain: core
-    volatility: medium
+    volatility: high
     deploy_unit: agentbundler
   cmd_agentbundler:
     owner: alexei-led
@@ -101,7 +101,7 @@ modules:
     role: composition_root
     layer: cmd
     subdomain: generic
-    volatility: low
+    volatility: medium
     deploy_unit: agentbundler
 rules:
   - id: no_layer_back_edges

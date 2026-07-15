@@ -12,14 +12,6 @@ const (
 	FormatRevision = 2
 )
 
-var capabilityRules = []model.CapabilityRule{
-	{Key: "asset.agent", State: model.CapabilityStateNative},
-	{Key: "asset.hook", State: model.CapabilityStateUnsupported},
-	{Key: "asset.resource", State: model.CapabilityStateNative},
-	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
-	{Key: "asset.skill", State: model.CapabilityStateNative},
-}
-
 // Adapter renders Claude's lossless native skill subset.
 type Adapter struct{}
 
@@ -32,7 +24,7 @@ func Capabilities() []model.CapabilityRule {
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
 func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	if packagesHaveProfile(packages, model.TargetProfilePackage) {
-		return packageoutput.Render(adapter.Target(), packages)
+		return packageoutput.RenderWithCodec(packages, PackageCodec())
 	}
 	return skills.Render(adapter.Target(), ".claude/skills", packages)
 }

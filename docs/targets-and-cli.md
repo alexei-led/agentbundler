@@ -11,7 +11,7 @@ produce installable target roots:
 - **Claude Code:** project `.claude/skills/<name>/`; package
   `.claude-plugin/plugin.json`, `skills/`, `agents/`, and `resources/`.
 - **Codex:** package `.codex-plugin/plugin.json`, `skills/`, standalone
-  `agents/*.toml`, and `resources/`.
+  `.codex/agents/*.toml`, and `resources/`.
 - **Pi:** project `.pi/skills/<name>/`; package `package.json`, `skills/`,
   `resources/`, and—when agent assets are selected—`agents/`. **Agent Bundler**
   registers package agents through `pi.subagents.agents`. Add `pi-subagents` to
@@ -148,6 +148,10 @@ are normally written to stderr. The result contains:
 - `diagnostics`
 - `drift`
 - `nativeVerificationFailed`
+
+A diagnostic omits `location` when no source location exists. When `location`
+is present, it includes `path`, `line`, and `column`; `line` and `column` are
+integers when known and `null` when the source position is unknown.
 
 Manifest-discovery failures occur before the result object is created and are
 reported as ordinary diagnostics.

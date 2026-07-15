@@ -81,7 +81,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `cursor` at `formatRevision: 2`. It renders one native plugin with `.cursor-plugin/plugin.json` and `skills/<skill>/SKILL.md` plus support files. Capability rules are `asset.skill=native`; agents, hooks, and native resources are unsupported until their source schemas are modeled. The manifest follows Cursor's plugin schema and uses package identity as `name`.
+The adapter's `target` is `cursor` at `formatRevision: 3`. It renders project-profile skills through the native plugin layout and package-profile content with `.cursor-plugin/plugin.json`, `skills/`, and optional package agents. Hooks and native resources remain unsupported. The manifest follows Cursor's plugin schema and uses package identity as `name`.
 
 ## Integrations
 

@@ -10,12 +10,14 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-// Render emits one or more self-contained installable package roots for a supported target.
-// A single package keeps the target's historical flat layout. Multiple packages are
-// namespaced by package ID so each root can be installed independently.
-func Render(target model.TargetID, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+// RenderWithCodec aggregates package assets using a target-owned serialization codec.
+func RenderWithCodec(packages []model.NormalizedPackage, codec Codec) (model.TargetPlan, []model.Diagnostic) {
+	target := codec.Target
 	if len(packages) == 0 {
 		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", "installable target output requires at least one package")}
+	}
+	if diagnostics := validateCodec(codec); len(diagnostics) != 0 {
+		return empty(target), diagnostics
 	}
 	for _, pkg := range packages {
 		if diagnostics := model.ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
@@ -27,9 +29,14 @@ func Render(target model.TargetID, packages []model.NormalizedPackage) (model.Ta
 		if pkg.Profile != model.TargetProfilePackage {
 			return empty(target), []model.Diagnostic{diagnostic("invalid-target-profile", fmt.Sprintf("target %q requires package profile", target))}
 		}
-	}
-	if target != model.TargetClaude && target != model.TargetCodex && target != model.TargetPi && target != model.TargetCopilot && target != model.TargetCursor {
-		return empty(target), []model.Diagnostic{diagnostic("unsupported-target-profile", fmt.Sprintf("target %q has no installable package layout", target))}
+		if diagnostics := validateCapabilities(pkg, codec); len(diagnostics) != 0 {
+			return empty(target), diagnostics
+		}
+		if codec.ValidatePackage != nil {
+			if diagnostics := codec.ValidatePackage(pkg); len(diagnostics) != 0 {
+				return empty(target), diagnostics
+			}
+		}
 	}
 
 	orderedPackages := append([]model.NormalizedPackage(nil), packages...)
@@ -43,21 +50,21 @@ func Render(target model.TargetID, packages []model.NormalizedPackage) (model.Ta
 	for _, pkg := range orderedPackages {
 		root := packageRoot(len(packages), pkg.Identity)
 		for _, asset := range sortedAssets(pkg.Assets) {
-			if err := renderAsset(&plan.Files, paths, target, root, asset); err != nil {
-				if fieldError, ok := err.(*unsupportedAgentFieldError); ok {
-					return empty(target), []model.Diagnostic{fieldError.diagnostic()}
+			if err := renderAsset(&plan.Files, paths, codec, root, asset); err != nil {
+				if fieldError, ok := err.(*UnsupportedAgentFieldError); ok {
+					return empty(target), []model.Diagnostic{fieldError.Diagnostic()}
 				}
 				return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 			}
 		}
-		manifestBytes, err := manifest(target, pkg)
+		manifestBytes, err := codec.Manifest(pkg)
 		if err != nil {
 			return empty(target), []model.Diagnostic{diagnostic("invalid-package-manifest", err.Error())}
 		}
 		if err := add(&plan.Files, paths, rootedPath(root, "README.md"), packageReadme(pkg)); err != nil {
 			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 		}
-		if err := add(&plan.Files, paths, rootedPath(root, manifestPath(target)), manifestBytes); err != nil {
+		if err := add(&plan.Files, paths, rootedPath(root, codec.ManifestPath), manifestBytes); err != nil {
 			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 		}
 	}
@@ -79,22 +86,7 @@ func rootedPath(root, value string) model.RelativePath {
 	return model.RelativePath(root + "/" + value)
 }
 
-func manifestPath(target model.TargetID) string {
-	switch target {
-	case model.TargetCodex:
-		return ".codex-plugin/plugin.json"
-	case model.TargetPi:
-		return "package.json"
-	case model.TargetCopilot:
-		return "plugin.json"
-	case model.TargetCursor:
-		return ".cursor-plugin/plugin.json"
-	default:
-		return ".claude-plugin/plugin.json"
-	}
-}
-
-func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, target model.TargetID, root string, asset model.NormalizedAsset) error {
+func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, codec Codec, root string, asset model.NormalizedAsset) error {
 	name := strings.TrimPrefix(string(asset.Identity), string(asset.Kind)+"/")
 	if name == "" || strings.Contains(name, "/") {
 		return fmt.Errorf("asset identity %q cannot be rendered in a package root", asset.Identity)
@@ -110,83 +102,19 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 		}
 		return nil
 	case model.AssetKindAgent:
-		if target == model.TargetClaude || target == model.TargetCopilot || target == model.TargetCursor {
-			frontmatter, err := agentFrontmatter(target, asset.Content.Frontmatter)
-			if err != nil {
-				setUnsupportedAgentFieldAsset(err, asset.Identity)
-				return err
+		data, extension, err := codec.Agent(asset)
+		if err != nil {
+			if fieldError, ok := err.(*UnsupportedAgentFieldError); ok && fieldError.Asset == "" {
+				fieldError.Asset = asset.Identity
 			}
-			data, err := markdown(frontmatter, asset.Content.Body)
-			if err != nil {
-				return err
-			}
-			extension := ".md"
-			if target == model.TargetCopilot {
-				extension = ".agent.md"
-			}
-			return add(files, paths, rootedPath(root, "agents/"+name+extension), data)
+			return err
 		}
-		if target == model.TargetPi {
-			frontmatter, err := agentFrontmatter(target, asset.Content.Frontmatter)
-			if err != nil {
-				setUnsupportedAgentFieldAsset(err, asset.Identity)
-				return err
-			}
-			data, err := piSubagent(frontmatter, asset.Content.Body)
-			if err != nil {
-				return err
-			}
-			return add(files, paths, rootedPath(root, "agents/"+name+".md"), data)
+		if err := validateAgentSuffix(extension); err != nil {
+			return err
 		}
-		if target == model.TargetCodex {
-			data, err := codexAgent(asset)
-			if err != nil {
-				return err
-			}
-			return add(files, paths, rootedPath(root, "agents/"+name+".toml"), data)
-		}
-		return fmt.Errorf("target %q does not support package agent asset %q", target, asset.Identity)
+		return add(files, paths, rootedPath(root, codec.AgentRoot+"/"+name+extension), data)
 	default:
-		return fmt.Errorf("target %q does not support package asset %q", target, asset.Identity)
-	}
-}
-
-func agentFrontmatter(target model.TargetID, source map[string]any) (map[string]any, error) {
-	result := make(map[string]any, len(source))
-	for key, value := range source {
-		if key == "sandbox_mode" && target != model.TargetCodex {
-			return nil, &unsupportedAgentFieldError{Target: target, Field: key}
-		}
-		result[key] = value
-	}
-	return result, nil
-}
-
-type unsupportedAgentFieldError struct {
-	Target model.TargetID
-	Asset  model.AssetID
-	Field  string
-}
-
-func setUnsupportedAgentFieldAsset(err error, asset model.AssetID) {
-	if fieldError, ok := err.(*unsupportedAgentFieldError); ok {
-		fieldError.Asset = asset
-	}
-}
-
-func (e *unsupportedAgentFieldError) Error() string {
-	return fmt.Sprintf("agent %q field %q is unsupported by target %q", e.Asset, e.Field, e.Target)
-}
-
-func (e *unsupportedAgentFieldError) diagnostic() model.Diagnostic {
-	return model.Diagnostic{
-		Code:     "unsupported-agent-field",
-		Severity: model.SeverityError,
-		Message:  e.Error(),
-		Hint:     `move "sandbox_mode" from base agent frontmatter to <agent-directory>/.agentbundler/targets/codex.json: {"frontmatterPatch":{"sandbox_mode":"read-only"}}`,
-		Asset:    e.Asset,
-		Field:    e.Field,
-		Targets:  []model.TargetID{e.Target},
+		return fmt.Errorf("asset kind %q is not supported in package output", asset.Kind)
 	}
 }
 
@@ -222,54 +150,36 @@ func packageReadme(pkg model.NormalizedPackage) []byte {
 	return []byte(strings.Join(lines, "\n") + "\n")
 }
 
-func manifest(target model.TargetID, pkg model.NormalizedPackage) ([]byte, error) {
-	base := map[string]any{"name": pkg.Identity}
-	switch target {
-	case model.TargetClaude:
-		copyMetadata(base, pkg.Metadata, "version", "description", "author", "license", "homepage", "repository", "keywords")
-		if value, ok := base["author"]; ok {
-			base["author"] = personMetadata(value)
-		}
-		base["$schema"] = "https://json.schemastore.org/claude-code-plugin-manifest.json"
-	case model.TargetCodex:
-		copyMetadata(base, pkg.Metadata, "version", "description", "author", "license", "homepage", "repository", "keywords", "interface")
-		if value, ok := base["author"]; ok {
-			base["author"] = personMetadata(value)
-		}
-		base["skills"] = "./skills"
-	case model.TargetPi:
-		copyMetadata(base, pkg.Metadata, "version", "description", "keywords", "license", "homepage", "repository")
-		if value, ok := pkg.Metadata["dependencies"]; ok {
-			dependencies, err := dependencyMetadata(value)
-			if err != nil {
-				return nil, fmt.Errorf("dependencies: %w", err)
-			}
-			base["dependencies"] = dependencies
-		}
-		base["keywords"] = appendKeywords(base["keywords"])
-		pi := map[string]any{"skills": []string{"./skills"}}
-		if packageHasAsset(pkg, model.AssetKindAgent) {
-			pi["subagents"] = map[string]any{"agents": []string{"./agents"}}
-		}
-		base["pi"] = pi
-	case model.TargetCopilot:
-		copyMetadata(base, pkg.Metadata, "version", "description", "author", "license", "homepage", "repository", "keywords")
-		if value, ok := base["author"]; ok {
-			base["author"] = personMetadata(value)
-		}
-		base["skills"] = []string{"skills/"}
-		if packageHasAsset(pkg, model.AssetKindAgent) {
-			base["agents"] = "agents/"
-		}
-	case model.TargetCursor:
-		copyMetadata(base, pkg.Metadata, "version", "description", "displayName", "homepage", "repository", "license", "keywords")
-		base["skills"] = "./skills/"
-	}
-	data, err := json.Marshal(orderedManifest(base, target))
+// ManifestBase returns the common installable package manifest fields.
+func ManifestBase(pkg model.NormalizedPackage) map[string]any {
+	return map[string]any{"name": pkg.Identity}
+}
+
+// CopyMetadata copies selected package metadata fields into a manifest.
+func CopyMetadata(destination map[string]any, metadata model.PackageMetadata, keys ...string) {
+	copyMetadata(destination, metadata, keys...)
+}
+
+// PersonMetadata normalizes a manifest author value.
+func PersonMetadata(value any) any { return personMetadata(value) }
+
+// ManifestJSON serializes a package manifest deterministically.
+func ManifestJSON(values map[string]any) ([]byte, error) {
+	data, err := json.Marshal(values)
 	if err != nil {
 		return nil, err
 	}
 	return append(data, '\n'), nil
+}
+
+// PackageHasAsset reports whether a package contains an asset kind.
+func PackageHasAsset(pkg model.NormalizedPackage, kind model.AssetKind) bool {
+	return packageHasAsset(pkg, kind)
+}
+
+// Markdown serializes markdown frontmatter and body.
+func Markdown(frontmatter map[string]any, body string) ([]byte, error) {
+	return markdown(frontmatter, body)
 }
 
 func copyMetadata(destination map[string]any, metadata model.PackageMetadata, keys ...string) {
@@ -292,12 +202,6 @@ func personMetadata(value any) any {
 	return value
 }
 
-func orderedManifest(values map[string]any, target model.TargetID) map[string]any {
-	// encoding/json sorts map keys, but this helper keeps the target-specific
-	// manifest shape explicit and makes future schema review local to this file.
-	return values
-}
-
 func packageHasAsset(pkg model.NormalizedPackage, kind model.AssetKind) bool {
 	for _, asset := range pkg.Assets {
 		if asset.Kind == kind {
@@ -305,41 +209,6 @@ func packageHasAsset(pkg model.NormalizedPackage, kind model.AssetKind) bool {
 		}
 	}
 	return false
-}
-
-func dependencyMetadata(value any) (map[string]string, error) {
-	values, ok := value.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("must be an object")
-	}
-	result := make(map[string]string, len(values))
-	for name, version := range values {
-		if name == "" {
-			return nil, fmt.Errorf("package name must not be empty")
-		}
-		text, ok := version.(string)
-		if !ok || text == "" {
-			return nil, fmt.Errorf("dependency %q must have a non-empty string version", name)
-		}
-		result[name] = text
-	}
-	return result, nil
-}
-
-func appendKeywords(value any) []string {
-	if values, ok := value.([]any); ok {
-		result := make([]string, 0, len(values))
-		for _, value := range values {
-			if text, ok := value.(string); ok {
-				result = append(result, text)
-			}
-		}
-		return result
-	}
-	if values, ok := value.([]string); ok {
-		return append([]string(nil), values...)
-	}
-	return []string{"pi-package"}
 }
 
 func markdown(frontmatter map[string]any, body string) ([]byte, error) {
@@ -351,107 +220,6 @@ func markdown(frontmatter map[string]any, body string) ([]byte, error) {
 		return nil, err
 	}
 	return []byte("---\n" + string(encoded) + "\n---\n" + body), nil
-}
-
-func piSubagent(frontmatter map[string]any, body string) ([]byte, error) {
-	keys := make([]string, 0, len(frontmatter))
-	for key := range frontmatter {
-		if key == "sandbox_mode" {
-			continue
-		}
-		if !validPiSubagentKey(key) {
-			return nil, fmt.Errorf("pi subagent frontmatter key %q is invalid", key)
-		}
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	keys = prioritizePiSubagentKeys(keys)
-
-	lines := make([]string, 0, len(keys)+2)
-	lines = append(lines, "---")
-	for _, key := range keys {
-		value, err := piSubagentValue(frontmatter[key])
-		if err != nil {
-			return nil, fmt.Errorf("pi subagent frontmatter %q: %w", key, err)
-		}
-		lines = append(lines, key+": "+value)
-	}
-	lines = append(lines, "---")
-	return []byte(strings.Join(lines, "\n") + "\n" + body), nil
-}
-
-func validPiSubagentKey(value string) bool {
-	if value == "" {
-		return false
-	}
-	for _, character := range value {
-		if (character < 'a' || character > 'z') &&
-			(character < 'A' || character > 'Z') &&
-			(character < '0' || character > '9') &&
-			character != '_' && character != '-' {
-			return false
-		}
-	}
-	return true
-}
-
-func prioritizePiSubagentKeys(keys []string) []string {
-	result := make([]string, 0, len(keys))
-	for _, priority := range []string{"name", "description"} {
-		for _, key := range keys {
-			if key == priority {
-				result = append(result, key)
-			}
-		}
-	}
-	for _, key := range keys {
-		if key != "name" && key != "description" {
-			result = append(result, key)
-		}
-	}
-	return result
-}
-
-func piSubagentValue(value any) (string, error) {
-	var text string
-	switch value := value.(type) {
-	case string:
-		text = value
-	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
-		text = fmt.Sprint(value)
-	default:
-		return "", fmt.Errorf("must be a scalar")
-	}
-	if strings.ContainsAny(text, "\r\n") {
-		return "", fmt.Errorf("must be single-line")
-	}
-	return text, nil
-}
-
-func codexAgent(asset model.NormalizedAsset) ([]byte, error) {
-	name := strings.TrimPrefix(string(asset.Identity), "agent/")
-	if value, ok := asset.Content.Frontmatter["name"].(string); ok && value != "" {
-		name = value
-	}
-	description, _ := asset.Content.Frontmatter["description"].(string)
-	if description == "" {
-		return nil, fmt.Errorf("agent %q requires string description frontmatter", asset.Identity)
-	}
-	lines := []string{fmt.Sprintf("name = %s", tomlString(name)), fmt.Sprintf("description = %s", tomlString(description))}
-	if value, ok := asset.Content.Frontmatter["sandbox_mode"].(string); ok && value != "" {
-		lines = append(lines, fmt.Sprintf("sandbox_mode = %s", tomlString(value)))
-	}
-	lines = append(lines, "developer_instructions = "+tomlMultiline(asset.Content.Body), "")
-	return []byte(strings.Join(lines, "\n")), nil
-}
-
-func tomlString(value string) string {
-	value = strings.NewReplacer("\\", "\\\\", "\"", "\\\"", "\b", "\\b", "\t", "\\t", "\n", "\\n", "\f", "\\f", "\r", "\\r").Replace(value)
-	return `"` + value + `"`
-}
-
-func tomlMultiline(value string) string {
-	return "\"\"\"\n" + strings.ReplaceAll(strings.ReplaceAll(value, "\\", "\\\\"), "\"\"\"", "\\\"\\\"\\\"") + "\n\"\"\""
 }
 
 func sortedAssets(assets []model.NormalizedAsset) []model.NormalizedAsset {
@@ -471,6 +239,84 @@ func add(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, path
 
 func empty(target model.TargetID) model.TargetPlan {
 	return model.TargetPlan{Target: target, Packages: []model.PackageID{}, Files: []model.PlannedFile{}, NativeChecks: []model.NativeCheck{}}
+}
+
+func validateCodec(codec Codec) []model.Diagnostic {
+	if codec.Manifest == nil || codec.Agent == nil || len(codec.Capabilities) == 0 {
+		return []model.Diagnostic{diagnostic("invalid-codec", "installable package codec requires manifest, agent, and capability handlers")}
+	}
+	if _, err := model.NewRelativePath(codec.ManifestPath); err != nil {
+		return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("manifest path: %v", err))}
+	}
+	if _, err := model.NewRelativePath(codec.AgentRoot); err != nil {
+		return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("agent root: %v", err))}
+	}
+	if diagnostics := model.ValidateTargetComposition(model.TargetComposition{Target: codec.Target, Capabilities: codec.Capabilities}); len(diagnostics) != 0 {
+		return []model.Diagnostic{diagnostic("invalid-codec", diagnostics[0].Message)}
+	}
+	return nil
+}
+
+func validateAgentSuffix(suffix string) error {
+	if len(suffix) < 2 || suffix[0] != '.' || strings.ContainsAny(suffix, "/\\\x00") {
+		return fmt.Errorf("agent suffix %q must start with a dot and contain no path separators", suffix)
+	}
+	return nil
+}
+
+func validateCapabilities(pkg model.NormalizedPackage, codec Codec) []model.Diagnostic {
+	rules := make(map[model.CapabilityKey]model.CapabilityRule, len(codec.Capabilities))
+	for _, rule := range codec.Capabilities {
+		if _, exists := rules[rule.Key]; exists {
+			return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("capability %q is duplicated", rule.Key))}
+		}
+		rules[rule.Key] = rule
+	}
+
+	assets := make(map[model.AssetID]model.NormalizedAsset, len(pkg.Assets))
+	for _, asset := range pkg.Assets {
+		assets[asset.Identity] = asset
+	}
+	acknowledgments := make(map[model.AssetID]map[model.CapabilityKey]struct{}, len(pkg.Acknowledgments))
+	for _, acknowledgment := range pkg.Acknowledgments {
+		asset, exists := assets[acknowledgment.Asset]
+		rule, known := rules[acknowledgment.Key]
+		if !exists || acknowledgment.Target != codec.Target || !known || rule.State != model.CapabilityStateAdvisory || !usesCapability(asset.CapabilityUses, acknowledgment.Key) {
+			return []model.Diagnostic{diagnostic("invalid-capability-acknowledgment", fmt.Sprintf("acknowledgment for asset %q capability %q does not match an advisory capability use", acknowledgment.Asset, acknowledgment.Key))}
+		}
+		keys := acknowledgments[acknowledgment.Asset]
+		if keys == nil {
+			keys = make(map[model.CapabilityKey]struct{})
+			acknowledgments[acknowledgment.Asset] = keys
+		}
+		if _, duplicate := keys[acknowledgment.Key]; duplicate {
+			return []model.Diagnostic{diagnostic("invalid-capability-acknowledgment", fmt.Sprintf("asset %q capability %q has duplicate acknowledgments", acknowledgment.Asset, acknowledgment.Key))}
+		}
+		keys[acknowledgment.Key] = struct{}{}
+	}
+	for _, asset := range pkg.Assets {
+		for _, use := range asset.CapabilityUses {
+			rule, known := rules[use.Key]
+			if !known || rule.State == model.CapabilityStateUnsupported {
+				return []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("package target %q cannot render capability %q for asset %q", codec.Target, use.Key, asset.Identity))}
+			}
+			if rule.State == model.CapabilityStateAdvisory {
+				if _, acknowledged := acknowledgments[asset.Identity][use.Key]; !acknowledged {
+					return []model.Diagnostic{diagnostic("missing-capability-acknowledgment", fmt.Sprintf("asset %q capability %q requires an acknowledgment for target %q", asset.Identity, use.Key, codec.Target))}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func usesCapability(uses []model.CapabilityUse, key model.CapabilityKey) bool {
+	for _, use := range uses {
+		if use.Key == key {
+			return true
+		}
+	}
+	return false
 }
 
 func diagnostic(code, message string) model.Diagnostic {

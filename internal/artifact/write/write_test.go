@@ -106,14 +106,13 @@ func TestReplaceOutputRecoversFallbackJournal(t *testing.T) {
 		{name: "prepared with old root", phase: phasePrepared, hadOld: true, expectedState: "old"},
 		{name: "prepared without old root", phase: phasePrepared, hadOld: false, expectedState: "absent"},
 		{name: "old moved with old root", phase: phaseOldMoved, hadOld: true, expectedState: "old"},
-		{name: "old moved without old root", phase: phaseOldMoved, hadOld: false, expectedState: "absent"},
 		{name: "new installed with old root", phase: phaseNewInstalled, hadOld: true, expectedState: "new"},
 		{name: "new installed without old root", phase: phaseNewInstalled, hadOld: false, expectedState: "new"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			output := filepath.Join(t.TempDir(), "generated")
 			staging := filepath.Join(filepath.Dir(output), ".generated.agbun-write-staging-interrupted")
-			backup := backupPath(output, staging)
+			backup := backupPath(output, "interrupted")
 			mustMkdir(t, staging)
 
 			switch test.phase {
@@ -122,10 +121,7 @@ func TestReplaceOutputRecoversFallbackJournal(t *testing.T) {
 					mustWriteFile(t, filepath.Join(output, "state.txt"), "old")
 				}
 			case phaseOldMoved:
-				if test.hadOld {
-					mustWriteFile(t, filepath.Join(backup, "state.txt"), "old")
-				}
-				mustWriteFile(t, filepath.Join(output, "state.txt"), "new")
+				mustWriteFile(t, filepath.Join(backup, "state.txt"), "old")
 			case phaseNewInstalled:
 				mustWriteFile(t, filepath.Join(output, "state.txt"), "new")
 				if test.hadOld {
@@ -159,6 +155,140 @@ func TestReplaceOutputRecoversFallbackJournal(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReplaceOutputRecoveryDoesNotDeleteUnexpectedOutput(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		phase  string
+		hadOld bool
+	}{
+		{name: "prepared without old root", phase: phasePrepared},
+		{name: "old moved with staging present", phase: phaseOldMoved, hadOld: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output := filepath.Join(t.TempDir(), "generated")
+			staging := filepath.Join(filepath.Dir(output), ".generated.agbun-write-staging-concurrent")
+			backup := backupPath(output, "concurrent")
+			mustWriteFile(t, filepath.Join(output, "state.txt"), "concurrent")
+			mustWriteFile(t, filepath.Join(staging, "state.txt"), "staged")
+			if test.hadOld {
+				mustWriteFile(t, filepath.Join(backup, "state.txt"), "old")
+			}
+			mustWriteJournal(t, output, replacementJournal{
+				Output: output, Staging: staging, Backup: backup,
+				HadOld: test.hadOld, Phase: test.phase,
+			})
+
+			diagnostics := ReplaceOutput(failingPlan(), output)
+			if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticWriteFailed {
+				t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
+			}
+			assertFile(t, filepath.Join(output, "state.txt"), "concurrent")
+			assertFile(t, filepath.Join(staging, "state.txt"), "staged")
+			if test.hadOld {
+				assertFile(t, filepath.Join(backup, "state.txt"), "old")
+			}
+			if _, err := os.Lstat(journalPath(output)); err != nil {
+				t.Fatalf("journal was removed: %v", err)
+			}
+		})
+	}
+}
+
+func TestReplaceOutputKeepsInstalledOutputWhenPhaseUpdateWasInterrupted(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "generated")
+	staging := filepath.Join(filepath.Dir(output), ".generated.agbun-write-staging-installed")
+	backup := backupPath(output, "installed")
+	mustWriteFile(t, filepath.Join(output, "state.txt"), "new")
+	mustWriteFile(t, filepath.Join(backup, "state.txt"), "old")
+	mustWriteJournal(t, output, replacementJournal{
+		Output: output, Staging: staging, Backup: backup,
+		HadOld: true, Phase: phaseOldMoved,
+	})
+
+	diagnostics := ReplaceOutput(failingPlan(), output)
+	if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticWriteFailed {
+		t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
+	}
+	assertFile(t, filepath.Join(output, "state.txt"), "new")
+	if _, err := os.Lstat(backup); !os.IsNotExist(err) {
+		t.Fatalf("backup remains or could not be checked: %v", err)
+	}
+	if _, err := os.Lstat(journalPath(output)); !os.IsNotExist(err) {
+		t.Fatalf("journal remains or could not be checked: %v", err)
+	}
+}
+
+func TestReplaceOutputRejectsForgedJournalWithoutMutatingFiles(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		stagingName string
+		backupName  string
+	}{
+		{
+			name:        "backup has a different transaction ID",
+			stagingName: ".generated.agbun-write-staging-expected",
+			backupName:  ".generated.agbun-write-backup-forged",
+		},
+		{
+			name:        "staging has an empty transaction ID",
+			stagingName: ".generated.agbun-write-staging-",
+			backupName:  ".generated.agbun-write-backup-forged",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output := filepath.Join(t.TempDir(), "generated")
+			staging := filepath.Join(filepath.Dir(output), test.stagingName)
+			backup := filepath.Join(filepath.Dir(output), test.backupName)
+			mustWriteFile(t, filepath.Join(output, "state.txt"), "new")
+			mustWriteFile(t, filepath.Join(staging, "state.txt"), "staged")
+			mustWriteFile(t, filepath.Join(backup, "state.txt"), "old")
+			mustWriteJournal(t, output, replacementJournal{
+				Output:  output,
+				Staging: staging,
+				Backup:  backup,
+				HadOld:  true,
+				Phase:   phaseOldMoved,
+			})
+			mustWriteFile(t, journalPath(output)+".tmp", "temporary")
+
+			diagnostics := ReplaceOutput(failingPlan(), output)
+			if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticWriteFailed {
+				t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
+			}
+			assertFile(t, filepath.Join(output, "state.txt"), "new")
+			assertFile(t, journalPath(output), `{"output":"`+output+`","staging":"`+staging+`","backup":"`+backup+`","hadOld":true,"phase":"old-moved"}`)
+			assertFile(t, journalPath(output)+".tmp", "temporary")
+			assertFile(t, filepath.Join(staging, "state.txt"), "staged")
+			assertFile(t, filepath.Join(backup, "state.txt"), "old")
+		})
+	}
+}
+
+func TestReplaceOutputOldMovedRequiresDirectoryBackupBeforeRemovingOutput(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "generated")
+	staging := filepath.Join(filepath.Dir(output), ".generated.agbun-write-staging-transaction")
+	backup := backupPath(output, "transaction")
+	mustWriteFile(t, filepath.Join(output, "state.txt"), "new")
+	mustWriteFile(t, filepath.Join(staging, "state.txt"), "staged")
+	mustWriteFile(t, backup, "not a directory")
+	mustWriteJournal(t, output, replacementJournal{
+		Output:  output,
+		Staging: staging,
+		Backup:  backup,
+		HadOld:  true,
+		Phase:   phaseOldMoved,
+	})
+
+	diagnostics := ReplaceOutput(failingPlan(), output)
+	if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticWriteFailed {
+		t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
+	}
+	assertFile(t, filepath.Join(output, "state.txt"), "new")
+	assertFile(t, journalPath(output), `{"output":"`+output+`","staging":"`+staging+`","backup":"`+backup+`","hadOld":true,"phase":"old-moved"}`)
+	assertFile(t, filepath.Join(staging, "state.txt"), "staged")
+	assertFile(t, backup, "not a directory")
 }
 
 func failingPlan() model.BuildPlan {

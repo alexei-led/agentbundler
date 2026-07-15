@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/compiler/source/bundle"
@@ -24,19 +23,21 @@ func Import(manifest model.SourceManifest, workspaceRoot string) (model.SourceIn
 	if diagnostics := validateWorkspaceRoot(workspaceRoot); len(diagnostics) != 0 {
 		return model.SourceInventory{}, diagnostics
 	}
-	if _, err := containedPath(workspaceRoot, manifest.Root); err != nil {
-		return model.SourceInventory{}, []model.Diagnostic{diagnostic(manifest.Root, "manifest root: "+err.Error())}
+	workspace, err := os.OpenRoot(workspaceRoot)
+	if err != nil {
+		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", "workspace root: "+err.Error())}
 	}
+	defer func() { _ = workspace.Close() }()
 
 	var inventory model.SourceInventory
 	var diagnostics []model.Diagnostic
 	switch manifest.Kind {
 	case model.SourceKindBundle:
-		inventory, diagnostics = bundle.InspectBundle(manifest, workspaceRoot)
+		inventory, diagnostics = bundle.InspectBundleRoot(manifest, workspaceRoot, workspace)
 	case model.SourceKindClaudePlugin:
-		inventory, diagnostics = claudeplugin.InspectClaudePlugin(manifest, workspaceRoot)
+		inventory, diagnostics = claudeplugin.InspectClaudePluginRoot(manifest, workspaceRoot, workspace)
 	case model.SourceKindSkillsRepository:
-		inventory, diagnostics = skillrepo.InspectSkillRepo(manifest, workspaceRoot)
+		inventory, diagnostics = skillrepo.InspectSkillRepoRoot(manifest, workspaceRoot, workspace)
 	default:
 		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", fmt.Sprintf("unsupported source kind %q", manifest.Kind))}
 	}
@@ -58,15 +59,6 @@ func validateWorkspaceRoot(workspaceRoot string) []model.Diagnostic {
 		return []model.Diagnostic{diagnostic("", "workspace root must be a non-symlink directory")}
 	}
 	return nil
-}
-
-func containedPath(root string, relative model.RelativePath) (string, error) {
-	candidate := filepath.Join(root, filepath.FromSlash(string(relative)))
-	path, err := filepath.Rel(root, candidate)
-	if err != nil || path == ".." || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes workspace root")
-	}
-	return candidate, nil
 }
 
 func normalizeInventory(inventory model.SourceInventory) model.SourceInventory {

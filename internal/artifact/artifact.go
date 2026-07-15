@@ -166,10 +166,23 @@ func destinationConflicts(destinations []string) []model.Diagnostic {
 		}
 		caseFolded[folded] = destination
 	}
-	for index := 1; index < len(sorted); index++ {
-		if strings.HasPrefix(sorted[index], sorted[index-1]+"/") {
+	type foldedDestination struct {
+		raw, folded string
+	}
+	foldedSorted := make([]foldedDestination, len(sorted))
+	for index, destination := range sorted {
+		foldedSorted[index] = foldedDestination{raw: destination, folded: strings.ToLower(destination)}
+	}
+	sort.SliceStable(foldedSorted, func(left, right int) bool {
+		if foldedSorted[left].folded == foldedSorted[right].folded {
+			return foldedSorted[left].raw < foldedSorted[right].raw
+		}
+		return foldedSorted[left].folded < foldedSorted[right].folded
+	})
+	for index := 1; index < len(foldedSorted); index++ {
+		if strings.HasPrefix(foldedSorted[index].folded, foldedSorted[index-1].folded+"/") {
 			diagnostics = append(diagnostics, invalidPlanDiagnostic(
-				fmt.Sprintf("planned destination %q prevents owning target path %q", sorted[index-1], sorted[index]),
+				fmt.Sprintf("planned destination %q prevents owning target path %q", foldedSorted[index-1].raw, foldedSorted[index].raw),
 			))
 		}
 	}

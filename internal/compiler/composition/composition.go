@@ -33,10 +33,10 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 		rules[rule.Key] = rule
 	}
 
-	assets := make(map[model.AssetID]struct{})
+	assets := make(map[model.AssetID]model.SourceAsset)
 	for _, pkg := range inventory.Packages {
 		for _, asset := range pkg.Assets {
-			assets[asset.Identity] = struct{}{}
+			assets[asset.Identity] = asset
 		}
 	}
 
@@ -118,7 +118,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 	return packages, diagnostics
 }
 
-func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, assets map[model.AssetID]struct{}) (map[model.AssetID]bool, []model.Diagnostic) {
+func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, assets map[model.AssetID]model.SourceAsset) (map[model.AssetID]bool, []model.Diagnostic) {
 	policies := make(map[string]model.NativeGapPolicy, len(target.NativeGaps))
 	for _, policy := range target.NativeGaps {
 		policies[policy.Component] = policy
@@ -139,8 +139,10 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		if policy.Action == model.NativeGapActionReplace {
 			if policy.Replacement == nil {
 				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement is missing", gap.Component))
-			} else if _, ok := assets[*policy.Replacement]; !ok {
+			} else if replacement, ok := assets[*policy.Replacement]; !ok {
 				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q does not exist", gap.Component, *policy.Replacement))
+			} else if !assetSelectedForTarget(replacement, target.Target) {
+				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q is unavailable for target %q", gap.Component, *policy.Replacement, target.Target))
 			}
 		}
 		if gap.Asset != nil && (policy.Action == model.NativeGapActionReplace || policy.Action == model.NativeGapActionExclude || policy.Action == model.NativeGapActionSourceOnly) {

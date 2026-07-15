@@ -84,8 +84,8 @@ const (
 // SourceLocation identifies a position in a source file.
 type SourceLocation struct {
 	Path   RelativePath `json:"path"`
-	Line   *int         `json:"line,omitempty"`
-	Column *int         `json:"column,omitempty"`
+	Line   *int         `json:"line"`
+	Column *int         `json:"column"`
 }
 
 // InputFile identifies a source input by path and SHA-256 digest.

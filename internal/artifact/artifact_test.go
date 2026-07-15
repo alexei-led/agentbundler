@@ -40,6 +40,13 @@ func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 			plan: planWithFile("CON.txt"),
 		},
 		{
+			name: "case-insensitive target ownership conflict",
+			plan: model.BuildPlan{Targets: []model.TargetPlan{{
+				Target: model.TargetClaude,
+				Files:  []model.PlannedFile{{Path: "FOO/bar"}, {Path: "foo"}},
+			}}},
+		},
+		{
 			name: "target root ownership conflict",
 			plan: model.BuildPlan{
 				Targets: []model.TargetPlan{{

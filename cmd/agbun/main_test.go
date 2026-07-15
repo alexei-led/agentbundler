@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -177,6 +178,42 @@ func TestRunJSONIncludesStructuredDiagnosticHint(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("JSON output missing %q: %q", want, stdout.String())
 		}
+	}
+}
+
+func TestRunJSONLocationContract(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "agentbundle.json", `{"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base.json"]}}`)
+	location := model.SourceLocation{Path: "source/SKILL.md"}
+	var stdout, stderr bytes.Buffer
+	status := run([]string{"check", "--json"}, root, &stdout, &stderr, func(compiler.CompileRequest) compiler.CompilationResult {
+		return compiler.CompilationResult{Diagnostics: []model.Diagnostic{
+			{Code: "invalid-source", Severity: model.SeverityError, Location: &location, Message: "invalid source"},
+			{Code: "missing-source", Severity: model.SeverityError, Message: "missing source"},
+		}}
+	})
+	if status != 1 || stderr.Len() != 0 {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+
+	var envelope struct {
+		Diagnostics []map[string]any `json:"diagnostics"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(envelope.Diagnostics) != 2 {
+		t.Fatalf("diagnostics = %#v", envelope.Diagnostics)
+	}
+	locationJSON, ok := envelope.Diagnostics[0]["location"].(map[string]any)
+	if !ok {
+		t.Fatalf("location = %#v", envelope.Diagnostics[0]["location"])
+	}
+	if locationJSON["path"] != "source/SKILL.md" || locationJSON["line"] != nil || locationJSON["column"] != nil {
+		t.Fatalf("location = %#v", locationJSON)
+	}
+	if _, exists := envelope.Diagnostics[1]["location"]; exists {
+		t.Fatalf("location = %#v, want omitted", envelope.Diagnostics[1]["location"])
 	}
 }
 

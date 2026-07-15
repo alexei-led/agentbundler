@@ -2,6 +2,7 @@ package composition
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -189,6 +190,7 @@ func TestComposeNativeGapPolicies(t *testing.T) {
 		wantError   bool
 	}{
 		{name: "replace", action: model.NativeGapActionReplace, replacement: &replacement},
+		{name: "replacement unavailable for target", action: model.NativeGapActionReplace, replacement: &replacement, wantError: true},
 		{name: "exclude", action: model.NativeGapActionExclude},
 		{name: "source only", action: model.NativeGapActionSourceOnly},
 		{name: "missing", wantError: true},
@@ -203,13 +205,19 @@ func TestComposeNativeGapPolicies(t *testing.T) {
 				NativeGaps: []model.NativeGap{{Component: "tool", Asset: assetPointer("native-resource/tool"), Location: model.SourceLocation{Path: "native.json"}}},
 			}
 			target := model.TargetComposition{Target: model.TargetPi}
-			if !tc.wantError {
+			if tc.name == "replacement unavailable for target" {
+				inventory.Packages[0].Assets[1].Targets = []model.TargetID{model.TargetClaude}
+			}
+			if tc.name != "missing" {
 				target.NativeGaps = []model.NativeGapPolicy{{Component: "tool", Action: tc.action, Replacement: tc.replacement}}
 			}
 			packages, diagnostics := Compose(inventory, target)
 			if tc.wantError {
 				if packages != nil || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticCodeInvalidComposition {
 					t.Errorf("Compose = (%#v, %#v)", packages, diagnostics)
+				}
+				if tc.name == "replacement unavailable for target" && !strings.Contains(diagnostics[0].Message, "unavailable") {
+					t.Errorf("diagnostic = %q, want unavailable replacement", diagnostics[0].Message)
 				}
 				return
 			}

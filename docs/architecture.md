@@ -19,8 +19,10 @@ flowchart LR
 
 1. **CLI** discovers the manifest, parses selectors, maps diagnostics, and
    chooses `build` or `check`.
-2. **Model validation** decodes strict JSON and rejects unknown fields,
+2. **Model validation** decodes strict UTF-8 JSON and rejects unknown fields,
    duplicate keys, invalid paths, invalid targets, and malformed patch shapes.
+   Source importers share root-containment and no-symlink checks for workspace
+   paths; text parsers reject malformed UTF-8 before string conversion.
 3. **Source importers** read one of `skills-repository`, `bundle`, or
    `claude-plugin` and normalize packages, assets, metadata, frontmatter, body,
    support files, capabilities, and native gaps.
@@ -45,6 +47,9 @@ flowchart LR
 - `internal/compiler/composition`: overlays, preambles, capabilities,
   acknowledgments, and native gaps.
 - `internal/target`: target adapters and target-relative build plans.
+- `internal/target/packageoutput`: shared package-root aggregation and file layout.
+  Target leaves own package manifests and agent serializers through package codecs;
+  aggregation does not select vendor schemas.
 - `internal/artifact/write`: staging and complete output replacement.
 - `internal/artifact/compare`: exact output drift detection.
 - `internal/artifact/provenance`: configuration, input, output, and
@@ -68,6 +73,7 @@ staging/journal path and replaces the output only after the plan is ready.
 A target adapter defines:
 
 - target ID and output root;
+- package codec for installable manifest and agent serialization;
 - capability defaults;
 - native-gap defaults;
 - target-relative renderer behavior;

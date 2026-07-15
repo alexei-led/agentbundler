@@ -229,12 +229,9 @@ func replace(staging, outputRoot string) error {
 }
 
 func installWithoutOldRoot(staging, outputRoot string) (err error) {
-	journal := replacementJournal{
-		Output:  outputRoot,
-		Staging: staging,
-		Backup:  backupPath(outputRoot, staging),
-		HadOld:  false,
-		Phase:   phasePrepared,
+	journal, err := newReplacementJournal(staging, outputRoot, false)
+	if err != nil {
+		return err
 	}
 	defer func() {
 		if err == nil {
@@ -262,12 +259,9 @@ func installWithoutOldRoot(staging, outputRoot string) (err error) {
 }
 
 func replaceWithJournal(staging, outputRoot string, hadOld bool) (err error) {
-	journal := replacementJournal{
-		Output:  outputRoot,
-		Staging: staging,
-		Backup:  backupPath(outputRoot, staging),
-		HadOld:  hadOld,
-		Phase:   phasePrepared,
+	journal, err := newReplacementJournal(staging, outputRoot, hadOld)
+	if err != nil {
+		return err
 	}
 	path := journalPath(outputRoot)
 	defer func() {
@@ -324,10 +318,35 @@ func journalPath(outputRoot string) string {
 	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agbun-write-journal.json")
 }
 
-func backupPath(outputRoot, staging string) string {
-	prefix := "." + filepath.Base(outputRoot) + ".agbun-write-staging-"
-	suffix := strings.TrimPrefix(filepath.Base(staging), prefix)
-	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agbun-write-backup-"+suffix)
+func newReplacementJournal(staging, outputRoot string, hadOld bool) (replacementJournal, error) {
+	transactionID, err := stagingTransactionID(outputRoot, staging)
+	if err != nil {
+		return replacementJournal{}, err
+	}
+	return replacementJournal{
+		Output:  outputRoot,
+		Staging: staging,
+		Backup:  backupPath(outputRoot, transactionID),
+		HadOld:  hadOld,
+		Phase:   phasePrepared,
+	}, nil
+}
+
+func stagingTransactionID(outputRoot, staging string) (string, error) {
+	parent, base := filepath.Dir(outputRoot), filepath.Base(outputRoot)
+	prefix := "." + base + ".agbun-write-staging-"
+	if filepath.Dir(staging) != parent || !strings.HasPrefix(filepath.Base(staging), prefix) {
+		return "", errors.New("output journal has an invalid staging path")
+	}
+	transactionID := strings.TrimPrefix(filepath.Base(staging), prefix)
+	if transactionID == "" {
+		return "", errors.New("output journal staging path has an empty transaction ID")
+	}
+	return transactionID, nil
+}
+
+func backupPath(outputRoot, transactionID string) string {
+	return filepath.Join(filepath.Dir(outputRoot), "."+filepath.Base(outputRoot)+".agbun-write-backup-"+transactionID)
 }
 
 func persistJournal(path string, journal replacementJournal) error {
@@ -378,12 +397,9 @@ func removeJournal(path string) error {
 
 func recoverJournal(outputRoot string) error {
 	path := journalPath(outputRoot)
-	if err := removeStaleJournalTemporary(path); err != nil {
-		return err
-	}
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return removeStaleJournalTemporary(path)
 	}
 	if err != nil {
 		return err
@@ -415,15 +431,22 @@ func recoverJournal(outputRoot string) error {
 	if err := validateJournal(outputRoot, journal); err != nil {
 		return err
 	}
+	if err := removeStaleJournalTemporary(path); err != nil {
+		return err
+	}
 
 	switch journal.Phase {
 	case phasePrepared:
+		outputExists, err := outputDirectoryExists(outputRoot)
+		if err != nil {
+			return err
+		}
+		stagingExists, err := pathPresent(journal.Staging)
+		if err != nil {
+			return err
+		}
 		if journal.HadOld {
-			exists, err := outputDirectoryExists(outputRoot)
-			if err != nil {
-				return err
-			}
-			if !exists {
+			if !outputExists {
 				backupExists, err := outputDirectoryExists(journal.Backup)
 				if err != nil {
 					return err
@@ -437,9 +460,11 @@ func recoverJournal(outputRoot string) error {
 				if err := syncDirectory(filepath.Dir(outputRoot)); err != nil {
 					return err
 				}
+			} else if !stagingExists {
+				return errors.New("prepared journal found an unexpected output root")
 			}
-		} else if err := removePathIfPresent(outputRoot); err != nil {
-			return err
+		} else if outputExists && stagingExists {
+			return errors.New("prepared journal found an unexpected output root")
 		}
 		if exists, err := pathPresent(journal.Backup); err != nil || exists {
 			if err != nil {
@@ -447,35 +472,46 @@ func recoverJournal(outputRoot string) error {
 			}
 			return errors.New("prepared journal has an unexpected backup")
 		}
-		if err := removePathIfPresent(journal.Staging); err != nil {
-			return err
+		if stagingExists {
+			if err := removePathIfPresent(journal.Staging); err != nil {
+				return err
+			}
 		}
 	case phaseOldMoved:
-		if err := removePathIfPresent(outputRoot); err != nil {
+		backupExists, err := outputDirectoryExists(journal.Backup)
+		if err != nil {
 			return err
 		}
-		if journal.HadOld {
-			exists, err := outputDirectoryExists(journal.Backup)
-			if err != nil {
-				return err
-			}
-			if !exists {
-				return errors.New("old-moved journal is missing its backup")
-			}
-			if err := os.Rename(journal.Backup, outputRoot); err != nil {
-				return err
-			}
-			if err := syncDirectory(filepath.Dir(outputRoot)); err != nil {
-				return err
-			}
-		} else if exists, err := pathPresent(journal.Backup); err != nil || exists {
-			if err != nil {
-				return err
-			}
-			return errors.New("old-moved journal has an unexpected backup")
+		if !backupExists {
+			return errors.New("old-moved journal is missing its backup")
 		}
-		if err := removePathIfPresent(journal.Staging); err != nil {
+		outputExists, err := outputDirectoryExists(outputRoot)
+		if err != nil {
 			return err
+		}
+		stagingExists, err := pathPresent(journal.Staging)
+		if err != nil {
+			return err
+		}
+		if outputExists {
+			if stagingExists {
+				return errors.New("old-moved journal found an unexpected output root")
+			}
+			if err := removePathIfPresent(journal.Backup); err != nil {
+				return err
+			}
+			break
+		}
+		if err := os.Rename(journal.Backup, outputRoot); err != nil {
+			return err
+		}
+		if err := syncDirectory(filepath.Dir(outputRoot)); err != nil {
+			return err
+		}
+		if stagingExists {
+			if err := removePathIfPresent(journal.Staging); err != nil {
+				return err
+			}
 		}
 	case phaseNewInstalled:
 		exists, err := outputDirectoryExists(outputRoot)
@@ -501,12 +537,15 @@ func validateJournal(outputRoot string, journal replacementJournal) error {
 	if journal.Output != outputRoot {
 		return errors.New("output journal belongs to a different output root")
 	}
-	parent, base := filepath.Dir(outputRoot), filepath.Base(outputRoot)
-	if filepath.Dir(journal.Staging) != parent || !strings.HasPrefix(filepath.Base(journal.Staging), "."+base+".agbun-write-staging-") {
-		return errors.New("output journal has an invalid staging path")
+	transactionID, err := stagingTransactionID(outputRoot, journal.Staging)
+	if err != nil {
+		return err
 	}
-	if filepath.Dir(journal.Backup) != parent || !strings.HasPrefix(filepath.Base(journal.Backup), "."+base+".agbun-write-backup-") {
+	if journal.Backup != backupPath(outputRoot, transactionID) {
 		return errors.New("output journal has an invalid backup path")
+	}
+	if journal.Phase == phaseOldMoved && !journal.HadOld {
+		return errors.New("old-moved journal requires a prior output root")
 	}
 	return nil
 }

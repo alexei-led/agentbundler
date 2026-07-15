@@ -5,25 +5,43 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"unicode/utf8"
 )
 
 // DecodeSourceManifestJSON decodes and validates a source manifest with strict JSON object handling.
 func DecodeSourceManifestJSON(data []byte) (SourceManifest, []Diagnostic) {
-	if err := rejectDuplicateJSONKeys(data); err != nil {
-		return SourceManifest{}, []Diagnostic{invalidManifestDiagnostic(err.Error())}
-	}
-
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
 	var manifest SourceManifest
-	if err := decoder.Decode(&manifest); err != nil {
-		return SourceManifest{}, []Diagnostic{invalidManifestDiagnostic(err.Error())}
-	}
-	if err := ensureJSONEOF(decoder); err != nil {
+	if err := DecodeStrictJSONObject(data, &manifest); err != nil {
 		return SourceManifest{}, []Diagnostic{invalidManifestDiagnostic(err.Error())}
 	}
 	return manifest, ValidateSourceManifest(manifest)
+}
+
+// DecodeStrictJSON decodes one UTF-8 JSON value, rejecting duplicate object keys,
+// unknown struct fields, and trailing values.
+func DecodeStrictJSON(data []byte, destination any) error {
+	if len(data) == 0 || !utf8.Valid(data) {
+		return fmt.Errorf("must be UTF-8 JSON")
+	}
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	if err := decoder.Decode(destination); err != nil {
+		return err
+	}
+	return ensureJSONEOF(decoder)
+}
+
+// DecodeStrictJSONObject decodes one strict JSON object.
+func DecodeStrictJSONObject(data []byte, destination any) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return fmt.Errorf("must be a JSON object")
+	}
+	return DecodeStrictJSON(data, destination)
 }
 
 func rejectDuplicateJSONKeys(data []byte) error {

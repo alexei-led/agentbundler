@@ -36,7 +36,7 @@ type jsonResult struct {
 type jsonDiagnostic struct {
 	Code     string                `json:"code"`
 	Severity model.Severity        `json:"severity"`
-	Location *model.SourceLocation `json:"location"`
+	Location *model.SourceLocation `json:"location,omitempty"`
 	Message  string                `json:"message"`
 	Hint     string                `json:"hint,omitempty"`
 	Asset    model.AssetID         `json:"asset,omitempty"`

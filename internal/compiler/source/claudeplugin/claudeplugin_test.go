@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -69,6 +70,28 @@ func TestInspectClaudePluginRejectsMalformedPluginAndMarketplace(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInspectClaudePluginRejectsSymlinkedManifestRootAncestor(t *testing.T) {
+	workspace := t.TempDir()
+	outside := t.TempDir()
+	writeFixture(t, outside, "plugin/.claude-plugin/plugin.json", `{"name":"outside"}`)
+	if err := os.Symlink(outside, filepath.Join(workspace, "source")); err != nil {
+		t.Fatal(err)
+	}
+	_, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if !hasErrors(diagnostics) || !containsDiagnostic(diagnostics, "symlink") {
+		t.Fatalf("diagnostics = %#v, want symlink rejection", diagnostics)
+	}
+}
+
+func containsDiagnostic(diagnostics []model.Diagnostic, text string) bool {
+	for _, diagnostic := range diagnostics {
+		if strings.Contains(diagnostic.Message, text) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestInspectClaudePluginReadsHookSidecars(t *testing.T) {

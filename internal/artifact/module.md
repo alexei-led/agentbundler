@@ -31,6 +31,7 @@ This module is the only owner of generated-output effects and observations. It v
 ## Public Contract
 
 <!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+
 ```text
 RelativePath = normalized non-empty path below its declared root
 PackageID = stable package identity
@@ -78,6 +79,7 @@ BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
 <!-- contract: ProvenanceInput, ProvenanceInputFile, ProvenanceAcknowledgment, AdapterRevision — restated from internal/artifact/provenance/module.md (subset: omits append-provenance) -->
+
 ```text
 ProvenanceInput = {
   compilerVersion: String,
@@ -93,9 +95,9 @@ AdapterRevision = { target: TargetID, revision: Integer }
 
 ```text
 write(BuildPlan, output-root) -> [Diagnostic]
-compare(BuildPlan, output-root) -> [Diagnostic]
+compare(BuildPlan, output-root) -> [Diagnostic] + Boolean
 provenance(BuildPlan, ProvenanceInput) -> BuildPlan + [Diagnostic]
-verify([NativeCheck], output-root) -> [Diagnostic]
+verify([NativeCheck], output-root) -> VerifyResult
 ```
 
 ### Go API
@@ -105,7 +107,10 @@ verify([NativeCheck], output-root) -> [Diagnostic]
 ```go
 package artifact
 
-import "github.com/alexei-led/agentbundler/internal/compiler/model"
+import (
+    "github.com/alexei-led/agentbundler/internal/compiler/model"
+    "github.com/alexei-led/agentbundler/internal/artifact/nativeverify"
+)
 
 type ProvenanceInputFile struct {
     Path   model.RelativePath
@@ -133,9 +138,9 @@ type ProvenanceInput struct {
 }
 
 func Write(plan model.BuildPlan, outputRoot string) []model.Diagnostic
-func Compare(plan model.BuildPlan, outputRoot string) []model.Diagnostic
+func Compare(plan model.BuildPlan, outputRoot string) ([]model.Diagnostic, bool)
 func Provenance(plan model.BuildPlan, input ProvenanceInput) (model.BuildPlan, []model.Diagnostic)
-func Verify(checks []model.NativeCheck, outputRoot string) []model.Diagnostic
+func Verify(checks []model.NativeCheck, outputRoot string) nativeverify.Result
 ```
 
 `write` is the only operation that mutates generated output. `compare` emits drift diagnostics for missing, changed, or extra entries. `provenance` returns a plan augmented with one compiler-owned metadata file, or an unchanged plan with deterministic diagnostics. `verify` is valid only after exact comparison succeeds.
@@ -165,6 +170,7 @@ func Verify(checks []model.NativeCheck, outputRoot string) []model.Diagnostic
   - **Shared knowledge**:
 
 <!-- contract: replace-output — restated from internal/artifact/write/module.md -->
+
 ```text
 replace-output(BuildPlan, output-root) -> [Diagnostic]
 ```
@@ -178,6 +184,7 @@ replace-output(BuildPlan, output-root) -> [Diagnostic]
   - **Shared knowledge**:
 
 <!-- contract: DriftKind, Drift, detect-drift — restated from internal/artifact/compare/module.md -->
+
 ```text
 DriftKind = missing | changed | extra
 Drift = { kind: DriftKind, path: RelativePath }
@@ -193,6 +200,7 @@ detect-drift(BuildPlan, output-root) -> [Drift]
   - **Shared knowledge**:
 
 <!-- contract: ProvenanceInput, ProvenanceInputFile, ProvenanceAcknowledgment, AdapterRevision, append-provenance — restated from internal/artifact/provenance/module.md -->
+
 ```text
 ProvenanceInput = {
   compilerVersion: String,
@@ -216,6 +224,7 @@ append-provenance(BuildPlan, ProvenanceInput) -> BuildPlan
   - **Shared knowledge**:
 
 <!-- contract: NativeVerificationResult, run-native-checks — restated from internal/artifact/nativeverify/module.md -->
+
 ```text
 NativeVerificationResult = { success: Boolean, diagnostics: [Diagnostic] }
 run-native-checks([NativeCheck], output-root) -> NativeVerificationResult

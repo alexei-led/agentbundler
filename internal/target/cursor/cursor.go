@@ -9,14 +9,6 @@ import (
 
 const formatRevision = 3
 
-var capabilityRules = []model.CapabilityRule{
-	{Key: "asset.skill", State: model.CapabilityStateNative},
-	{Key: "asset.agent", State: model.CapabilityStateNative},
-	{Key: "asset.hook", State: model.CapabilityStateUnsupported},
-	{Key: "asset.resource", State: model.CapabilityStateNative},
-	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
-}
-
 // Adapter describes Cursor's native plugin asset subset.
 type Adapter struct {
 	Target         model.TargetID
@@ -33,7 +25,7 @@ func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPl
 		return model.TargetPlan{Target: model.TargetCursor}, []model.Diagnostic{{Code: "invalid-adapter", Severity: model.SeverityError, Message: "adapter is not the Cursor format revision 3 capability profile"}}
 	}
 	if packagesHaveProfile(packages, model.TargetProfilePackage) {
-		return packageoutput.Render(adapter.Target, packages)
+		return packageoutput.RenderWithCodec(packages, PackageCodec())
 	}
 	if len(packages) != 1 {
 		return plugin.Render(adapter.Target, ".cursor-plugin/plugin.json", packages, nil)

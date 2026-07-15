@@ -32,7 +32,7 @@ func TestPackageRenderIncludesPiSubagent(t *testing.T) {
 		Identity: "demo",
 		Target:   Target,
 		Profile:  model.TargetProfilePackage,
-		Metadata: model.PackageMetadata{"version": "1.0.0"},
+		Metadata: model.PackageMetadata{"version": "1.0.0", "dependencies": map[string]any{"pi-subagents": "^1.0.0"}},
 		Assets: []model.NormalizedAsset{{
 			Identity: "agent/reviewer",
 			Kind:     model.AssetKindAgent,

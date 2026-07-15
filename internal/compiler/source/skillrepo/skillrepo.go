@@ -2,18 +2,15 @@
 package skillrepo
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/compiler/source/frontmatter"
@@ -23,8 +20,19 @@ const diagnosticCode = "invalid-skills-repository"
 
 // InspectSkillRepo discovers skills and their optional derived-target sidecars.
 func InspectSkillRepo(manifest model.SourceManifest, workspaceRoot string) (model.SourceInventory, []model.Diagnostic) {
+	workspace, err := os.OpenRoot(workspaceRoot)
+	if err != nil {
+		return model.SourceInventory{}, []model.Diagnostic{{Code: diagnosticCode, Severity: model.SeverityError, Message: "workspace root: " + err.Error()}}
+	}
+	defer func() { _ = workspace.Close() }()
+	return InspectSkillRepoRoot(manifest, workspaceRoot, workspace)
+}
+
+// InspectSkillRepoRoot imports a skills repository using a workspace-bounded filesystem.
+func InspectSkillRepoRoot(manifest model.SourceManifest, workspaceRoot string, workspace *os.Root) (model.SourceInventory, []model.Diagnostic) {
 	inspector := inspector{
 		workspaceRoot: workspaceRoot,
+		filesystem:    workspace,
 		inputs:        make(map[model.RelativePath]string),
 	}
 	inspector.diagnostics = append(inspector.diagnostics, model.ValidateSourceManifest(manifest)...)
@@ -38,22 +46,17 @@ func InspectSkillRepo(manifest model.SourceManifest, workspaceRoot string) (mode
 		inspector.error("", "workspace root must be a cleaned absolute path")
 		return model.SourceInventory{}, inspector.diagnostics
 	}
-	if err := requireDirectory(workspaceRoot); err != nil {
-		inspector.error("", "workspace root: "+err.Error())
-		return model.SourceInventory{}, inspector.diagnostics
-	}
-
 	var err error
 	inspector.sourceRoot, err = containedPath(workspaceRoot, string(manifest.Root))
 	if err != nil {
 		inspector.error(string(manifest.Root), "manifest root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
 	}
-	if err := noSymlinkComponents(workspaceRoot, inspector.sourceRoot); err != nil {
+	if err := inspector.noSymlinkComponents(inspector.sourceRoot); err != nil {
 		inspector.error(string(manifest.Root), "manifest root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
 	}
-	if err := requireDirectory(inspector.sourceRoot); err != nil {
+	if err := inspector.requireDirectory(inspector.sourceRoot); err != nil {
 		inspector.error(string(manifest.Root), "manifest root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
 	}
@@ -67,11 +70,11 @@ func InspectSkillRepo(manifest model.SourceManifest, workspaceRoot string) (mode
 			inspector.error(string(root), "skill root: "+err.Error())
 			continue
 		}
-		if err := noSymlinkComponents(inspector.sourceRoot, absoluteRoot); err != nil {
+		if err := inspector.noSymlinkComponents(absoluteRoot); err != nil {
 			inspector.error(inspector.relativePath(absoluteRoot), "skill root: "+err.Error())
 			continue
 		}
-		if err := requireDirectory(absoluteRoot); err != nil {
+		if err := inspector.requireDirectory(absoluteRoot); err != nil {
 			inspector.error(inspector.relativePath(absoluteRoot), "skill root: "+err.Error())
 			continue
 		}
@@ -127,6 +130,7 @@ func InspectSkillRepo(manifest model.SourceManifest, workspaceRoot string) (mode
 
 type inspector struct {
 	workspaceRoot string
+	filesystem    *os.Root
 	sourceRoot    string
 	inputs        map[model.RelativePath]string
 	diagnostics   []model.Diagnostic
@@ -136,7 +140,7 @@ func (i *inspector) findSkillFiles(root string) []string {
 	var found []string
 	var walk func(string)
 	walk = func(directory string) {
-		entries, err := os.ReadDir(directory)
+		entries, err := i.readDir(directory)
 		if err != nil {
 			i.error(i.relativePath(directory), "read directory: "+err.Error())
 			return
@@ -204,7 +208,7 @@ func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.Relative
 	files := make(map[model.RelativePath][]byte)
 	var walk func(string)
 	walk = func(directory string) {
-		entries, err := os.ReadDir(directory)
+		entries, err := i.readDir(directory)
 		if err != nil {
 			i.error(i.relativePath(directory), "read support directory: "+err.Error())
 			return
@@ -251,14 +255,14 @@ func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.Relative
 
 func (i *inspector) sidecars(identity model.AssetID, name string) ([]model.CapabilityUse, []model.TargetOverlay) {
 	sidecarRoot := filepath.Join(i.sourceRoot, ".agentbundler", "assets", "skill", name)
-	if err := noSymlinkComponents(i.sourceRoot, sidecarRoot); err != nil {
+	if err := i.noSymlinkComponents(sidecarRoot); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		i.error(i.relativePath(sidecarRoot), "inspect sidecar: "+err.Error())
 		return nil, nil
 	}
-	info, err := os.Lstat(sidecarRoot)
+	info, err := i.lstat(sidecarRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -297,7 +301,7 @@ func (i *inspector) sidecars(identity model.AssetID, name string) ([]model.Capab
 }
 
 func (i *inspector) targetSidecars(identity model.AssetID, targetsRoot string) []model.TargetOverlay {
-	entries, err := os.ReadDir(targetsRoot)
+	entries, err := i.readDir(targetsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -397,7 +401,7 @@ type targetFiles struct {
 
 func (i *inspector) filesTree(root string) map[model.RelativePath][]byte {
 	files := make(map[model.RelativePath][]byte)
-	info, err := os.Lstat(root)
+	info, err := i.lstat(root)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return files
@@ -411,7 +415,7 @@ func (i *inspector) filesTree(root string) map[model.RelativePath][]byte {
 	}
 	var walk func(string)
 	walk = func(directory string) {
-		entries, err := os.ReadDir(directory)
+		entries, err := i.readDir(directory)
 		if err != nil {
 			i.error(i.relativePath(directory), "read target files tree: "+err.Error())
 			return
@@ -452,7 +456,7 @@ func (i *inspector) filesTree(root string) map[model.RelativePath][]byte {
 }
 
 func (i *inspector) optionalRegularInput(path string) ([]byte, bool) {
-	info, err := os.Lstat(path)
+	info, err := i.lstat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false
@@ -468,7 +472,7 @@ func (i *inspector) optionalRegularInput(path string) ([]byte, bool) {
 }
 
 func (i *inspector) readInput(path string) ([]byte, bool) {
-	content, err := os.ReadFile(path)
+	content, err := i.readFile(path)
 	if err != nil {
 		i.error(i.relativePath(path), "read input: "+err.Error())
 		return nil, false
@@ -477,6 +481,88 @@ func (i *inspector) readInput(path string) ([]byte, bool) {
 	digest := sha256.Sum256(content)
 	i.inputs[relative] = hex.EncodeToString(digest[:])
 	return content, true
+}
+
+func containedPath(root, relative string) (string, error) {
+	candidate := filepath.Join(root, filepath.FromSlash(relative))
+	path, err := filepath.Rel(root, candidate)
+	if err != nil || path == ".." || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes its declared root")
+	}
+	return candidate, nil
+}
+
+func (i *inspector) relativeToWorkspace(path string) (string, error) {
+	relative, err := filepath.Rel(i.workspaceRoot, path)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes workspace root")
+	}
+	return filepath.ToSlash(relative), nil
+}
+
+func (i *inspector) noSymlinkComponents(path string) error {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return err
+	}
+	current := "."
+	for _, segment := range strings.Split(filepath.FromSlash(relative), string(filepath.Separator)) {
+		if segment == "." || segment == "" {
+			continue
+		}
+		current = filepath.Join(current, segment)
+		info, err := i.filesystem.Lstat(filepath.ToSlash(current))
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("source symlinks are not allowed")
+		}
+	}
+	return nil
+}
+
+func (i *inspector) lstat(path string) (os.FileInfo, error) {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return nil, err
+	}
+	return i.filesystem.Lstat(relative)
+}
+
+func (i *inspector) readDir(path string) ([]os.DirEntry, error) {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return nil, err
+	}
+	directory, err := i.filesystem.Open(relative)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = directory.Close() }()
+	return directory.ReadDir(-1)
+}
+
+func (i *inspector) readFile(path string) ([]byte, error) {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return nil, err
+	}
+	return i.filesystem.ReadFile(relative)
+}
+
+func (i *inspector) requireDirectory(path string) error {
+	info, err := i.lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("must not be a symlink")
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("must be a directory")
+	}
+	return nil
 }
 
 func (i *inspector) relativePath(path string) string {
@@ -630,155 +716,11 @@ func parseJSONFiles(data []byte) (map[model.RelativePath][]byte, error) {
 }
 
 func decodeStrictJSONObject(data []byte, destination any) error {
-	if len(data) == 0 || !utf8.Valid(data) {
-		return fmt.Errorf("must be UTF-8 JSON")
-	}
-	if err := rejectDuplicateJSONKeys(data); err != nil {
-		return err
-	}
-	trimmed := bytes.TrimSpace(data)
-	if len(trimmed) == 0 || trimmed[0] != '{' {
-		return fmt.Errorf("must be a JSON object")
-	}
-	return decodeStrictJSON(data, destination)
+	return model.DecodeStrictJSONObject(data, destination)
 }
 
 func decodeStrictJSON(data []byte, destination any) error {
-	if len(data) == 0 || !utf8.Valid(data) {
-		return fmt.Errorf("must be UTF-8 JSON")
-	}
-	if err := rejectDuplicateJSONKeys(data); err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
-	if err := decoder.Decode(destination); err != nil {
-		return err
-	}
-	if err := ensureEOF(decoder); err != nil {
-		return err
-	}
-	return nil
-}
-
-func rejectDuplicateJSONKeys(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := scanJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple top-level JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func scanJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		keys := make(map[string]struct{})
-		for decoder.More() {
-			token, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := token.(string)
-			if !ok {
-				return fmt.Errorf("invalid JSON object key")
-			}
-			if _, exists := keys[key]; exists {
-				return fmt.Errorf("duplicate JSON key %q", key)
-			}
-			keys[key] = struct{}{}
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		_, err := decoder.Token()
-		return err
-	case '[':
-		for decoder.More() {
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		_, err := decoder.Token()
-		return err
-	default:
-		return fmt.Errorf("invalid JSON delimiter %q", delimiter)
-	}
-}
-
-func ensureEOF(decoder *json.Decoder) error {
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple top-level JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func containedPath(root, relative string) (string, error) {
-	candidate := filepath.Join(root, filepath.FromSlash(relative))
-	path, err := filepath.Rel(root, candidate)
-	if err != nil || path == ".." || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path escapes its declared root")
-	}
-	return candidate, nil
-}
-
-func noSymlinkComponents(root, candidate string) error {
-	relative, err := filepath.Rel(root, candidate)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("path escapes its declared root")
-	}
-	current := root
-	if info, err := os.Lstat(current); err != nil {
-		return err
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("source symlinks are not allowed")
-	}
-	for _, segment := range strings.Split(relative, string(filepath.Separator)) {
-		if segment == "." || segment == "" {
-			continue
-		}
-		current = filepath.Join(current, segment)
-		info, err := os.Lstat(current)
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("source symlinks are not allowed")
-		}
-	}
-	return nil
-}
-
-func requireDirectory(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("must not be a symlink")
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("must be a directory")
-	}
-	return nil
+	return model.DecodeStrictJSON(data, destination)
 }
 
 func parseTargetID(value string) (model.TargetID, bool) {

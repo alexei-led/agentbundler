@@ -37,6 +37,13 @@ func TestParseRejectsAmbiguousYAML(t *testing.T) {
 	}
 }
 
+func TestParseRejectsInvalidUTF8(t *testing.T) {
+	input := append([]byte("# Demo\n"), 0xff)
+	if _, _, err := Parse(input); err == nil {
+		t.Fatal("Parse() error = nil, want invalid UTF-8 error")
+	}
+}
+
 func TestParseWithoutFrontmatter(t *testing.T) {
 	const input = "# Demo\n"
 	got, body, err := Parse([]byte(input))

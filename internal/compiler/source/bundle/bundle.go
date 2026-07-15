@@ -9,13 +9,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/compiler/source/frontmatter"
@@ -24,10 +22,12 @@ import (
 const diagnosticCodeInvalidBundle = "invalid-bundle-source"
 
 type inspector struct {
-	root        string
-	inputs      map[model.RelativePath]string
-	nativeGaps  map[model.RelativePath]model.NativeGap
-	diagnostics []model.Diagnostic
+	workspaceRoot string
+	filesystem    *os.Root
+	root          string
+	inputs        map[model.RelativePath]string
+	nativeGaps    map[model.RelativePath]model.NativeGap
+	diagnostics   []model.Diagnostic
 }
 
 type packageManifest struct {
@@ -91,6 +91,16 @@ type sectionSidecar struct {
 
 // InspectBundle imports a canonical bundle rooted below workspaceRoot.
 func InspectBundle(manifest model.SourceManifest, workspaceRoot string) (model.SourceInventory, []model.Diagnostic) {
+	workspace, err := os.OpenRoot(workspaceRoot)
+	if err != nil {
+		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", "workspace root: "+err.Error())}
+	}
+	defer func() { _ = workspace.Close() }()
+	return InspectBundleRoot(manifest, workspaceRoot, workspace)
+}
+
+// InspectBundleRoot imports a bundle using a workspace-bounded filesystem.
+func InspectBundleRoot(manifest model.SourceManifest, workspaceRoot string, workspace *os.Root) (model.SourceInventory, []model.Diagnostic) {
 	if manifest.Kind != model.SourceKindBundle {
 		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", "bundle importer requires kind bundle")}
 	}
@@ -102,18 +112,19 @@ func InspectBundle(manifest model.SourceManifest, workspaceRoot string) (model.S
 	}
 
 	root := filepath.Join(workspaceRoot, filepath.FromSlash(string(manifest.Root)))
-	info, err := os.Lstat(root)
+	inspector := inspector{
+		workspaceRoot: workspaceRoot,
+		filesystem:    workspace,
+		root:          root,
+		inputs:        make(map[model.RelativePath]string),
+		nativeGaps:    make(map[model.RelativePath]model.NativeGap),
+	}
+	info, err := inspector.lstat(root)
 	if err != nil {
 		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", fmt.Sprintf("source root: %v", err))}
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", "source root must be a non-symlink directory")}
-	}
-
-	inspector := inspector{
-		root:       root,
-		inputs:     make(map[model.RelativePath]string),
-		nativeGaps: make(map[model.RelativePath]model.NativeGap),
 	}
 	packagePaths := append([]model.RelativePath(nil), manifest.Bundle.Packages...)
 	sort.Slice(packagePaths, func(i, j int) bool { return packagePaths[i] < packagePaths[j] })
@@ -301,7 +312,7 @@ func classifyAsset(assetPath string) (model.AssetKind, string, string, string, b
 
 func (i *inspector) readSupportFiles(assetDir string, content *model.AssetContent) {
 	root := filepath.Join(i.root, filepath.FromSlash(assetDir))
-	err := filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+	err := i.walkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -383,7 +394,7 @@ func (i *inspector) readCapabilities(assetDir string) []model.CapabilityUse {
 func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []model.TargetOverlay {
 	targetsPath := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets")))
 	targetsRoot := filepath.Join(i.root, filepath.FromSlash(string(targetsPath)))
-	info, err := os.Lstat(targetsRoot)
+	info, err := i.lstat(targetsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -395,11 +406,11 @@ func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []mode
 		i.addDiagnostic(targetsPath, "target sidecars must be a non-symlink directory")
 		return nil
 	}
-	if err := noSymlinkComponents(i.root, targetsRoot); err != nil {
+	if err := i.noSymlinkComponents(i.root, targetsRoot); err != nil {
 		i.addDiagnostic(targetsPath, "%v", err)
 		return nil
 	}
-	entries, err := os.ReadDir(targetsRoot)
+	entries, err := i.readDir(targetsRoot)
 	if err != nil {
 		i.addDiagnostic(targetsPath, "read target sidecars: %v", err)
 		return nil
@@ -518,7 +529,7 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 }
 
 func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.TargetID, files map[model.RelativePath][]byte) bool {
-	info, err := os.Lstat(filesDir)
+	info, err := i.lstat(filesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return true
@@ -531,7 +542,7 @@ func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.Tar
 		return false
 	}
 	valid := true
-	err = filepath.WalkDir(filesDir, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+	err = i.walkDir(filesDir, func(fullPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -578,14 +589,14 @@ func (i *inspector) readRegular(path model.RelativePath) ([]byte, bool) {
 
 func (i *inspector) readOptionalRegular(path model.RelativePath) ([]byte, bool, bool) {
 	fullPath := filepath.Join(i.root, filepath.FromSlash(string(path)))
-	if err := noSymlinkComponents(i.root, fullPath); err != nil {
+	if err := i.noSymlinkComponents(i.root, fullPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, false
 		}
 		i.addDiagnostic(path, "%v", err)
 		return nil, true, false
 	}
-	info, err := os.Lstat(fullPath)
+	info, err := i.lstat(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false, false
@@ -601,7 +612,7 @@ func (i *inspector) readOptionalRegular(path model.RelativePath) ([]byte, bool, 
 		i.addDiagnostic(path, "source file is not regular")
 		return nil, true, false
 	}
-	data, err := os.ReadFile(fullPath)
+	data, err := i.readFile(fullPath)
 	if err != nil {
 		i.addDiagnostic(path, "read file: %v", err)
 		return nil, true, false
@@ -609,6 +620,75 @@ func (i *inspector) readOptionalRegular(path model.RelativePath) ([]byte, bool, 
 	digest := sha256.Sum256(data)
 	i.inputs[path] = hex.EncodeToString(digest[:])
 	return data, true, true
+}
+
+func (i *inspector) relativeToWorkspace(path string) (string, error) {
+	relative, err := filepath.Rel(i.workspaceRoot, path)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes workspace root")
+	}
+	return filepath.ToSlash(relative), nil
+}
+
+func (i *inspector) noSymlinkComponents(root, candidate string) error {
+	relative, err := filepath.Rel(root, candidate)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("source path leaves source root")
+	}
+	current := root
+	for _, segment := range strings.Split(relative, string(filepath.Separator)) {
+		if segment == "." || segment == "" {
+			continue
+		}
+		current = filepath.Join(current, segment)
+		info, err := i.lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("source path crosses a symlink")
+		}
+	}
+	return nil
+}
+
+func (i *inspector) lstat(path string) (os.FileInfo, error) {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return nil, err
+	}
+	return i.filesystem.Lstat(relative)
+}
+
+func (i *inspector) readDir(path string) ([]os.DirEntry, error) {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return nil, err
+	}
+	directory, err := i.filesystem.Open(relative)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = directory.Close() }()
+	return directory.ReadDir(-1)
+}
+
+func (i *inspector) readFile(path string) ([]byte, error) {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return nil, err
+	}
+	return i.filesystem.ReadFile(relative)
+}
+
+func (i *inspector) walkDir(path string, walk fs.WalkDirFunc) error {
+	relative, err := i.relativeToWorkspace(path)
+	if err != nil {
+		return err
+	}
+	return fs.WalkDir(i.filesystem.FS(), relative, func(relativePath string, entry fs.DirEntry, walkErr error) error {
+		return walk(filepath.Join(i.workspaceRoot, filepath.FromSlash(relativePath)), entry, walkErr)
+	})
 }
 
 func (i *inspector) addDiagnostic(path model.RelativePath, format string, arguments ...any) {
@@ -624,91 +704,7 @@ func diagnostic(path model.RelativePath, message string) model.Diagnostic {
 }
 
 func decodeStrictJSON(data []byte, destination any) error {
-	if !utf8.Valid(data) {
-		return fmt.Errorf("JSON must be valid UTF-8")
-	}
-	if err := rejectDuplicateJSONKeys(data); err != nil {
-		return err
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
-	if err := decoder.Decode(destination); err != nil {
-		return err
-	}
-	if err := ensureJSONEOF(decoder); err != nil {
-		return err
-	}
-	return nil
-}
-
-func rejectDuplicateJSONKeys(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := scanJSONValue(decoder); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple top-level JSON values")
-		}
-		return err
-	}
-	return nil
-}
-
-func scanJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		keys := make(map[string]struct{})
-		for decoder.More() {
-			keyToken, err := decoder.Token()
-			if err != nil {
-				return err
-			}
-			key, ok := keyToken.(string)
-			if !ok {
-				return fmt.Errorf("JSON object key is invalid")
-			}
-			if _, exists := keys[key]; exists {
-				return fmt.Errorf("duplicate JSON key %q", key)
-			}
-			keys[key] = struct{}{}
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		_, err = decoder.Token()
-		return err
-	case '[':
-		for decoder.More() {
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		_, err = decoder.Token()
-		return err
-	default:
-		return fmt.Errorf("invalid JSON delimiter %q", delimiter)
-	}
-}
-
-func ensureJSONEOF(decoder *json.Decoder) error {
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("multiple top-level JSON values")
-		}
-		return err
-	}
-	return nil
+	return model.DecodeStrictJSON(data, destination)
 }
 
 func parseMarkdown(data []byte) (map[string]any, string, error) {
@@ -789,25 +785,6 @@ func parseTarget(value string) (model.TargetID, error) {
 	default:
 		return "", fmt.Errorf("target %q is invalid", value)
 	}
-}
-
-func noSymlinkComponents(root, path string) error {
-	rel, err := filepath.Rel(root, path)
-	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
-		return fmt.Errorf("source path leaves source root")
-	}
-	current := root
-	for _, part := range strings.Split(rel, string(filepath.Separator))[:len(strings.Split(rel, string(filepath.Separator)))-1] {
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if err != nil {
-			return fmt.Errorf("inspect source path: %w", err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("source path crosses a symlink")
-		}
-	}
-	return nil
 }
 
 func hasErrors(diagnostics []model.Diagnostic) bool {

@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -202,6 +203,39 @@ func TestModelJSONSerializationIsDeterministic(t *testing.T) {
 	}
 	if string(firstJSON) != string(secondJSON) {
 		t.Fatalf("serialization differs:\nfirst:  %s\nsecond: %s", firstJSON, secondJSON)
+	}
+}
+
+func TestDiagnosticJSONLocationContract(t *testing.T) {
+	t.Parallel()
+
+	withLocation, err := json.Marshal(Diagnostic{
+		Code:     "invalid-source",
+		Severity: SeverityError,
+		Location: &SourceLocation{Path: "source/SKILL.md"},
+		Message:  "invalid source",
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var diagnostic map[string]any
+	if err := json.Unmarshal(withLocation, &diagnostic); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if got, want := diagnostic["location"], map[string]any{"path": "source/SKILL.md", "line": nil, "column": nil}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("location = %#v, want %#v", got, want)
+	}
+
+	withoutLocation, err := json.Marshal(Diagnostic{Code: "invalid-source", Severity: SeverityError, Message: "invalid source"})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	var withoutLocationDiagnostic map[string]any
+	if err := json.Unmarshal(withoutLocation, &withoutLocationDiagnostic); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if _, exists := withoutLocationDiagnostic["location"]; exists {
+		t.Fatalf("location = %#v, want omitted", withoutLocationDiagnostic["location"])
 	}
 }
 

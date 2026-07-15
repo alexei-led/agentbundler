@@ -7,6 +7,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,6 +18,9 @@ import (
 // timestamps, and duplicate mapping keys are rejected so the result remains a
 // deterministic JSON-compatible value for every target renderer.
 func Parse(data []byte) (map[string]any, string, error) {
+	if !utf8.Valid(data) {
+		return nil, "", fmt.Errorf("must be valid UTF-8")
+	}
 	text := string(data)
 	lines := strings.SplitAfter(text, "\n")
 	if len(lines) == 0 || trimLineEnding(lines[0]) != "---" {

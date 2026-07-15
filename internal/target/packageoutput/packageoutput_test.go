@@ -1,4 +1,4 @@
-package packageoutput
+package packageoutput_test
 
 import (
 	"encoding/json"
@@ -6,6 +6,12 @@ import (
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/claude"
+	"github.com/alexei-led/agentbundler/internal/target/codex"
+	"github.com/alexei-led/agentbundler/internal/target/copilot"
+	"github.com/alexei-led/agentbundler/internal/target/cursor"
+	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
+	"github.com/alexei-led/agentbundler/internal/target/pi"
 )
 
 func TestRenderClaudePackageWithSkillsAgentsAndResources(t *testing.T) {
@@ -111,7 +117,7 @@ func TestRenderCodexPackageAgentIsStandaloneTOML(t *testing.T) {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
 	for _, file := range plan.Files {
-		if file.Path == "agents/reviewer.toml" {
+		if file.Path == ".codex/agents/reviewer.toml" {
 			text := string(file.Bytes)
 			if !containsAll(text, `name = "reviewer"`, `description = "Review code"`, `sandbox_mode = "read-only"`, `developer_instructions = """`) {
 				t.Fatalf("agent TOML = %q", text)
@@ -156,6 +162,37 @@ func TestRenderCursorPackageIncludesMarkdownAgent(t *testing.T) {
 	}
 	if !containsAll(string(agent), `"name":"reviewer"`, `"description":"Review code"`) || contains(string(agent), "sandbox_mode") {
 		t.Fatalf("Cursor agent = %q", agent)
+	}
+}
+
+func TestRenderPiPackageRequiresSubagentsDependencyForAgents(t *testing.T) {
+	pkg := packageFixture(model.TargetPi)
+	delete(pkg.Metadata, "dependencies")
+	_, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-manifest" || !contains(diagnostics[0].Message, "pi-subagents") {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestRenderRejectsUnsupportedPackageCapability(t *testing.T) {
+	pkg := packageFixture(model.TargetClaude)
+	pkg.Assets[0].CapabilityUses = []model.CapabilityUse{{Key: "tool.shell", Location: model.SourceLocation{Path: "source/SKILL.md"}}}
+	_, diagnostics := Render(model.TargetClaude, []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestRenderPiSubagentQuotesYAMLScalars(t *testing.T) {
+	pkg := packageFixture(model.TargetPi)
+	pkg.Assets[1].Content.Frontmatter["description"] = "Review: code"
+	plan, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	agent := plannedFiles(plan)["agents/reviewer.md"]
+	if !contains(string(agent), `description: 'Review: code'`) {
+		t.Fatalf("Pi subagent = %q, want quoted description", agent)
 	}
 }
 
@@ -213,6 +250,218 @@ func TestRenderPiPackageRegistersSubagents(t *testing.T) {
 	}
 	if !reflect.DeepEqual(manifest["dependencies"], map[string]any{"pi-subagents": "0.34.0"}) {
 		t.Fatalf("Pi dependencies = %#v", manifest["dependencies"])
+	}
+}
+
+func TestRenderWithCodecContract(t *testing.T) {
+	pkg := packageFixture(model.TargetClaude)
+	pkg.Assets = pkg.Assets[:1]
+	pkg.Assets[0].CapabilityUses = []model.CapabilityUse{{Key: "asset.skill", Location: model.SourceLocation{Path: "source/SKILL.md"}}}
+
+	codec := packageoutput.Codec{
+		Target:       model.TargetClaude,
+		ManifestPath: "plugin.json",
+		AgentRoot:    "agents",
+		Capabilities: []model.CapabilityRule{{Key: "asset.skill", State: model.CapabilityStateNative}},
+		Manifest:     func(model.NormalizedPackage) ([]byte, error) { return []byte("{}\n"), nil },
+		Agent:        func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md", nil },
+	}
+	plan, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 0 || plan.Target != codec.Target {
+		t.Fatalf("RenderWithCodec() = (%#v, %#v)", plan, diagnostics)
+	}
+
+	codec.ManifestPath = "../plugin.json"
+	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-codec" || !contains(diagnostics[0].Message, "manifest path") {
+		t.Fatalf("invalid manifest path diagnostics = %#v", diagnostics)
+	}
+
+	codec.ManifestPath = "plugin.json"
+	codec.AgentRoot = "../agents"
+	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-codec" || !contains(diagnostics[0].Message, "agent root") {
+		t.Fatalf("invalid agent root diagnostics = %#v", diagnostics)
+	}
+
+	codec.AgentRoot = "agents"
+	pkg.Assets = append(pkg.Assets, model.NormalizedAsset{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Files: map[model.RelativePath][]byte{}}})
+	codec.Capabilities = append(codec.Capabilities, model.CapabilityRule{Key: "asset.agent", State: model.CapabilityStateNative})
+	codec.Agent = func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md/invalid", nil }
+	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "agent suffix") {
+		t.Fatalf("invalid agent suffix diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestRenderWithCodecCapabilityAcknowledgments(t *testing.T) {
+	pkg := packageFixture(model.TargetClaude)
+	pkg.Assets = pkg.Assets[:1]
+	pkg.Assets[0].CapabilityUses = []model.CapabilityUse{{Key: "asset.skill", Location: model.SourceLocation{Path: "source/SKILL.md"}}}
+	codec := packageoutput.Codec{
+		Target:       model.TargetClaude,
+		ManifestPath: "plugin.json",
+		AgentRoot:    "agents",
+		Capabilities: []model.CapabilityRule{{Key: "asset.skill", State: model.CapabilityStateAdvisory}},
+		Manifest:     func(model.NormalizedPackage) ([]byte, error) { return []byte("{}\n"), nil },
+		Agent:        func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md", nil },
+	}
+	_, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "missing-capability-acknowledgment" {
+		t.Fatalf("missing acknowledgment diagnostics = %#v", diagnostics)
+	}
+
+	pkg.Acknowledgments = []model.Acknowledgment{{Asset: "skill/demo", Target: model.TargetClaude, Key: "asset.agent", Reason: "wrong capability"}}
+	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-capability-acknowledgment" {
+		t.Fatalf("inexact acknowledgment diagnostics = %#v", diagnostics)
+	}
+
+	pkg.Acknowledgments[0].Key = "asset.skill"
+	plan, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	if len(diagnostics) != 0 || len(plan.Files) == 0 {
+		t.Fatalf("acknowledged advisory render = (%#v, %#v)", plan, diagnostics)
+	}
+}
+
+func TestTargetCodecsOwnTargetAndCapabilities(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target model.TargetID
+		codec  packageoutput.Codec
+	}{
+		{name: "claude", target: model.TargetClaude, codec: claude.PackageCodec()},
+		{name: "codex", target: model.TargetCodex, codec: codex.PackageCodec()},
+		{name: "copilot", target: model.TargetCopilot, codec: copilot.PackageCodec()},
+		{name: "cursor", target: model.TargetCursor, codec: cursor.PackageCodec()},
+		{name: "pi", target: model.TargetPi, codec: pi.PackageCodec()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.codec.Target != test.target || test.codec.ManifestPath == "" || test.codec.AgentRoot == "" || len(test.codec.Capabilities) == 0 {
+				t.Fatalf("PackageCodec() = %#v", test.codec)
+			}
+		})
+	}
+}
+
+func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		target         model.TargetID
+		codec          packageoutput.Codec
+		manifestPath   model.RelativePath
+		agentPath      model.RelativePath
+		manifestFields func(*testing.T, map[string]any)
+	}{
+		{
+			name: "claude", target: model.TargetClaude, codec: claude.PackageCodec(),
+			manifestPath: ".claude-plugin/plugin.json", agentPath: "agents/reviewer.md",
+			manifestFields: func(t *testing.T, manifest map[string]any) {
+				t.Helper()
+				if schema, ok := manifest["$schema"].(string); !ok || schema == "" {
+					t.Fatalf("manifest schema = %#v", manifest["$schema"])
+				}
+			},
+		},
+		{
+			name: "codex", target: model.TargetCodex, codec: codex.PackageCodec(),
+			manifestPath: ".codex-plugin/plugin.json", agentPath: ".codex/agents/reviewer.toml",
+			manifestFields: func(t *testing.T, manifest map[string]any) {
+				t.Helper()
+				if got := manifest["skills"]; got != "./skills" {
+					t.Fatalf("manifest skills = %#v, want ./skills", got)
+				}
+			},
+		},
+		{
+			name: "pi", target: model.TargetPi, codec: pi.PackageCodec(),
+			manifestPath: "package.json", agentPath: "agents/reviewer.md",
+			manifestFields: func(t *testing.T, manifest map[string]any) {
+				t.Helper()
+				piManifest, ok := manifest["pi"].(map[string]any)
+				if !ok || !reflect.DeepEqual(piManifest["skills"], []any{"./skills"}) {
+					t.Fatalf("manifest pi = %#v", manifest["pi"])
+				}
+				subagents, ok := piManifest["subagents"].(map[string]any)
+				if !ok || !reflect.DeepEqual(subagents["agents"], []any{"./agents"}) {
+					t.Fatalf("manifest pi subagents = %#v", piManifest["subagents"])
+				}
+			},
+		},
+		{
+			name: "copilot", target: model.TargetCopilot, codec: copilot.PackageCodec(),
+			manifestPath: "plugin.json", agentPath: "agents/reviewer.agent.md",
+			manifestFields: func(t *testing.T, manifest map[string]any) {
+				t.Helper()
+				if manifest["agents"] != "agents/" || !reflect.DeepEqual(manifest["skills"], []any{"skills/"}) {
+					t.Fatalf("manifest = %#v", manifest)
+				}
+			},
+		},
+		{
+			name: "cursor", target: model.TargetCursor, codec: cursor.PackageCodec(),
+			manifestPath: ".cursor-plugin/plugin.json", agentPath: "agents/reviewer.md",
+			manifestFields: func(t *testing.T, manifest map[string]any) {
+				t.Helper()
+				if got := manifest["skills"]; got != "./skills/" {
+					t.Fatalf("manifest skills = %#v, want ./skills/", got)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{packageFixture(test.target)}, test.codec)
+			if len(diagnostics) != 0 {
+				t.Fatalf("RenderWithCodec() diagnostics = %#v", diagnostics)
+			}
+			if plan.Target != test.target {
+				t.Fatalf("plan target = %q, want %q", plan.Target, test.target)
+			}
+
+			files := plannedFiles(plan)
+			for _, path := range []model.RelativePath{
+				test.manifestPath,
+				"README.md",
+				"skills/demo/SKILL.md",
+				test.agentPath,
+				"resources/templates/design.md",
+			} {
+				if _, ok := files[path]; !ok {
+					t.Errorf("required output %q is missing", path)
+				}
+			}
+
+			var manifest map[string]any
+			if err := json.Unmarshal(files[test.manifestPath], &manifest); err != nil {
+				t.Fatalf("manifest JSON: %v", err)
+			}
+			if manifest["name"] != "demo" || manifest["version"] != "1.0.0" {
+				t.Fatalf("manifest identity = %#v", manifest)
+			}
+			test.manifestFields(t, manifest)
+
+			agent := string(files[test.agentPath])
+			if !containsAll(agent, "reviewer", "Review code", "Review.") {
+				t.Fatalf("agent output = %q", agent)
+			}
+		})
+	}
+}
+
+func Render(target model.TargetID, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+	switch target {
+	case model.TargetClaude:
+		return claude.Render(packages)
+	case model.TargetCodex:
+		return codex.Render(packages)
+	case model.TargetPi:
+		return pi.Render(packages)
+	case model.TargetCopilot:
+		return copilot.Render(packages)
+	case model.TargetCursor:
+		return cursor.New().Render(packages)
+	default:
+		panic("unsupported test target")
 	}
 }
 

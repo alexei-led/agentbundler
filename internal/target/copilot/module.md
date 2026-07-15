@@ -79,7 +79,7 @@ Adapter = { target: TargetID, formatRevision: Integer, capabilities: [Capability
 render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
 ```
 
-The adapter's `target` is `copilot` at `formatRevision: 3`. It renders exactly one project-profile package of `asset.skill` content to `.github/skills/<skill>/SKILL.md` plus support files and `asset.resource` trees to `.github/resources/<resource>/`. `asset.agent`, `asset.hook`, and `asset.native-resource` are unsupported. There is no generic package index or plugin-manifest claim.
+The adapter's `target` is `copilot` at `formatRevision: 4`. It renders either project-profile skills to `.github/skills/<skill>/SKILL.md` plus support files and resources, or package-profile content as an installable plugin manifest with `skills/` and optional `agents/` entries. `asset.hook` and `asset.native-resource` remain unsupported.
 
 ## Integrations
 

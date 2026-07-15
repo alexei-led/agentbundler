@@ -15,7 +15,17 @@ const diagnosticCode = "invalid-claude-plugin"
 
 // InspectClaudePlugin discovers portable assets and Claude-native gaps in one plugin root.
 func InspectClaudePlugin(manifest model.SourceManifest, workspaceRoot string) (model.SourceInventory, []model.Diagnostic) {
-	inspector := claudeInspector{workspaceRoot: workspaceRoot, inputs: make(map[model.RelativePath]string)}
+	workspace, err := os.OpenRoot(workspaceRoot)
+	if err != nil {
+		return model.SourceInventory{}, []model.Diagnostic{{Code: diagnosticCode, Severity: model.SeverityError, Message: "workspace root: " + err.Error()}}
+	}
+	defer func() { _ = workspace.Close() }()
+	return InspectClaudePluginRoot(manifest, workspaceRoot, workspace)
+}
+
+// InspectClaudePluginRoot imports a Claude plugin using a workspace-bounded filesystem.
+func InspectClaudePluginRoot(manifest model.SourceManifest, workspaceRoot string, workspace *os.Root) (model.SourceInventory, []model.Diagnostic) {
+	inspector := claudeInspector{workspaceRoot: workspaceRoot, filesystem: workspace, inputs: make(map[model.RelativePath]string)}
 	inspector.diagnostics = append(inspector.diagnostics, model.ValidateSourceManifest(manifest)...)
 	if manifest.Kind != model.SourceKindClaudePlugin {
 		inspector.error("", "manifest kind must be claude-plugin")
@@ -27,11 +37,6 @@ func InspectClaudePlugin(manifest model.SourceManifest, workspaceRoot string) (m
 		inspector.error("", "workspace root must be a cleaned absolute path")
 		return model.SourceInventory{}, inspector.diagnostics
 	}
-	if err := requireDirectory(workspaceRoot); err != nil {
-		inspector.error("", "workspace root: "+err.Error())
-		return model.SourceInventory{}, inspector.diagnostics
-	}
-
 	var err error
 	inspector.sourceRoot, err = containedPath(workspaceRoot, string(manifest.Root))
 	if err != nil {
@@ -43,7 +48,11 @@ func InspectClaudePlugin(manifest model.SourceManifest, workspaceRoot string) (m
 		inspector.error(string(manifest.ClaudePlugin.PluginRoot), "plugin root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
 	}
-	if err := requireDirectory(pluginRoot); err != nil {
+	if err := inspector.noSymlinkComponents(workspaceRoot, pluginRoot); err != nil {
+		inspector.error(inspector.relativePath(pluginRoot), "plugin root: "+err.Error())
+		return model.SourceInventory{}, inspector.diagnostics
+	}
+	if err := inspector.requireDirectory(pluginRoot); err != nil {
 		inspector.error(inspector.relativePath(pluginRoot), "plugin root: "+err.Error())
 		return model.SourceInventory{}, inspector.diagnostics
 	}
@@ -237,7 +246,7 @@ func (i *claudeInspector) marketplaceMetadata(path, pluginRoot string, metadata 
 
 func (i *claudeInspector) skills(root string, assets map[model.AssetID]model.SourceAsset, recognized map[string]struct{}) {
 	skillsRoot := filepath.Join(root, "skills")
-	if _, err := os.Lstat(skillsRoot); err != nil {
+	if _, err := i.lstat(skillsRoot); err != nil {
 		if !os.IsNotExist(err) {
 			i.error(i.relativePath(skillsRoot), "inspect skills: "+err.Error())
 		}
@@ -254,7 +263,7 @@ func (i *claudeInspector) skills(root string, assets map[model.AssetID]model.Sou
 		}
 		assets[asset.Identity] = asset
 		dir := filepath.Dir(skillFile)
-		_ = filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		_ = i.walkDir(dir, func(path string, entry os.DirEntry, err error) error {
 			if err == nil && !entry.IsDir() {
 				recognized[path] = struct{}{}
 			}
@@ -264,7 +273,7 @@ func (i *claudeInspector) skills(root string, assets map[model.AssetID]model.Sou
 }
 
 func (i *claudeInspector) agents(root string, assets map[model.AssetID]model.SourceAsset, recognized map[string]struct{}) {
-	entries, err := os.ReadDir(filepath.Join(root, "agents"))
+	entries, err := i.readDir(filepath.Join(root, "agents"))
 	if err != nil {
 		if !os.IsNotExist(err) {
 			i.error(i.relativePath(filepath.Join(root, "agents")), "read agents: "+err.Error())
@@ -330,7 +339,7 @@ func (i *claudeInspector) hooks(hooks map[string][]hookSpec, assets map[model.As
 
 func (i *claudeInspector) nativeGaps(root string, recognized map[string]struct{}) {
 	claude := model.TargetClaude
-	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	_ = i.walkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			i.error(i.relativePath(path), "walk source: "+err.Error())
 			return nil
@@ -357,4 +366,13 @@ func (i *claudeInspector) nativeGaps(root string, recognized map[string]struct{}
 		return nil
 	})
 	sort.Slice(i.native, func(a, b int) bool { return i.native[a].Component < i.native[b].Component })
+}
+
+func containedPath(root, relative string) (string, error) {
+	candidate := filepath.Join(root, filepath.FromSlash(relative))
+	path, err := filepath.Rel(root, candidate)
+	if err != nil || path == ".." || strings.HasPrefix(path, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes its declared root")
+	}
+	return candidate, nil
 }

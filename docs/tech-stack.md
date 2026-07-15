@@ -12,7 +12,7 @@ This file is the normative implementation stack for every module in the **Agent 
 
 - **Package manager**: Go Modules, with a root `go.mod`.
 - **Module import path**: `github.com/alexei-led/agentbundler`. Cross-module imports use the full path `github.com/alexei-led/agentbundler/<module-path>`; for example, `internal/artifact` is imported as `github.com/alexei-led/agentbundler/internal/artifact`.
-- **Dependencies**: Go standard library only. Do not add third-party dependencies unless the design and an explicit stack decision are updated first.
+- **Dependencies**: Prefer the Go standard library. When the standard library does not provide a complete, well-tested primitive, use a mature open-source dependency instead of reimplementing it. Record the dependency and its boundary in this document and keep its use narrow. Current exception: `gopkg.in/yaml.v3` for YAML parsing and serialization.
 - **Provenance configuration normalization**: use `encoding/json.Compact` only. It removes insignificant JSON whitespace but does not sort object keys or normalize number or string spellings. Provenance must not claim RFC 8785 conformance.
 - **Build tooling**: `go build` for the CLI and the standard Go toolchain.
 
