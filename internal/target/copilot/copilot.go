@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetCopilot
-	FormatRevision = 5
+	FormatRevision = 6
 )
 
 // Capabilities returns Copilot's supported package asset capabilities.

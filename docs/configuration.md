@@ -141,16 +141,54 @@ source/plugin/
 └── skills/explain-query/SKILL.md
 ```
 
-Agents and hooks are recognized during import so the compiler can report an
-explicit unsupported capability. They are not rendered by current target
-adapters. Unrecognized regular files in a Claude plugin are treated as Claude
-native gaps, not portable support files.
+Agents and command hooks are normalized during import and render only when the
+selected target preserves their declared semantics. Unsupported event, matcher,
+decision, timeout, async, shell, or failure behavior returns an exact capability
+diagnostic. Unrecognized regular files in a Claude plugin remain Claude-native
+gaps, not portable support files.
 
 ## Distribution and package mode
 
-`distribution` is target-wide metadata. It is not copied from an arbitrary
-source package. Values must be JSON values. Catalog renderers define and validate
-the fields they consume; no catalog is published or installed by a build.
+`distribution` is optional target-wide publication metadata. When it is present
+on a separate package-profile build, Agent Bundler emits a deterministic local
+catalog for Claude, Codex, Copilot, Cursor, and Grok. Pi emits no catalog.
+Catalog generation never publishes, registers, installs, authenticates, fetches,
+or changes vendor configuration.
+
+Catalog distribution metadata is strict:
+
+- `name`: lowercase kebab-case catalog ID;
+- `owner`: non-empty string, or an object with non-empty `name` and optional
+  valid `email`;
+- `description`: non-empty trimmed text;
+- `version`: semantic version.
+
+No other distribution fields are accepted. Each package included in a catalog
+must have lowercase kebab-case `id` and these metadata fields:
+
+- `description` and semantic `version`;
+- `author` as a non-empty string, or an object with `name` and optional `email`
+  and HTTP(S) `url`;
+- absolute HTTP(S) `homepage` and `repository` URLs without credentials;
+- non-empty `license`;
+- a non-empty array of unique string `keywords`.
+
+Keywords and catalog entries are sorted. A single package is rendered at the
+flat catalog source `.`; two or more packages use their package IDs as source
+roots. Target serializers add the native `./` prefix or local-source object when
+the vendor schema requires it. Duplicate identities, source roots, or generated
+catalog paths fail instead of overwriting output.
+
+Generated catalog paths are:
+
+```text
+claude  .claude-plugin/marketplace.json
+codex   .agents/plugins/marketplace.json
+copilot .github/plugin/marketplace.json
+cursor  .cursor-plugin/marketplace.json
+grok    .claude-plugin/marketplace.json
+pi      no catalog
+```
 
 Each target composition may set `packageMode`:
 
@@ -164,7 +202,7 @@ both `identity` and `metadata`; `metadata` must be present even when it is `{}`.
 Package dependency maps must contain non-empty string versions. Equal versions
 may merge, while conflicting versions fail validation.
 
-Separate package example:
+Separate catalog example:
 
 ```json
 {
@@ -174,8 +212,13 @@ Separate package example:
   "targets": ["claude"],
   "output": "generated",
   "distribution": {
-    "name": "Team tools",
-    "owner": "platform"
+    "name": "team-tools",
+    "owner": {
+      "name": "Platform Team",
+      "email": "plugins@example.com"
+    },
+    "description": "Shared developer tools",
+    "version": "2.0.0"
   },
   "composition": [
     {
@@ -188,6 +231,24 @@ Separate package example:
 }
 ```
 
+The referenced package file must provide publication metadata, for example:
+
+```json
+{
+  "id": "team-tools",
+  "metadata": {
+    "description": "Shared developer workflows",
+    "version": "1.2.3",
+    "author": "Platform Team",
+    "homepage": "https://example.com/team-tools",
+    "repository": "https://github.com/example/team-tools",
+    "license": "MIT",
+    "keywords": ["agents", "tools"]
+  },
+  "assets": ["src/skills/explain-query"]
+}
+```
+
 Explicit Pi aggregate example:
 
 ```json
@@ -197,10 +258,6 @@ Explicit Pi aggregate example:
   "root": "bundle",
   "targets": ["pi"],
   "output": "generated",
-  "distribution": {
-    "name": "Team tools",
-    "owner": "platform"
-  },
   "composition": [
     {
       "target": "pi",
@@ -221,10 +278,8 @@ Explicit Pi aggregate example:
 }
 ```
 
-Aggregate mode is explicit. It is never inferred from the number of packages.
-The Pi aggregate renderer is added with Pi hook package support; until then the
-configuration is validated but rendering reports that aggregation is not yet
-implemented.
+Aggregate mode is explicit and never inferred from package count. The Pi
+aggregate renderer emits one installable package root and no marketplace file.
 
 ## Package selection
 

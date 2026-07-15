@@ -6,12 +6,12 @@
 
 ## Purpose
 
-This module owns target-neutral package rooting, common asset copying, hook payload copying, and collision detection. It reduces mechanical duplication without owning any vendor schema or semantic translation.
+This module owns target-neutral package rooting, common asset copying, hook payload copying, catalog placement, and collision detection. It reduces mechanical duplication without owning any vendor schema or semantic translation.
 
 ## Functional Responsibilities
 
 - Render ordered separate package roots under stable package identities.
-- Provide a narrow codec callback for target-owned manifests, agents, hooks, and aggregate behavior.
+- Provide narrow codec callbacks for target-owned package, agent, hook, and catalog manifests.
 - Copy skills, resources, agent inputs, hook payloads, origins, and executable intent deterministically.
 - Detect duplicate package, asset, hook, and output paths with all source origins.
 
@@ -34,11 +34,12 @@ HookPayloadFile = immutable { path, packagePath, bytes, executable, origin }
 HookInput = immutable { descriptor, payloadRoot, payloadFiles }
 HookRenderInput = immutable { packageID, hooks ordered by order/identity/source }
 HookManifest = target-owned { path, bytes }
-PackageCodec = target-owned pure callbacks for package manifest, optional agent, and hook manifest serialization
+CatalogManifest = target-owned { path, bytes }
+PackageCodec = target-owned pure callbacks for package manifest, optional agent, hook manifest, and catalog serialization
 render-with-codec(TargetRenderInput, PackageCodec) -> TargetPlan + [Diagnostic]
 ```
 
-The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. The codec owns the native manifest path and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables. Agent serialization and its output root are configured together only for package contracts that define an agent component.
+The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. When distribution metadata is present, the shared marketplace builder returns ordered common entries and the codec returns one target-owned catalog path and byte sequence. Catalog paths pass through the same containment and collision gate as all generated files. The codec owns native schemas, manifest paths and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables. Agent serialization and its output root are configured together only for package contracts that define an agent component.
 
 ## Integrations
 
@@ -47,6 +48,8 @@ The hook callback receives detached descriptor and payload views. Shared code pl
   - **Shared knowledge**: narrow immutable package/asset/hook views and planned files.
 - **Counterpart**: `internal/compiler/model`
   - **Direction**: consumes model-owned values and returns model-owned plan values.
+- **Counterpart**: `internal/target/marketplace`
+  - **Direction**: consumes validated, ordered target-neutral catalog entries before delegating native serialization to a vendor codec.
 
 ## Internal Design
 
@@ -69,6 +72,6 @@ The hook callback receives detached descriptor and payload views. Shared code pl
 ## Test Specification
 
 - Mixed packages preserve payload bytes, origins, executable intent, and stable roots.
-- Duplicate packages, assets, hooks, payloads, and output paths fail with all origins.
+- Duplicate packages, assets, hooks, payloads, catalogs, and output paths fail with all origins.
 - Reordered input produces the same sorted plan.
 - Shared code is checked for vendor-specific strings.

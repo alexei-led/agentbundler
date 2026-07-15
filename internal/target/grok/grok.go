@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetGrok
-	FormatRevision = 4
+	FormatRevision = 5
 )
 
 // Adapter renders Grok project skills and installable plugins.

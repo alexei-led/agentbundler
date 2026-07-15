@@ -2,7 +2,7 @@
 
 **Path**: `internal/target/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: repository root
-**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`
+**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`
 
 ## Purpose
 
@@ -75,7 +75,7 @@ Package profiles render verified native forms:
 - Cursor: `.cursor-plugin/plugin.json`, skills, agents, `hooks/hooks.json`, payloads.
 - Grok: project profile keeps `.grok/skills`; package profile is a separately generated Grok-tested Claude-compatible plugin with Grok command-root behavior.
 
-Target-wide catalogs are deterministic artifacts at the leaf-owned paths pinned in `docs/vendor-package-contracts.md`. Rendering a catalog does not publish, register, authenticate, install, fetch, or update configuration.
+Target-wide catalogs are deterministic artifacts at the leaf-owned paths pinned in `docs/vendor-package-contracts.md`. The shared `marketplace` leaf strictly validates common distribution/package metadata and orders target-neutral entries; vendor leaves own JSON schemas. Rendering a catalog does not publish, register, authenticate, install, fetch, or update configuration.
 
 ## Integrations
 

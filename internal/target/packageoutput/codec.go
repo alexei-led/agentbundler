@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 )
 
 // Codec isolates target-specific package rules and serialization from package
@@ -17,6 +18,7 @@ type Codec struct {
 	Manifest        func(model.NormalizedPackage) ([]byte, error)
 	Agent           func(model.NormalizedAsset) ([]byte, string, error)
 	Hooks           func(HookRenderInput) (HookManifest, error)
+	Catalog         func(marketplace.Catalog) (CatalogManifest, error)
 	ValidatePackage func(model.NormalizedPackage) []model.Diagnostic
 }
 
@@ -82,6 +84,12 @@ func (file HookPayloadFile) Origin() []model.SourceLocation {
 
 // HookManifest is one target-owned native hook manifest.
 type HookManifest struct {
+	Path  model.RelativePath
+	Bytes []byte
+}
+
+// CatalogManifest is one target-owned native marketplace manifest.
+type CatalogManifest struct {
 	Path  model.RelativePath
 	Bytes []byte
 }

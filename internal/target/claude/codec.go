@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
 
@@ -50,8 +51,55 @@ func PackageCodec() packageoutput.Codec {
 		Manifest:        manifest,
 		Agent:           markdownAgent,
 		Hooks:           hookManifest,
+		Catalog:         catalogManifest,
 		ValidatePackage: validatePackage,
 	}
+}
+
+type catalogDocument struct {
+	Name        string             `json:"name"`
+	Owner       marketplace.Person `json:"owner"`
+	Description string             `json:"description"`
+	Version     string             `json:"version"`
+	Plugins     []catalogEntry     `json:"plugins"`
+}
+
+type catalogEntry struct {
+	Name        string             `json:"name"`
+	Source      string             `json:"source"`
+	Description string             `json:"description"`
+	Version     string             `json:"version"`
+	Author      marketplace.Person `json:"author"`
+	Homepage    string             `json:"homepage"`
+	Repository  string             `json:"repository"`
+	License     string             `json:"license"`
+	Keywords    []string           `json:"keywords"`
+}
+
+func catalogManifest(catalog marketplace.Catalog) (packageoutput.CatalogManifest, error) {
+	document := catalogDocument{
+		Name: catalog.Name, Owner: catalog.Owner, Description: catalog.Description, Version: catalog.Version,
+		Plugins: make([]catalogEntry, 0, len(catalog.Entries)),
+	}
+	for _, entry := range catalog.Entries {
+		document.Plugins = append(document.Plugins, catalogEntry{
+			Name: entry.Name, Source: claudeMarketplaceSource(entry.Source), Description: entry.Description,
+			Version: entry.Version, Author: entry.Author, Homepage: entry.Homepage,
+			Repository: entry.Repository, License: entry.License, Keywords: append([]string(nil), entry.Keywords...),
+		})
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		return packageoutput.CatalogManifest{}, err
+	}
+	return packageoutput.CatalogManifest{Path: ".claude-plugin/marketplace.json", Bytes: append(data, '\n')}, nil
+}
+
+func claudeMarketplaceSource(root string) string {
+	if root == "." {
+		return "./"
+	}
+	return "./" + root
 }
 
 func markdownAgent(asset model.NormalizedAsset) ([]byte, string, error) {

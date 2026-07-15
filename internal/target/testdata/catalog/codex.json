@@ -1,0 +1,1 @@
+{"name":"team-tools","interface":{"displayName":"team-tools"},"plugins":[{"name":"alpha","source":{"source":"local","path":"./"},"policy":{"installation":"AVAILABLE","authentication":"ON_INSTALL"},"category":"Productivity"}]}

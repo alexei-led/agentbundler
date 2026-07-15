@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
 
@@ -50,8 +51,60 @@ func PackageCodec() packageoutput.Codec {
 		Manifest:        manifest,
 		Agent:           markdownAgent,
 		Hooks:           hookManifest,
+		Catalog:         catalogManifest,
 		ValidatePackage: validatePackage,
 	}
+}
+
+type catalogDocument struct {
+	Name     string             `json:"name"`
+	Owner    marketplace.Person `json:"owner"`
+	Metadata catalogMetadata    `json:"metadata"`
+	Plugins  []catalogEntry     `json:"plugins"`
+}
+
+type catalogMetadata struct {
+	Description string `json:"description"`
+	Version     string `json:"version"`
+}
+
+type catalogEntry struct {
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Version     string             `json:"version"`
+	Source      string             `json:"source"`
+	Author      marketplace.Person `json:"author"`
+	Homepage    string             `json:"homepage"`
+	Repository  string             `json:"repository"`
+	License     string             `json:"license"`
+	Keywords    []string           `json:"keywords"`
+}
+
+func catalogManifest(catalog marketplace.Catalog) (packageoutput.CatalogManifest, error) {
+	document := catalogDocument{
+		Name: catalog.Name, Owner: catalog.Owner,
+		Metadata: catalogMetadata{Description: catalog.Description, Version: catalog.Version},
+		Plugins:  make([]catalogEntry, 0, len(catalog.Entries)),
+	}
+	for _, entry := range catalog.Entries {
+		document.Plugins = append(document.Plugins, catalogEntry{
+			Name: entry.Name, Description: entry.Description, Version: entry.Version,
+			Source: copilotMarketplaceSource(entry.Source), Author: entry.Author, Homepage: entry.Homepage,
+			Repository: entry.Repository, License: entry.License, Keywords: append([]string(nil), entry.Keywords...),
+		})
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		return packageoutput.CatalogManifest{}, err
+	}
+	return packageoutput.CatalogManifest{Path: ".github/plugin/marketplace.json", Bytes: append(data, '\n')}, nil
+}
+
+func copilotMarketplaceSource(root string) string {
+	if root == "." {
+		return "./"
+	}
+	return "./" + root
 }
 
 func markdownAgent(asset model.NormalizedAsset) ([]byte, string, error) {

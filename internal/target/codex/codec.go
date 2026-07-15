@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
 
@@ -49,8 +50,63 @@ func PackageCodec() packageoutput.Codec {
 		Manifest:        manifest,
 		HookPayloadRoot: "assets/hooks",
 		Hooks:           hookManifest,
+		Catalog:         catalogManifest,
 		ValidatePackage: validatePackage,
 	}
+}
+
+type catalogDocument struct {
+	Name      string           `json:"name"`
+	Interface catalogInterface `json:"interface"`
+	Plugins   []catalogEntry   `json:"plugins"`
+}
+
+type catalogInterface struct {
+	DisplayName string `json:"displayName"`
+}
+
+type catalogEntry struct {
+	Name     string        `json:"name"`
+	Source   catalogSource `json:"source"`
+	Policy   catalogPolicy `json:"policy"`
+	Category string        `json:"category"`
+}
+
+type catalogSource struct {
+	Source string `json:"source"`
+	Path   string `json:"path"`
+}
+
+type catalogPolicy struct {
+	Installation   string `json:"installation"`
+	Authentication string `json:"authentication"`
+}
+
+func catalogManifest(catalog marketplace.Catalog) (packageoutput.CatalogManifest, error) {
+	document := catalogDocument{
+		Name: catalog.Name, Interface: catalogInterface{DisplayName: catalog.Name},
+		Plugins: make([]catalogEntry, 0, len(catalog.Entries)),
+	}
+	for _, entry := range catalog.Entries {
+		document.Plugins = append(document.Plugins, catalogEntry{
+			Name:     entry.Name,
+			Source:   catalogSource{Source: "local", Path: codexMarketplaceSource(entry.Source)},
+			Policy:   catalogPolicy{Installation: "AVAILABLE", Authentication: "ON_INSTALL"},
+			Category: "Productivity",
+		})
+	}
+	data, err := json.Marshal(document)
+	if err != nil {
+		return packageoutput.CatalogManifest{}, err
+	}
+	return packageoutput.CatalogManifest{Path: ".agents/plugins/marketplace.json", Bytes: append(data, '\n')}, nil
+}
+
+func codexMarketplaceSource(root string) string {
+	if root == "." {
+		return "./"
+	}
+	return "./" + root
 }
 
 func codexAgent(asset model.NormalizedAsset) ([]byte, string, error) {
