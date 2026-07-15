@@ -853,12 +853,12 @@ Manual checks:
 - Inspect generated `package.json` against installed Pi `docs/packages.md`.
 - Confirm only the thin adapter is listed in `pi.extensions`; helper runtime modules are imported, not independently discovered.
 
-- [ ] Embed the runtime source deterministically and emit it under one private generated runtime directory.
-- [ ] Implement explicit Pi aggregate package merging with identity, metadata, dependency, asset-name, and path conflict diagnostics.
-- [ ] Emit `hooks/hooks.v1.json`, one thin package-specific adapter, and exactly one `pi.extensions` registration.
-- [ ] Preserve skills and registered package agents, including the `pi-subagents` dependency only when agents are present.
-- [ ] Add Go/TypeScript shared contract fixtures and tests proving generated descriptors are accepted identically by both implementations.
-- [ ] Run focused, full, TypeScript, and architecture checks before Task 12.
+- [x] Embed the runtime source deterministically and emit it under one private generated runtime directory.
+- [x] Implement explicit Pi aggregate package merging with identity, metadata, dependency, asset-name, and path conflict diagnostics.
+- [x] Emit `hooks/hooks.v1.json`, one thin package-specific adapter, and exactly one `pi.extensions` registration.
+- [x] Preserve skills and registered package agents, including the `pi-subagents` dependency only when agents are present.
+- [x] Add Go/TypeScript shared contract fixtures and tests proving generated descriptors are accepted identically by both implementations.
+- [x] Run focused, full, TypeScript, and architecture checks before Task 12.
 
 ### Task 12: Prove Pi install, load, and hook behavior
 

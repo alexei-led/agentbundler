@@ -78,21 +78,54 @@ func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
 	if got, want := fixture.Hooks[1].Event, model.HookEventPreTool; got != want {
 		t.Fatalf("tool hook event = %q, want %q", got, want)
 	}
-	if fixture.Hooks[1].Handler.Arguments[1].PackageFile == nil || *fixture.Hooks[1].Handler.Arguments[1].PackageFile != "hooks/pre-tool.js" {
+	if fixture.Hooks[1].Handler.Arguments[1].PackageFile == nil || *fixture.Hooks[1].Handler.Arguments[1].PackageFile != "hooks/payloads/pre-tool/pre-tool.js" {
 		t.Fatalf("package-file argument = %#v", fixture.Hooks[1].Handler.Arguments[1])
+	}
+	assets := make([]model.NormalizedAsset, 0, len(fixture.Hooks))
+	for index := range fixture.Hooks {
+		descriptor := fixture.Hooks[index]
+		files := make(map[model.RelativePath]model.FileContent)
+		for _, argument := range descriptor.Handler.Arguments {
+			if argument.PackageFile != nil {
+				files[*argument.PackageFile] = model.FileContent{Bytes: []byte("fixture\n")}
+			}
+		}
+		assets = append(assets, model.NormalizedAsset{
+			Identity: descriptor.Identity,
+			Kind:     model.AssetKindHook,
+			Content:  model.AssetContent{Files: files},
+			Hook:     &descriptor,
+		})
+	}
+	pkg := model.NormalizedPackage{Identity: "fixture", Target: Target, Profile: model.TargetProfilePackage, Assets: assets}
+	if diagnostics := model.ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
+		t.Fatalf("Go rejected shared runtime descriptor fixture: %#v", diagnostics)
 	}
 }
 
-func TestCapabilitiesExposePiSubagentEquivalent(t *testing.T) {
+func TestCapabilitiesExposeAggregatePiHooksAndSubagents(t *testing.T) {
+	if FormatRevision != 4 {
+		t.Fatalf("FormatRevision = %d, want 4", FormatRevision)
+	}
+	rules := make(map[model.CapabilityKey]model.CapabilityState)
 	for _, rule := range Capabilities() {
-		if rule.Key == "asset.agent" {
-			if rule.State != model.CapabilityStateEquivalent {
-				t.Fatalf("agent capability = %q, want equivalent", rule.State)
-			}
-			return
+		rules[rule.Key] = rule.State
+	}
+	want := map[model.CapabilityKey]model.CapabilityState{
+		"asset.agent":                 model.CapabilityStateEquivalent,
+		"asset.hook":                  model.CapabilityStateNative,
+		"hook.command.exec":           model.CapabilityStateNative,
+		"hook.command.shell":          model.CapabilityStateNative,
+		"hook.decision.block":         model.CapabilityStateNative,
+		"hook.decision.rewrite-input": model.CapabilityStateNative,
+		"hook.event.notification":     model.CapabilityStateUnsupported,
+		"hook.failure.closed":         model.CapabilityStateNative,
+	}
+	for key, state := range want {
+		if rules[key] != state {
+			t.Fatalf("capability %q = %q, want %q", key, rules[key], state)
 		}
 	}
-	t.Fatal("agent capability is missing")
 }
 
 func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
