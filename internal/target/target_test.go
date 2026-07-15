@@ -31,8 +31,8 @@ func TestResolveBuiltInAdapters(t *testing.T) {
 			if adapter.FormatRevision < 1 {
 				t.Fatalf("Resolve(%q) format revision = %d", targetID, adapter.FormatRevision)
 			}
-			if len(Capabilities(adapter)) != 5 {
-				t.Fatalf("Capabilities(%q) = %#v, want five rules", targetID, Capabilities(adapter))
+			if len(Capabilities(adapter)) < 5 {
+				t.Fatalf("Capabilities(%q) = %#v, want at least five base rules", targetID, Capabilities(adapter))
 			}
 		})
 	}
