@@ -28,9 +28,9 @@ hooks/hooks.json
 .agentbundler/assets/<kind>/<name>/...
 ```
 
-Claude's default plugin hook file is `hooks/hooks.json`; `.claude-plugin/plugin.json#hooks` may instead contain an inline hook object or select another contained plugin-relative path. The importer does not treat arbitrary undeclared `hooks/<name>.json` files as native hooks.
+Claude's default plugin hook file is `hooks/hooks.json`; `.claude-plugin/plugin.json#hooks` may instead contain an inline hook object or one or more contained `./`-prefixed plugin-relative paths. Declaring the manifest field replaces default-file discovery. The importer does not treat arbitrary undeclared `hooks/<name>.json` files as native hooks.
 
-Known Claude command hooks map event, matcher, timeout, async flag, explicit decision semantics, and command to `HookDescriptor`. A statically unambiguous plugin-root payload reference may become an exec command with package-file arguments and imported payload. Arbitrary command strings remain explicit `shell` mode; the importer never pretends to parse shell syntax into safe argv. HTTP, prompt, agent, MCP-tool, and unmodeled condition handlers remain native gaps until their portable semantics are approved.
+Known Claude command hooks map event, matcher, timeout, async flag, explicit decision semantics, and command to `HookDescriptor`. Native `command` plus `args` stays exec form. A statically unambiguous plugin-root payload argument, or a legacy interpreter plus one plugin-root script reference, becomes a package-file argument with imported payload. Other command strings remain explicit `shell` mode only when they contain no Claude path placeholder; the importer never pretends to parse arbitrary shell syntax into safe argv. HTTP, prompt, agent, MCP-tool, and unmodeled condition handlers remain native gaps until their portable semantics are approved.
 
 The native contract was verified against <https://code.claude.com/docs/en/plugins-reference> and <https://code.claude.com/docs/en/hooks>, accessed 2026-07-15. Target output details are pinned in `docs/vendor-package-contracts.md`.
 
