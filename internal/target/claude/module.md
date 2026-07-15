@@ -6,146 +6,78 @@
 
 ## Purpose
 
-This module renders Claude Code-native package output. Without it, Claude plugin manifests, skills, agents, hooks, and marketplace metadata would leak into portable source and other adapters.
+This module renders Claude Code-native project and installable-plugin output, including typed command hooks, payloads, catalog metadata, and safe strict-validator declarations.
 
 ## Functional Responsibilities
 
-- Render Claude plugin package trees and target-wide metadata where required.
-- Preserve skills and agents in Claude-native Markdown forms.
-- Render supported hook configuration and target-native resources.
-- Declare Claude capability rules and format revision.
+- Render `.claude-plugin/plugin.json`, skills, agents, resources, hooks, and payload files.
+- Map portable hooks to verified Claude events, tool matchers, commands, timeouts, async flags, and decisions.
+- Render target-wide `.claude-plugin/marketplace.json` in separate mode.
+- Declare exact capability states, format revision, and official native checks.
 
 ## Subdomain Classification
 
-**Core.** Claude package behavior is a primary target contract and changes with vendor features. Volatility is high.
+**Core.** Claude plugin and hook contracts are primary and independently volatile.
 
 ## Encapsulated Knowledge
 
-- Claude plugin directory and manifest layout.
-- Claude-specific frontmatter fields and hook event/matcher representation.
-- Claude marketplace/index requirements.
-- Native validation commands available to optional verification.
+- Claude plugin paths, schemas, `${CLAUDE_PLUGIN_ROOT}`, and marketplace format.
+- Claude hook event/matcher/decision behavior and timeout units.
+- Official strict validation command.
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+<!-- contract: Adapter, TargetRenderInput, TargetPlan, CapabilityRule, Diagnostic — restated from internal/target/module.md and internal/compiler/model/module.md -->
+
 ```text
-RelativePath = normalized non-empty path below its declared root
-PackageID = stable package identity
-AssetID = stable asset identity in the form kind/name
-ByteSequence = immutable UTF-8 or binary file content
-SourceLocation = { path: RelativePath, line: Int?, column: Int? }
-InputFile = { path: RelativePath, sha256: String }
-PackageMetadata = Map<String, JsonValue>
-
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
-CapabilityKey = canonical non-empty identifier
-CapabilityState = native | equivalent | advisory | unsupported
-Severity = error | warning | information
-
-AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-BodyMode = replace | sections
-SectionPatch = { headingPath: [String], body: String }
-BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
-FilePatch = { path: RelativePath, bytes: ByteSequence }
-TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
-Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-CapabilityUse = { key: CapabilityKey, location: SourceLocation }
-CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-NativeGapAction = replace | exclude | source-only
-NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
-BundleSourceConfig = { packages: [RelativePath] }
-ClaudePluginSourceConfig = { pluginRoot: RelativePath }
-SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
-SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
-PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
+render(ClaudeAdapter, TargetRenderInput) -> TargetPlan + [Diagnostic]
 ```
 
-<!-- contract: Adapter, render — restated from internal/target/module.md (subset: Claude render operation) -->
+Package-profile separate roots contain:
+
 ```text
-Adapter = { target: TargetID, formatRevision: Integer, capabilities: [CapabilityRule] }
-render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
+.claude-plugin/plugin.json
+skills/<name>/SKILL.md
+agents/<name>.md
+hooks/hooks.json
+<payload files>
 ```
 
-The adapter's `target` is `claude` at `formatRevision: 2`. Project profiles render one
-package of `asset.skill` content to `.claude/skills/<skill>/SKILL.md` plus support
-files. Installable package profiles render supported assets under a flat root for
-one package or a package-ID root for multiple packages. `asset.hook` and
-`asset.native-resource` remain unsupported. Marketplace claims stay outside the
-adapter.
+Package-file command arguments render with `${CLAUDE_PLUGIN_ROOT}` and contained payload paths. The target format revision increments from the hook-free revision when these native bytes or catalog output are enabled.
+
+Verified initial semantic cells:
+
+- native/equivalent: `asset.hook`, `hook.command.exec`, explicit adopted `hook.command.shell`, events `session-start`, `session-end`, `prompt-submit`, `pre-tool`, `post-tool`, `post-tool-failure`, `stop`, `notification`, `pre-compact`, `post-compact`, tool-category matchers, explicit block decisions, and pre-tool input rewrite;
+- native only for passive compatible events: `hook.async`;
+- unsupported unless a concrete mapping proves crash and timeout behavior: `hook.failure.closed`;
+- unsupported: HTTP, prompt, agent, and MCP-tool handlers in the initial portable command-hook contract.
+
+A similarly named event is not enough: unsupported matcher, mutation, async, timeout, or failure semantics fail through exact capability diagnostics.
+
+The adapter declares `claude plugin validate --strict <plugin-root>` as a `NativeCheck` for each generated installable root. It does not invoke the process.
+
+Primary sources: <https://code.claude.com/docs/en/plugins-reference> and <https://code.claude.com/docs/en/hooks>, accessed 2026-07-15. See `docs/vendor-package-contracts.md`.
 
 ## Integrations
 
 - **Counterpart**: `internal/target`
-  - **Direction**: parent registry selects this adapter and exposes its capabilities.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: restated adapter contract above.
+  - **Direction**: registry exposes this adapter.
+- **Counterpart**: `internal/target/packageoutput`
+  - **Direction**: uses shared rooting/payload mechanics with Claude-owned serialization callbacks.
 - **Counterpart**: `internal/compiler/model`
-  - **Direction**: this adapter translates normalized packages to target plans.
-  - **Strength**: model.
-  - **LCA / Rank / Distance**: root / 2 / 2.
-  - **Volatility**: high.
-  - **Balanced?**: yes, at the model-distance limit.
-  - **Shared knowledge**: restated normalized-package and output-plan contract above.
-
-## Change Vectors
-
-- Claude plugin manifest revisions.
-- New or changed Claude skill, agent, hook, MCP, or extension capabilities.
-- Marketplace/index layout changes.
+  - **Direction**: consumes render input and returns plan/diagnostics.
 
 ## Constraints and Invariants
 
-- Claude instruction policy is author source or target overlay content, never adapter-injected prose.
-- Unsupported Claude semantics return diagnostics rather than silently filtering fields.
-- Generated files must not collide with target-native resources.
-- Native verification is optional and never changes output bytes.
+- Native hook manifest is `hooks/hooks.json`; no target-neutral interchange file is emitted.
+- Arbitrary adopted shell remains explicit shell; canonical exec is not rendered through an implicit shell when native exec form preserves it.
+- Closed-failure security policy is never presented as equivalent to explicit deny behavior.
+- Native checks are offline, non-mutating declarations and run only after exact no-drift comparison.
+- Catalog generation is deterministic artifact creation, never publication or installation.
+- Hook-free version-1 output remains stable except an explicit format-revision/native-path correction.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: Claude manifest serialization is stable.
-  - **Scenario**: render equivalent package metadata in different map orders.
-  - **Expected behavior**: manifest bytes are identical.
-- **Test name**: unsupported field is diagnosed.
-  - **Scenario**: normalized content carries an undeclared Claude capability.
-  - **Expected behavior**: render returns a capability diagnostic.
-
-### Integration Contract Tests
-
-- **Test name**: skills agents and hooks render to native locations.
-  - **Scenario**: render a supported mixed package fixture.
-  - **Expected behavior**: plan paths match the Claude plugin contract.
-- **Test name**: marketplace metadata is target-wide.
-  - **Scenario**: render multiple Claude packages.
-  - **Expected behavior**: shared target metadata is coherent and package entries are deterministic.
-
-### Boundary Tests
-
-- **Test name**: canonical source rebuild stays under output.
-  - **Scenario**: compile a `claude-plugin` source with Claude selected.
-  - **Expected behavior**: the Claude target plan rebuilds the native package only under configured generated output and contains no source-owned path.
-
-### Behavior Tests
-
-- **Test name**: Claude package golden tree.
-  - **Scenario**: render a canonical fixture.
-  - **Expected behavior**: generated tree parses as native Claude package metadata and preserves declared asset behavior.
+- Golden trees cover hook-free and mixed hook packages, command roots, event/matcher/timeout/async/decision mappings, payload modes, collisions, and catalogs.
+- Unsupported semantic cells produce no partial plan.
+- Official strict validator declarations are exact and process-free at render time.

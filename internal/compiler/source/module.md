@@ -6,174 +6,74 @@
 
 ## Purpose
 
-This module selects the explicit source-topology importer and produces one complete inventory. Without it, the compiler would contain vendor-layout parsing, clean-bundle parsing, and adoption detection logic.
+This module selects one explicit source-topology importer and returns a complete target-neutral inventory. It prevents vendor-layout parsing and canonical bundle traversal from entering compiler orchestration.
 
 ## Functional Responsibilities
 
-- Validate the manifest's declared source kind.
-- Route to exactly one child importer.
-- Normalize importer results into one source inventory.
-- Detect known layouts only to print starter-manifest guidance when no manifest exists.
-- Preserve every unrecognized native component as an explicit native gap.
+- Validate and route the declared source kind to exactly one importer.
+- Normalize typed assets, including hook descriptors and payload file metadata.
+- Preserve source locations, executable intent, target allow-lists, capabilities, native gaps, and input hashes.
+- Detect known layouts only for starter-manifest guidance when no manifest exists.
 
 ## Subdomain Classification
 
-**Core.** Source adoption is a product differentiator and will change as real repository topologies are adopted. It is high volatility.
+**Core.** Adoption and canonical source import are high-volatility product behavior.
 
 ## Encapsulated Knowledge
 
-- The three supported source kinds and their selection rules.
-- The rule that a build never infers an importer from incidental files.
-- The distinction between a detected candidate layout and a committed source declaration.
-- The rule that all imported components are inventoried, including unsupported native-only ones.
+- Explicit source-kind selection and no auto-adoption.
+- Complete inventory propagation without target rendering.
+- Sorted, contained, symlink-free source traversal.
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
-```text
-RelativePath = normalized non-empty path below its declared root
-PackageID = stable package identity
-AssetID = stable asset identity in the form kind/name
-ByteSequence = immutable UTF-8 or binary file content
-SourceLocation = { path: RelativePath, line: Int?, column: Int? }
-InputFile = { path: RelativePath, sha256: String }
-PackageMetadata = Map<String, JsonValue>
-
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
-CapabilityKey = canonical non-empty identifier
-CapabilityState = native | equivalent | advisory | unsupported
-Severity = error | warning | information
-
-AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-BodyMode = replace | sections
-SectionPatch = { headingPath: [String], body: String }
-BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
-FilePatch = { path: RelativePath, bytes: ByteSequence }
-TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
-Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-CapabilityUse = { key: CapabilityKey, location: SourceLocation }
-CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-NativeGapAction = replace | exclude | source-only
-NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
-BundleSourceConfig = { packages: [RelativePath] }
-ClaudePluginSourceConfig = { pluginRoot: RelativePath }
-SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
-SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
-PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
-```
+<!-- contract: SourceManifest, SourceInventory, Diagnostic — restated from internal/compiler/model/module.md -->
 
 ```text
+SourceManifest = strict versioned source declaration with one source kind, target compositions, optional common distribution metadata, and optional explicit package-mode/aggregate configuration
+SourceInventory = ordered packages, typed source assets, native gaps, and input hashes
+Diagnostic = stable source/capability diagnostic with optional location, asset, field, and targets
 import(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-`import` validates an existing cleaned absolute `workspace-root`, resolves `SourceManifest.root` beneath it, and chooses the importer only from `SourceManifest.kind`. If no manifest is present, the command may report recognized candidate layouts and print a starter manifest, but this operation is not called. An importer error still reports every safely discoverable source location.
+`import` validates an existing cleaned absolute `workspace-root`, resolves the manifest root beneath it, and chooses the importer only from `SourceManifest.kind`. It returns no partial unsafe values. Hooks remain typed assets rather than opaque native resources: descriptor, payload bytes, executable intent, payload origins, semantic capabilities, and optional target allow-list all survive routing unchanged.
 
 ## Integrations
 
 - **Counterpart**: `internal/compiler/source/bundle`
-  - **Direction**: this module delegates clean canonical bundle parsing.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/compiler/source` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**:
-
-<!-- contract: inspect-bundle — restated from internal/compiler/source/bundle/module.md -->
-```text
-inspect-bundle(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
-```
-
+  - **Direction**: delegates canonical bundle parsing.
+  - **Shared knowledge**: `inspect-bundle(SourceManifest, workspace-root)`.
 - **Counterpart**: `internal/compiler/source/claudeplugin`
-  - **Direction**: this module delegates existing Claude-plugin import.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/compiler/source` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**:
-
-<!-- contract: inspect-claudeplugin — restated from internal/compiler/source/claudeplugin/module.md -->
-```text
-inspect-claudeplugin(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
-```
-
+  - **Direction**: delegates Claude plugin adoption.
+  - **Shared knowledge**: `inspect-claudeplugin(SourceManifest, workspace-root)`.
 - **Counterpart**: `internal/compiler/source/skillrepo`
-  - **Direction**: this module delegates existing generic skills-repository import.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/compiler/source` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**:
-
-<!-- contract: inspect-skillrepo — restated from internal/compiler/source/skillrepo/module.md -->
-```text
-inspect-skillrepo(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
-```
+  - **Direction**: delegates skills-repository adoption.
+  - **Shared knowledge**: `inspect-skillrepo(SourceManifest, workspace-root)`.
+- **Counterpart**: `internal/compiler/model`
+  - **Direction**: all importers construct model-owned values.
+  - **Shared knowledge**: source declarations, `FileContent`, `HookDescriptor`, inventory, and diagnostics only.
 
 ## Internal Design
 
-The parent performs no topology-specific traversal beyond manifest discovery. Each child returns a complete inventory using the same model. The parent converts no native-only component into a portable asset; it preserves it in `nativeGaps` for composition policy.
+The parent performs no topology-specific traversal beyond manifest discovery. A child importer returns one complete inventory. The parent neither converts native-only content into portable semantics nor loses typed hook/file data.
 
 ## Change Vectors
 
-- Add a source kind after repeated real adoption evidence.
-- Improve detected-layout guidance.
-- Clarify importer-level diagnostics or source-location precision.
+- Add a source kind after repeated adoption evidence.
+- Add a portable asset representation after model approval.
+- Improve source-location or input-hash precision.
 
 ## Constraints and Invariants
 
-- The source kind is explicit and committed in `agentbundle.json`.
-- No child importer calls target adapters, writes output, or executes native tools.
-- The importer root is contained by the manifest repository root.
-- Every filesystem walk is sorted and rejects source symlinks and path escape.
+- Source kind, targets, package membership, package mode, and aggregate identity are explicit committed input.
+- Importers do not call composition, target, artifact, process, clock, or network behavior.
+- Every filesystem walk is sorted and contained and rejects symlinks and path escape.
+- Executable intent is observed from source mode and never cleared because an interpreter-backed handler does not require it.
+- Generated output is never re-imported as source.
+- Version-1 hook-free manifests retain their behavior; optional hook/distribution/package-mode fields do not force a source-version bump.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: explicit kind selects one importer.
-  - **Scenario**: load one manifest for each source kind.
-  - **Expected behavior**: exactly its matching child importer is called.
-- **Test name**: absent manifest does not auto-adopt.
-  - **Scenario**: inspect a recognized Claude layout with no manifest.
-  - **Expected behavior**: starter-manifest guidance is returned without an inventory.
-
-### Integration Contract Tests
-
-- **Test name**: child inventories share one shape.
-  - **Scenario**: import equivalent skills from all source modes.
-  - **Expected behavior**: composition receives comparable `SourceInventory` values.
-- **Test name**: native gaps survive routing.
-  - **Scenario**: child importer reports a vendor-only component.
-  - **Expected behavior**: parent preserves it unchanged in the returned inventory.
-
-### Boundary Tests
-
-- **Test name**: unknown source kind is rejected.
-  - **Scenario**: manifest declares an unsupported source kind.
-  - **Expected behavior**: no child importer runs.
-- **Test name**: importer root cannot leave repository.
-  - **Scenario**: manifest root uses an absolute or escaping path.
-  - **Expected behavior**: validation fails before traversal.
-
-### Behavior Tests
-
-- **Test name**: stable source inventory.
-  - **Scenario**: create source directories in arbitrary filesystem order.
-  - **Expected behavior**: returned packages, assets, gaps, and inputs are sorted deterministically.
-- **Test name**: source topology isolation.
-  - **Scenario**: import the same logical skills through bundle and skills-repository modes.
-  - **Expected behavior**: later composition sees no topology-specific branching requirement.
+- Explicit kinds select one importer; an absent manifest never auto-adopts.
+- Typed hook descriptors, file bytes, executable intent, origins, target allow-lists, gaps, and inputs survive parent routing.
+- Arbitrary filesystem order produces an identical inventory.

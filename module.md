@@ -14,7 +14,7 @@
 - Accept clean **Agent Bundler** bundles and low-friction adopted repositories.
 - Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, and Cursor CLI.
 - Preserve native semantics where possible and fail on unsupported or unacknowledged semantic loss.
-- Produce reproducible generated trees and provenance outside native package roots.
+- Produce reproducible generated trees, installable package roots, deterministic target catalogs, and provenance outside native package roots.
 
 ## Subdomain Classification
 
@@ -22,10 +22,12 @@
 
 ## Encapsulated Knowledge
 
-- The product boundary: compiler only; no dependency resolution, installation, publishing, registry, APM integration, external adapter SDK, or generated runtime shim.
+- The product boundary: compiler only; no dependency resolution, installation, publication, registry, APM integration, or external adapter SDK.
 - The source-mode policy: `bundle`, `claude-plugin`, and `skills-repository` are explicit committed choices, never implicit build behavior.
 - The ownership policy: native-source files remain author-owned; derived output is disposable and compiler-owned.
-- The target policy: a target is supported only for capability cells that its adapter declares and tests.
+- The hook policy: hooks are typed first-class assets whose payload bytes, executable intent, events, matchers, decisions, timeout, async, and failure semantics must survive or fail explicitly.
+- The target policy: a target is supported only for exact capability cells that its adapter declares and tests.
+- The sole runtime exception: the Pi adapter owns a dependency-free TypeScript hook runtime, embeds its tested source in `agbun`, and emits it with a thin Pi extension adapter. Generated packages never call or require `agbun`.
 
 ## Public Contract
 
@@ -85,13 +87,14 @@ A command creates a compile request and invokes the compiler. The compiler impor
 
 ## Constraints and Invariants
 
-- Normal builds use no network, clock, hostname, locale, absolute source path, Git state, or mutable environment as an output input.
-- The compiler never silently drops security, permission, sandbox, hook, or capability semantics.
-- Generated output contains no **Agent Bundler** runtime dependency.
-- `check` never writes.
-- Native target package roots contain only target-native files; compiler provenance is outside them.
-- `internal/target` has six vendor leaves plus two cohesive shared rendering leaves. The two shared leaves (`skills` and `plugin`) reduce duplicate native-layout logic; vendor behavior remains isolated in each adapter. Revisit the hierarchy when a third reusable renderer family emerges.
-- No production implementation code is authorized until this design and a subsequent implementation plan are approved.
+- Normal builds use no network, clock, hostname, locale, absolute source path, Git state, installed vendor version, or mutable environment as an output input.
+- The compiler never silently drops or weakens security, permission, sandbox, hook, executable, decision, timeout, failure, or capability semantics.
+- Generated output contains no **Agent Bundler** executable/runtime dependency. The embedded Pi payload is target-owned generated source loaded by Pi, not a call back into `agbun`.
+- Deterministic marketplace/catalog generation is artifact creation only. Production code never publishes, submits, authenticates, installs, changes vendor configuration, or fetches packages.
+- `check` never writes. `check --native` may run only declared official offline non-mutating validators after exact no-drift comparison.
+- Native target package roots contain only target-native files, including the Pi-owned runtime payload; compiler provenance is outside them.
+- Version-1 hook-free manifests and package layouts remain compatible. Aggregate mode is explicit, never inferred, and in version 1 is limited to Pi package profile.
+- `internal/target` has six vendor leaves plus cohesive shared rendering leaves. Vendor schemas, hook mappings, root variables, catalogs, and validator declarations remain isolated in vendor adapters.
 
 ## Test Specification
 

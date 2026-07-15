@@ -2,149 +2,86 @@
 
 **Path**: `internal/target/pi/` — the module's code is everything in this folder and transparent subfolders
 **Parent**: `internal/target`
-**Submodules**: none (leaf)
+**Submodules**: none (leaf; `runtime/` is a contained TypeScript implementation owned by this module)
 
 ## Purpose
 
-This module renders Pi-native package output. Without it, Pi package metadata, skills, prompts, themes, and extension resources would be mistaken for portable agent or hook runtime semantics.
+This module renders Pi package-profile output and owns the one approved embedded runtime boundary. It translates typed portable hooks through Pi's extension API without making generated packages depend on `agbun`, Bun, or an external hook runner.
 
 ## Functional Responsibilities
 
-- Render Pi package metadata and supported skill/resource trees.
-- Render package agents in the `pi-subagents` discovery format when agent assets are selected.
-- Copy Pi-native extensions, prompts, themes, and declared resources as target-native content.
-- Declare that Pi core does not provide the same portable declarative hook contract as other targets.
-- Provide optional Pi native verification where a stable command is available.
+- Render one explicit aggregate Pi package with package metadata, skills, agents, and dependencies.
+- Own, test, embed, and copy a dependency-free TypeScript hook runtime.
+- Emit one versioned hook descriptor and one thin package adapter registered once in `package.json#pi.extensions`.
+- Map portable hook events, matchers, decisions, timeouts, cancellation, ordering, and failure policy to the Pi extension API.
 
 ## Subdomain Classification
 
-**Core.** Pi is a primary target whose extension/package model evolves independently. Volatility is high.
+**Core.** Pi package and extension contracts are independently volatile.
 
 ## Encapsulated Knowledge
 
-- Pi package layout and metadata.
-- Pi-native resource placement.
-- The boundary between portable skills, `pi-subagents` package agents, and extension-provided hook behavior.
-- Pi-specific capability limitations and diagnostics.
+- `package.json#pi` resource declarations and Pi's `jiti` TypeScript loader.
+- Pi lifecycle and tool-event ordering, mutable tool input, cancellation signals, and cleanup.
+- Aggregate dependency/resource collision policy and embedded runtime paths.
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+<!-- contract: TargetRenderInput, TargetPlan, CapabilityRule, Diagnostic — restated from internal/compiler/model/module.md -->
+
 ```text
-RelativePath = normalized non-empty path below its declared root
-PackageID = stable package identity
-AssetID = stable asset identity in the form kind/name
-ByteSequence = immutable UTF-8 or binary file content
-SourceLocation = { path: RelativePath, line: Int?, column: Int? }
-InputFile = { path: RelativePath, sha256: String }
-PackageMetadata = Map<String, JsonValue>
-
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
-CapabilityKey = canonical non-empty identifier
-CapabilityState = native | equivalent | advisory | unsupported
-Severity = error | warning | information
-
-AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-BodyMode = replace | sections
-SectionPatch = { headingPath: [String], body: String }
-BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
-FilePatch = { path: RelativePath, bytes: ByteSequence }
-TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
-Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-CapabilityUse = { key: CapabilityKey, location: SourceLocation }
-CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-NativeGapAction = replace | exclude | source-only
-NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
-BundleSourceConfig = { packages: [RelativePath] }
-ClaudePluginSourceConfig = { pluginRoot: RelativePath }
-SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
-SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
-PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
+render(PiAdapter, TargetRenderInput) -> TargetPlan + [Diagnostic]
 ```
 
-<!-- contract: Adapter, render — restated from internal/target/module.md (subset: Pi render operation) -->
+Version-1 package mode for hooks is `aggregate`. The request must provide explicit aggregate identity and metadata. The adapter never infers aggregation from package count.
+
+The package root contains:
+
 ```text
-Adapter = { target: TargetID, formatRevision: Integer, capabilities: [CapabilityRule] }
-render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
+package.json
+skills/<name>/SKILL.md
+agents/<name>.md
+hooks/hooks.v1.json
+<private runtime directory>/<embedded TypeScript files>
+<one thin package adapter>.ts
+<hook payload files>
 ```
 
-The adapter's `target` is `pi` at `formatRevision: 3`. In a package profile, it renders skills, resources, and `asset.agent` content. An agent renders to `agents/<name>.md`; the generated `package.json` declares `pi.subagents.agents: ["./agents"]`, requiring the `pi-subagents` package at runtime. Project profiles remain skills-only. Hooks and native resources are unsupported until their Pi representations are modeled.
+`package.json#pi.extensions` contains exactly the thin adapter path. Runtime helper modules are imported by that adapter, not independently registered. The adapter may preserve existing `pi.subagents` metadata where required by the supported agent form.
+
+Portable mappings use Pi extension events including `session_start`, idempotent `session_shutdown`, `input`/`before_agent_start`, `tool_call`, `tool_result`, `turn_end`/`agent_end`, and compaction events. `tool_call` preflight is sequential even when sibling tools later execute concurrently. Input rewrite mutates `event.input` only after runtime validation because Pi does not revalidate it.
+
+The runtime implements the portable exec/shell process protocol, package-file resolution, matchers, deterministic hook order, bounded output, timeout, cancellation, and fail-open/fail-closed translation. Unsupported event or decision cells fail before output.
+
+Primary evidence: installed `@earendil-works/pi-coding-agent` 0.80.7 `docs/packages.md`, `docs/extensions.md`, `README.md`, and `examples/extensions/`, checked 2026-07-15. See `docs/vendor-package-contracts.md`.
 
 ## Integrations
 
 - **Counterpart**: `internal/target`
-  - **Direction**: parent registry selects this adapter and exposes its capabilities.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: restated adapter contract above.
+  - **Direction**: registry exposes the Pi adapter and semantic capabilities.
+- **Counterpart**: `internal/target/packageoutput`
+  - **Direction**: reuses target-neutral payload/path mechanics; Pi owns aggregation and runtime serialization.
 - **Counterpart**: `internal/compiler/model`
-  - **Direction**: this adapter translates normalized packages to target plans.
-  - **Strength**: model.
-  - **LCA / Rank / Distance**: root / 2 / 2.
-  - **Volatility**: high.
-  - **Balanced?**: yes, at the model-distance limit.
-  - **Shared knowledge**: restated normalized-package and output-plan contract above.
+  - **Direction**: consumes render requests and returns declarative plans.
 
-## Change Vectors
+## Internal Design
 
-- Pi package metadata and resource directories.
-- Pi extension APIs or built-in subagent/hook features.
-- Pi native verification behavior.
+Runtime source lives below `internal/target/pi/runtime/`. Go embeds only reviewed files below this module and emits their exact bytes. The runtime has standalone Bun tests and strict typecheck but no runtime npm dependencies. Generated packages are loaded directly by Pi's supported TypeScript loader.
+
+Aggregation merges dependency maps only when equal values agree. Duplicate dependency versions, package/asset/hook identities, or output paths fail with every origin. The one generated descriptor and adapter are package-owned native payload, not compiler provenance.
 
 ## Constraints and Invariants
 
-- No generated universal hook runner or subagent runtime is allowed; package agents require an installed `pi-subagents` runtime.
-- Pi-native extension code is opaque target content, not normalized portable behavior.
-- A portable hook unsupported by Pi core fails unless explicit policy and Pi-native replacement resource exist.
-- The adapter must not inject repository-specific Pi instruction policy.
+- Aggregate identity/metadata are explicit; separate mode does not silently become aggregate mode.
+- Exactly one extension entry, descriptor, and runtime copy exist in one aggregate artifact.
+- Generated output does not scan Pi install directories or require a global runner singleton.
+- Generated output does not require Bun, TypeScript, `agbun`, network access, or a separately installed Agent Bundler runtime.
+- Embedded runtime bytes are deterministic compiler inputs. Installed Pi versions, absolute source paths, time, environment, and network are not.
+- Pi has no production native validator. Install/load smoke tests are test-only, opt-in, and use temporary settings/config roots.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: Pi package metadata is deterministic.
-  - **Scenario**: render equivalent package metadata from different map order.
-  - **Expected behavior**: native package metadata bytes match.
-- **Test name**: package subagent registration.
-  - **Scenario**: render a package-profile agent.
-  - **Expected behavior**: output includes `agents/<name>.md` and `pi.subagents.agents` registration.
-- **Test name**: project-profile agent rejection.
-  - **Scenario**: render a portable agent in a project profile.
-  - **Expected behavior**: diagnostic identifies the unsupported package-only layout.
-
-### Integration Contract Tests
-
-- **Test name**: skill and native extension coexist.
-  - **Scenario**: render a package with a portable skill and Pi extension resource.
-  - **Expected behavior**: plan contains both in their native locations.
-- **Test name**: extension is not treated as portable hook implementation.
-  - **Scenario**: package a Pi hook-runner extension.
-  - **Expected behavior**: provenance identifies it as target-native resource only.
-
-### Boundary Tests
-
-- **Test name**: native resource collision fails.
-  - **Scenario**: Pi resource path collides with adapter-generated package metadata.
-  - **Expected behavior**: adapter returns a collision diagnostic.
-
-### Behavior Tests
-
-- **Test name**: Pi package golden tree.
-  - **Scenario**: render a supported skill and extension fixture.
-  - **Expected behavior**: output is a valid Pi-native package tree with no compiler runtime files.
+- Aggregate identity, metadata, dependencies, skills, agents, hooks, and paths merge deterministically or fail with complete collision evidence.
+- Package JSON registers exactly one thin adapter and its bytes import the one embedded runtime.
+- Cross-language fixtures keep Go descriptor serialization and TypeScript schema-v1 decoding aligned.
+- Runtime tests cover every supported event, blocking, rewrite validation, order, fail policy, path containment, timeout, cancellation, output bounds, and idempotent shutdown.

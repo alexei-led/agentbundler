@@ -6,141 +6,77 @@
 
 ## Purpose
 
-This module renders OpenAI Codex CLI-native package output. Without it, Codex agent TOML conversion and Codex-specific package layout would contaminate portable authoring or other target adapters.
+This module renders OpenAI Codex project profiles and installable plugin packages using the current verified plugin and lifecycle-hook contracts.
 
 ## Functional Responsibilities
 
-- Render Codex-native skills and package resources.
-- Convert supported normalized agents from Markdown representation to deterministic Codex TOML.
-- Render supported hooks and native resources.
-- Declare Codex capability rules and format revision.
+- Render project skills and `.codex/agents/*.toml` where that existing project profile is selected.
+- Render installable `.codex-plugin/plugin.json`, skills, `hooks/hooks.json`, payloads, and already-modeled `.mcp.json` resources.
+- Render `.agents/plugins/marketplace.json` for separate distribution.
+- Declare exact capabilities and the absence of a production native validator.
 
 ## Subdomain Classification
 
-**Core.** Codex is a primary target with moving agent and hook contracts. Volatility is high.
+**Core.** Codex plugin, trust, hook, and subagent contracts change independently.
 
 ## Encapsulated Knowledge
 
-- Codex package paths and manifest layout.
-- Narrow Markdown-agent to TOML conversion and escaping rules.
-- Codex-supported metadata aliases and native hook representation.
-- Optional Codex native verification invocation.
+- Codex plugin/default hook paths and `${PLUGIN_ROOT}` command references.
+- Hook trust, concurrency, event, matcher, decision, timeout, and async limitations.
+- Project-only subagent TOML paths.
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+<!-- contract: Adapter, TargetRenderInput, TargetPlan, CapabilityRule, Diagnostic — restated from internal/target/module.md and internal/compiler/model/module.md -->
+
 ```text
-RelativePath = normalized non-empty path below its declared root
-PackageID = stable package identity
-AssetID = stable asset identity in the form kind/name
-ByteSequence = immutable UTF-8 or binary file content
-SourceLocation = { path: RelativePath, line: Int?, column: Int? }
-InputFile = { path: RelativePath, sha256: String }
-PackageMetadata = Map<String, JsonValue>
-
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
-CapabilityKey = canonical non-empty identifier
-CapabilityState = native | equivalent | advisory | unsupported
-Severity = error | warning | information
-
-AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-BodyMode = replace | sections
-SectionPatch = { headingPath: [String], body: String }
-BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
-FilePatch = { path: RelativePath, bytes: ByteSequence }
-TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
-Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-CapabilityUse = { key: CapabilityKey, location: SourceLocation }
-CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-NativeGapAction = replace | exclude | source-only
-NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
-BundleSourceConfig = { packages: [RelativePath] }
-ClaudePluginSourceConfig = { pluginRoot: RelativePath }
-SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
-SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
-PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
+render(CodexAdapter, TargetRenderInput) -> TargetPlan + [Diagnostic]
 ```
 
-<!-- contract: Adapter, render — restated from internal/target/module.md (subset: Codex render operation) -->
+Installable package roots contain only verified plugin components:
+
 ```text
-Adapter = { target: TargetID, formatRevision: Integer, capabilities: [CapabilityRule] }
-render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
+.codex-plugin/plugin.json
+skills/<name>/SKILL.md
+hooks/hooks.json
+<payload files>
+.mcp.json                 when already modeled
 ```
 
-The adapter's `target` is `codex` at `formatRevision: 2`. It renders one native plugin with `.codex-plugin/plugin.json` and `skills/<skill>/SKILL.md` plus support files. Capability rules are `asset.skill=native`; agents, hooks, and native resources are unsupported until their source schemas are modeled. The plugin manifest uses package identity as `name` and optional string `version` and `description` metadata.
+`hooks/hooks.json` is Codex's default plugin hook path. `.codex-plugin/plugin.json#hooks` may override it with a plugin-relative path, path array, inline hook object, or inline-object array; Agent Bundler uses the default unless a future requirement needs an override.
+
+Current official plugin docs do not define a plugin agent component or root. Package-profile `asset.agent` is therefore unsupported and fails explicitly. Existing project-profile agents remain separate at `.codex/agents/<name>.toml`; they are not claimed as plugin contents.
+
+Verified initial hook cells:
+
+- native/equivalent where exact payload behavior matches: command exec/shell, events `session-start`, `prompt-submit`, `pre-tool`, `post-tool`, `stop`, `pre-compact`, `post-compact`, tool-category matcher, pre-tool explicit block, and pre-tool input rewrite;
+- unsupported: `session-end`, `notification`, `post-tool-failure` unless current docs add an exact event, and async (`async` is parsed but command handlers are skipped);
+- `hook.failure.closed` and ordering/concurrency-dependent behavior are unsupported unless Codex's trust, timeout, crash, and concurrent-launch behavior preserves the requested contract.
+
+No stable official offline non-mutating validator covers required plugin/hook behavior, so production `NativeCheck` is empty. Marketplace add/list and hook trust/load smoke tests are test-only, opt-in, and use temporary `CODEX_HOME`.
+
+Primary sources: <https://developers.openai.com/codex/plugins>, <https://developers.openai.com/codex/build-plugins>, <https://developers.openai.com/codex/hooks>, and <https://developers.openai.com/codex/subagents>, accessed 2026-07-15. See `docs/vendor-package-contracts.md`.
 
 ## Integrations
 
 - **Counterpart**: `internal/target`
-  - **Direction**: parent registry selects this adapter and exposes its capabilities.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: restated adapter contract above.
+  - **Direction**: registry exposes this adapter.
+- **Counterpart**: `internal/target/packageoutput`
+  - **Direction**: uses shared package/payload mechanics with Codex-owned serializers.
 - **Counterpart**: `internal/compiler/model`
-  - **Direction**: this adapter translates normalized packages to target plans.
-  - **Strength**: model.
-  - **LCA / Rank / Distance**: root / 2 / 2.
-  - **Volatility**: high.
-  - **Balanced?**: yes, at the model-distance limit.
-  - **Shared knowledge**: restated normalized-package and output-plan contract above.
-
-## Change Vectors
-
-- Codex agent TOML schema or escaping rules.
-- Codex skill, hook, and package layout changes.
-- New native verification support.
+  - **Direction**: consumes model render requests and returns plans.
 
 ## Constraints and Invariants
 
-- TOML output has defined key order, UTF-8 encoding, newline, and escaping behavior.
-- The adapter never invents unsupported agent fields or silently drops one.
-- Native resources remain opaque files unless their semantics are separately modeled.
-- Formatting is deterministic and belongs to this adapter, not to artifact services.
+- Do not invent plugin-root `agents/` or reuse project `.codex/agents` as an installable component.
+- Do not use the stale root `hooks.json` claim for plugin output; default is `hooks/hooks.json`.
+- Matching command hooks may launch concurrently; portable order is supported only when native behavior preserves it.
+- Non-managed plugin hooks require user trust; generation does not grant or mutate trust.
+- Unsupported async, event, decision, or failure semantics return diagnostics with no partial package.
+- The format revision increments for the verified plugin-path/contract correction.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: multiline TOML escaping.
-  - **Scenario**: render agent bodies with quotes, control characters, and multiline text.
-  - **Expected behavior**: output is valid deterministic TOML preserving content.
-- **Test name**: key order is fixed.
-  - **Scenario**: render equivalent agent metadata in different map orders.
-  - **Expected behavior**: bytes are identical.
-
-### Integration Contract Tests
-
-- **Test name**: normalized agent converts to Codex agent.
-  - **Scenario**: render a fully supported agent fixture.
-  - **Expected behavior**: target plan contains a valid native TOML agent at the Codex path.
-- **Test name**: unsupported agent semantics remain errors.
-  - **Scenario**: render a capability cell outside Codex support.
-  - **Expected behavior**: no partial agent file is planned.
-
-### Boundary Tests
-
-- **Test name**: malformed source body cannot create invalid TOML.
-  - **Scenario**: pass a body requiring an unsupported representation.
-  - **Expected behavior**: diagnostic names source location and target capability.
-
-### Behavior Tests
-
-- **Test name**: Codex mixed package golden tree.
-  - **Scenario**: render supported skills, agents, hooks, and native resources.
-  - **Expected behavior**: all generated files are native Codex forms and parse successfully.
+- Golden package trees use the verified default hook path and no invented agent root.
+- Project agent behavior remains unchanged and separately tested.
+- Trust, concurrency, async, unsupported event/failure, collisions, hook-free regression, catalog, and deterministic cases are covered.

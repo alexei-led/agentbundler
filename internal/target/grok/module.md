@@ -6,134 +6,71 @@
 
 ## Purpose
 
-This module renders Grok Build project skills and their declared portable resources. Without it, Grok project-root conventions would become implicit behavior in portable source.
+This module renders the Grok Build project profile and a separately generated Grok-tested installable plugin. The package profile uses Grok's documented Claude Code compatibility while retaining Grok-owned hook roots and capability limits.
 
 ## Functional Responsibilities
 
-- Render Grok project skills and portable resources under `.grok/`.
-- Declare Grok Build capability rules and format revision.
-- Keep Claude compatibility a source fact, not a reason to reuse Claude output blindly.
+- Preserve project skills under `.grok/skills/` for the direct project profile.
+- Render a Claude-compatible package tree with Grok-specific command-root handling.
+- Map only documented Grok hook events, decisions, matchers, timeouts, and failure behavior.
+- Render `.claude-plugin/marketplace.json` and declare the official local plugin validator.
 
 ## Subdomain Classification
 
-**Core.** Grok Build is a primary target with a young native plugin contract. Volatility is high.
+**Core.** Grok's plugin, compatibility, and hook behavior is independently volatile.
 
 ## Encapsulated Knowledge
 
-- Grok Build project skill and sibling resource paths.
-- Format revision and optional native validation behavior.
+- Grok project paths and Claude-compatible plugin discovery.
+- `GROK_PLUGIN_ROOT`, `GROK_PLUGIN_DATA`, hook events, explicit deny, timeout, and fail-open behavior.
+- `grok plugin validate` declaration.
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
+<!-- contract: TargetRenderInput, TargetPlan, CapabilityRule, Diagnostic — restated from internal/compiler/model/module.md -->
+
 ```text
-RelativePath = normalized non-empty path below its declared root
-PackageID = stable package identity
-AssetID = stable asset identity in the form kind/name
-ByteSequence = immutable UTF-8 or binary file content
-SourceLocation = { path: RelativePath, line: Int?, column: Int? }
-InputFile = { path: RelativePath, sha256: String }
-PackageMetadata = Map<String, JsonValue>
-
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
-CapabilityKey = canonical non-empty identifier
-CapabilityState = native | equivalent | advisory | unsupported
-Severity = error | warning | information
-
-AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-BodyMode = replace | sections
-SectionPatch = { headingPath: [String], body: String }
-BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
-FilePatch = { path: RelativePath, bytes: ByteSequence }
-TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
-Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-CapabilityUse = { key: CapabilityKey, location: SourceLocation }
-CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-NativeGapAction = replace | exclude | source-only
-NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
-BundleSourceConfig = { packages: [RelativePath] }
-ClaudePluginSourceConfig = { pluginRoot: RelativePath }
-SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
-SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
-PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
+render(GrokAdapter, TargetRenderInput) -> TargetPlan + [Diagnostic]
 ```
 
-<!-- contract: Adapter, render — restated from internal/target/module.md (subset: Grok render operation) -->
+The project profile remains `.grok/skills/<name>/SKILL.md`. Separate package-profile roots contain:
+
 ```text
-Adapter = { target: TargetID, formatRevision: Integer, capabilities: [CapabilityRule] }
-render(Adapter, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
+.claude-plugin/plugin.json
+skills/<name>/SKILL.md
+agents/<name>.md
+hooks/hooks.json
+<hook payload files>
 ```
 
-The adapter's `target` is `grok` at `formatRevision: 3`. It renders exactly one project-profile package of `asset.skill` content to `.grok/skills/<skill>/SKILL.md` plus support files and `asset.resource` trees to `.grok/resources/<resource>/`. Agents, hooks, and native resources are unsupported; it makes no Claude-format claim.
+The tree is generated and tested for Grok; it is not a byte-copy of Claude output. Package-file command arguments use `GROK_PLUGIN_ROOT`, not an ambient source path.
+
+Documented portable events are session start/end, prompt submit, pre/post tool, post-tool failure, stop, notification, pre-compact, and post-compact. Matchers are regexes over mapped tool names. `PreToolUse` is the only blocking event and supports explicit deny; Grok documents no input-rewrite decision. Timeout/crash/malformed-output failures are fail open, so `hook.failure.closed` is unsupported.
+
+The adapter declares `grok plugin validate <plugin-root>` as a `NativeCheck` for every generated package/catalog scope. Rendering does not execute it.
+
+Primary sources: <https://docs.x.ai/build/features/skills-plugins-marketplaces> and <https://docs.x.ai/build/features/hooks>, accessed 2026-07-15. See `docs/vendor-package-contracts.md`.
 
 ## Integrations
 
 - **Counterpart**: `internal/target`
-  - **Direction**: parent registry selects this adapter and exposes its capabilities.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: restated adapter contract above.
+  - **Direction**: registry exposes the adapter and exact capabilities.
+- **Counterpart**: `internal/target/packageoutput`
+  - **Direction**: shares rooting, payload copying, executable propagation, and collision handling.
 - **Counterpart**: `internal/compiler/model`
-  - **Direction**: this adapter translates normalized packages to target plans.
-  - **Strength**: model.
-  - **LCA / Rank / Distance**: root / 2 / 2.
-  - **Volatility**: high.
-  - **Balanced?**: yes, at the model-distance limit.
-  - **Shared knowledge**: restated normalized-package and output-plan contract above.
-
-## Change Vectors
-
-- Grok Build plugin and marketplace format changes.
-- Hook event and component support revisions.
-- Evolution away from Claude compatibility toward independent native features.
+  - **Direction**: consumes render requests and returns declarative plans/checks.
 
 ## Constraints and Invariants
 
-- Claude-compatible source does not imply byte-copying Claude output.
-- Native Grok semantics are emitted only when documented and covered by a capability rule.
-- Unknown Grok-only features remain target-native resources, not portable assumptions.
+- `.grok/skills` is never conflated with the installable Claude-compatible plugin profile.
+- Similar Claude behavior does not authorize unsupported Grok rewrite, closed-failure, or handler cells.
+- Shell and exec conversion preserves its declared semantic mode or fails.
+- Catalog generation and native validation do not publish, install, trust, authenticate, or mutate Grok configuration.
+- Native checks are official, offline, local-tree, and non-mutating; process execution stays in artifact native verification after no drift.
+- Hook-free version-1 input stays compatible except an explicit format-revision/path correction.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: Grok project tree is deterministic.
-  - **Scenario**: render skills, support files, and a portable resource.
-  - **Expected behavior**: native paths and bytes match.
-- **Test name**: unsupported capability is explicit.
-  - **Scenario**: render an agent or hook.
-  - **Expected behavior**: unsupported components diagnose.
-
-### Integration Contract Tests
-
-- **Test name**: skill/resource references remain valid.
-  - **Scenario**: a generated skill references a declared sibling resource.
-  - **Expected behavior**: both outputs share the `.grok` project root.
-
-### Boundary Tests
-
-- **Test name**: no Claude-output fallback.
-  - **Scenario**: target is Grok but only a Claude-specific output representation exists.
-  - **Expected behavior**: adapter returns a diagnostic instead of copying Claude files.
-
-### Behavior Tests
-
-- **Test name**: Grok native project golden tree.
-  - **Scenario**: render a supported fixture.
-  - **Expected behavior**: generated output follows Grok's project skill contract and is deterministic.
+- Project and package goldens prove distinct roots and exact plugin/catalog paths.
+- Event/matcher/timeout/block/fail-open/root-variable cases are covered.
+- Grok validator declarations are exact and render remains process-free.

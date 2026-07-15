@@ -1,4 +1,4 @@
-# Native Plugin Renderer
+# Legacy Native Plugin Envelope
 
 **Path**: `internal/target/plugin/` — the module's code is everything in this folder and transparent subfolders
 **Parent**: `internal/target`
@@ -6,77 +6,46 @@
 
 ## Purpose
 
-This module owns the shared native-plugin envelope used by Codex and Cursor. Without it, the adapters would duplicate one-package validation, plugin-name validation, and manifest insertion.
+This module retains the narrow hook-free plugin envelope used by existing adapters during migration to `internal/target/packageoutput`. It is not the target-wide hook, catalog, aggregate, or validator boundary.
 
 ## Functional Responsibilities
 
-- Validate a single package identity against native plugin-name syntax.
-- Render the native skill subset and prepend a caller-supplied plugin manifest.
-- Reject multiple packages and invalid plugin names.
+- Validate one package identity against the caller's native plugin-name syntax.
+- Prepend a caller-owned manifest to shared skill output.
+- Reject unsupported assets, collisions, and multi-package input.
 
 ## Subdomain Classification
 
-**Supporting.** Plugin envelopes change with Codex and Cursor contracts. Volatility is moderate.
-
-## Encapsulated Knowledge
-
-- Native plugin-name syntax.
-- Deterministic manifest serialization and placement.
+**Supporting.** This compatibility helper is stable and deliberately narrow.
 
 ## Public Contract
 
-`render(TargetID, manifestPath, [NormalizedPackage], manifest) -> TargetPlan + [Diagnostic]`. It emits the manifest at `manifestPath` and skill files at `skills/<name>/`.
+<!-- contract: NormalizedPackage, TargetPlan, Diagnostic — restated from internal/compiler/model/module.md -->
+
+```text
+render(TargetID, manifestPath, [NormalizedPackage], manifestBytes) -> TargetPlan + [Diagnostic]
+```
+
+The helper emits the caller-supplied manifest and hook-free skill files only. New target-wide render requests, typed hooks/payloads, executable propagation, separate catalogs, and Pi aggregation use `internal/target/packageoutput` or vendor-owned logic instead.
 
 ## Integrations
 
-- **Counterpart**: `internal/target/codex` and `internal/target/cursor`
-  - **Direction**: leaves provide vendor manifest path and manifest fields.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: the render contract above.
+- **Counterpart**: vendor target leaves
+  - **Direction**: legacy hook-free callers supply all vendor paths and bytes.
 - **Counterpart**: `internal/target/skills`
-  - **Direction**: plugin rendering reuses the native skill subset.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: moderate.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: native skill planned files.
-
-## Change Vectors
-
-- Add declared plugin manifest fields.
-- Add modeled agent or hook components after their native contracts exist.
+  - **Direction**: reuses shared skill rendering.
+- **Counterpart**: `internal/compiler/model`
+  - **Direction**: consumes model-owned normalized values and returns plans.
 
 ## Constraints and Invariants
 
-- No plugin aggregation.
-- No inferred or unvalidated vendor fields.
-- No filesystem, process, network, clock, or environment access.
+- No vendor hook schema, event mapping, package mode, catalog path, root variable, or validator declaration is introduced here.
+- No executable intent is defaulted or lost for files accepted by the helper.
+- Multi-package aggregation remains unsupported here and is never inferred.
+- No filesystem, process, network, clock, environment, publication, or installation behavior.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: invalid plugin name fails.
-  - **Scenario**: a package identity has spaces or uppercase letters.
-  - **Expected behavior**: no plan files and an invalid-plugin-name diagnostic.
-
-### Integration Contract Tests
-
-- **Test name**: manifest precedes native skills.
-  - **Scenario**: render a valid plugin package.
-  - **Expected behavior**: manifest and skill tree are complete and deterministic.
-
-### Boundary Tests
-
-- **Test name**: aggregation fails.
-  - **Scenario**: render two packages.
-  - **Expected behavior**: no plan files and a diagnostic.
-
-### Behavior Tests
-
-- **Test name**: manifest bytes are canonical.
-  - **Scenario**: render equivalent metadata maps.
-  - **Expected behavior**: manifest bytes are equal.
+- Existing hook-free one-package manifest/skill output remains deterministic.
+- Invalid names, unsupported assets, collisions, and multiple packages return no partial plan.
+- Typed-hook or aggregate requests cannot be silently rendered through this legacy helper.
