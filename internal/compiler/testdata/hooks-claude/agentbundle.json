@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "kind": "bundle",
+  "root": "source",
+  "targets": [
+    "claude"
+  ],
+  "output": "generated",
+  "composition": [
+    {
+      "target": "claude",
+      "profile": "package",
+      "packageMode": "separate"
+    }
+  ],
+  "bundle": {
+    "packages": [
+      "packages/hooks.json"
+    ]
+  }
+}
