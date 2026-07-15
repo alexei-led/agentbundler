@@ -16,7 +16,7 @@ func TestRenderUsesCodexPluginLayout(t *testing.T) {
 	if want := []model.RelativePath{".codex-plugin/plugin.json", "skills/guide/SKILL.md", "skills/guide/docs/readme.md"}; !reflect.DeepEqual(paths, want) {
 		t.Fatalf("paths = %#v, want %#v", paths, want)
 	}
-	if got, want := string(plan.Files[0].Bytes), "{\"description\":\"Demo\",\"name\":\"demo\",\"skills\":\"./skills\",\"version\":\"1.0.0\"}\n"; got != want {
+	if got, want := string(plan.Files[0].Bytes), "{\"description\":\"Demo\",\"name\":\"demo\",\"skills\":\"./skills/\",\"version\":\"1.0.0\"}\n"; got != want {
 		t.Fatalf("manifest = %q, want %q", got, want)
 	}
 }

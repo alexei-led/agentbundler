@@ -99,7 +99,13 @@ func TestRenderMultiplePackagesForEveryInstallableTarget(t *testing.T) {
 	} {
 		t.Run(string(target), func(t *testing.T) {
 			first := packageFixture(target)
+			if target == model.TargetCodex {
+				first.Assets = withoutAgents(first.Assets)
+			}
 			second := packageFixture(target)
+			if target == model.TargetCodex {
+				second.Assets = withoutAgents(second.Assets)
+			}
 			second.Identity = "second"
 			_, diagnostics := Render(target, []model.NormalizedPackage{first, second})
 			if len(diagnostics) != 0 {
@@ -109,23 +115,11 @@ func TestRenderMultiplePackagesForEveryInstallableTarget(t *testing.T) {
 	}
 }
 
-func TestRenderCodexPackageAgentIsStandaloneTOML(t *testing.T) {
-	pkg := packageFixture(model.TargetCodex)
-	pkg.Assets[1].Content.Frontmatter["sandbox_mode"] = "read-only"
-	plan, diagnostics := Render(model.TargetCodex, []model.NormalizedPackage{pkg})
-	if len(diagnostics) != 0 {
-		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+func TestRenderCodexPackageRejectsProjectOnlyAgent(t *testing.T) {
+	plan, diagnostics := Render(model.TargetCodex, []model.NormalizedPackage{packageFixture(model.TargetCodex)})
+	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" || len(plan.Files) != 0 {
+		t.Fatalf("Render() = (%#v, %#v)", plan, diagnostics)
 	}
-	for _, file := range plan.Files {
-		if file.Path == ".codex/agents/reviewer.toml" {
-			text := string(file.Bytes)
-			if !containsAll(text, `name = "reviewer"`, `description = "Review code"`, `sandbox_mode = "read-only"`, `developer_instructions = """`) {
-				t.Fatalf("agent TOML = %q", text)
-			}
-			return
-		}
-	}
-	t.Fatal("standalone agent is missing")
 }
 
 func TestRenderCopilotPackageIncludesManifestAndAgent(t *testing.T) {
@@ -337,7 +331,14 @@ func TestTargetCodecsOwnTargetAndCapabilities(t *testing.T) {
 		{name: "pi", target: model.TargetPi, codec: pi.PackageCodec()},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if test.codec.Target != test.target || test.codec.ManifestPath == "" || test.codec.AgentRoot == "" || len(test.codec.Capabilities) == 0 {
+			if test.codec.Target != test.target || test.codec.ManifestPath == "" || len(test.codec.Capabilities) == 0 {
+				t.Fatalf("PackageCodec() = %#v", test.codec)
+			}
+			if test.target == model.TargetCodex {
+				if test.codec.AgentRoot != "" || test.codec.Agent != nil {
+					t.Fatalf("Codex package codec exposes project-only agents: %#v", test.codec)
+				}
+			} else if test.codec.AgentRoot == "" || test.codec.Agent == nil {
 				t.Fatalf("PackageCodec() = %#v", test.codec)
 			}
 		})
@@ -365,11 +366,11 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 		},
 		{
 			name: "codex", target: model.TargetCodex, codec: codex.PackageCodec(),
-			manifestPath: ".codex-plugin/plugin.json", agentPath: ".codex/agents/reviewer.toml",
+			manifestPath: ".codex-plugin/plugin.json",
 			manifestFields: func(t *testing.T, manifest map[string]any) {
 				t.Helper()
-				if got := manifest["skills"]; got != "./skills" {
-					t.Fatalf("manifest skills = %#v, want ./skills", got)
+				if got := manifest["skills"]; got != "./skills/" {
+					t.Fatalf("manifest skills = %#v, want ./skills/", got)
 				}
 			},
 		},
@@ -410,7 +411,11 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{packageFixture(test.target)}), test.codec)
+			pkg := packageFixture(test.target)
+			if test.target == model.TargetCodex {
+				pkg.Assets = withoutAgents(pkg.Assets)
+			}
+			plan, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), test.codec)
 			if len(diagnostics) != 0 {
 				t.Fatalf("RenderWithCodec() diagnostics = %#v", diagnostics)
 			}
@@ -419,13 +424,11 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 			}
 
 			files := plannedFiles(plan)
-			for _, path := range []model.RelativePath{
-				test.manifestPath,
-				"README.md",
-				"skills/demo/SKILL.md",
-				test.agentPath,
-				"resources/templates/design.md",
-			} {
+			required := []model.RelativePath{test.manifestPath, "README.md", "skills/demo/SKILL.md", "resources/templates/design.md"}
+			if test.agentPath != "" {
+				required = append(required, test.agentPath)
+			}
+			for _, path := range required {
 				if _, ok := files[path]; !ok {
 					t.Errorf("required output %q is missing", path)
 				}
@@ -440,9 +443,11 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 			}
 			test.manifestFields(t, manifest)
 
-			agent := string(files[test.agentPath])
-			if !containsAll(agent, "reviewer", "Review code", "Review.") {
-				t.Fatalf("agent output = %q", agent)
+			if test.agentPath != "" {
+				agent := string(files[test.agentPath])
+				if !containsAll(agent, "reviewer", "Review code", "Review.") {
+					t.Fatalf("agent output = %q", agent)
+				}
 			}
 		})
 	}
@@ -494,6 +499,16 @@ func packageFixture(target model.TargetID) model.NormalizedPackage {
 			{Identity: "resource/templates", Kind: model.AssetKindResource, Content: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"design.md": {Bytes: []byte("# Design\n")}}}},
 		},
 	}
+}
+
+func withoutAgents(assets []model.NormalizedAsset) []model.NormalizedAsset {
+	result := make([]model.NormalizedAsset, 0, len(assets))
+	for _, asset := range assets {
+		if asset.Kind != model.AssetKindAgent {
+			result = append(result, asset)
+		}
+	}
+	return result
 }
 
 func containsAll(value string, parts ...string) bool {
