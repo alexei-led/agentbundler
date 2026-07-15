@@ -2,6 +2,7 @@ package model
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,6 +63,83 @@ func DecodeHookDescriptorJSON(data []byte, identity AssetID, location SourceLoca
 		FailurePolicy:       *raw.FailurePolicy,
 		Order:               *raw.Order,
 	}, nil
+}
+
+// DecodeOverlayFileContentJSON decodes one overlay file value. A string is
+// shorthand for non-executable UTF-8 content. Object values contain exactly one
+// of text or base64 and may set executable.
+func DecodeOverlayFileContentJSON(data []byte, location SourceLocation) (FileContent, error) {
+	var text string
+	if err := DecodeStrictJSON(data, &text); err == nil && !bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return FileContent{Bytes: []byte(text), Origin: []SourceLocation{cloneJSONSourceLocation(location)}}, nil
+	}
+
+	var raw struct {
+		Text       json.RawMessage `json:"text"`
+		Base64     json.RawMessage `json:"base64"`
+		Executable json.RawMessage `json:"executable"`
+	}
+	if err := DecodeStrictJSONObject(data, &raw); err != nil {
+		return FileContent{}, fmt.Errorf("must be a UTF-8 string or an object with exactly one of text or base64: %w", err)
+	}
+	if (raw.Text == nil) == (raw.Base64 == nil) {
+		return FileContent{}, fmt.Errorf("object must contain exactly one of text or base64")
+	}
+
+	var content []byte
+	if raw.Text != nil {
+		var value *string
+		if err := DecodeStrictJSON(raw.Text, &value); err != nil || value == nil {
+			if err == nil {
+				err = fmt.Errorf("must be a string")
+			}
+			return FileContent{}, fmt.Errorf("text: %w", err)
+		}
+		content = []byte(*value)
+	} else {
+		var value *string
+		if err := DecodeStrictJSON(raw.Base64, &value); err != nil || value == nil {
+			if err == nil {
+				err = fmt.Errorf("must be a string")
+			}
+			return FileContent{}, fmt.Errorf("base64: %w", err)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(*value)
+		if err != nil {
+			return FileContent{}, fmt.Errorf("base64: %w", err)
+		}
+		content = decoded
+	}
+
+	executable := false
+	if raw.Executable != nil {
+		var value *bool
+		if err := DecodeStrictJSON(raw.Executable, &value); err != nil || value == nil {
+			if err == nil {
+				err = fmt.Errorf("must be a boolean")
+			}
+			return FileContent{}, fmt.Errorf("executable: %w", err)
+		}
+		executable = *value
+	}
+	return FileContent{
+		Bytes:      content,
+		Executable: executable,
+		Origin:     []SourceLocation{cloneJSONSourceLocation(location)},
+	}, nil
+}
+
+func cloneJSONSourceLocation(location SourceLocation) SourceLocation {
+	clone := SourceLocation{Path: location.Path}
+	if location.Line != nil {
+		line := *location.Line
+		clone.Line = &line
+	}
+	if location.Column != nil {
+		column := *location.Column
+		clone.Column = &column
+	}
+	return clone
 }
 
 // DecodeStrictJSON decodes one UTF-8 JSON value, rejecting duplicate object keys,

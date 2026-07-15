@@ -3,7 +3,6 @@ package skillrepo
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -225,7 +224,12 @@ func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.Relative
 				}
 				continue
 			}
-			if !entry.Type().IsRegular() {
+			info, err := entry.Info()
+			if err != nil {
+				i.error(i.relativePath(path), "inspect support file: "+err.Error())
+				continue
+			}
+			if !info.Mode().IsRegular() {
 				i.error(i.relativePath(path), "support entries must be regular files or directories")
 				continue
 			}
@@ -246,7 +250,11 @@ func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.Relative
 				i.error(i.relativePath(path), "support file path: "+err.Error())
 				continue
 			}
-			files[normalized] = model.FileContent{Bytes: content}
+			files[normalized] = model.FileContent{
+				Bytes:      content,
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: model.RelativePath(i.relativePath(path))}},
+			}
 		}
 	}
 	walk(assetRoot)
@@ -350,13 +358,13 @@ func (i *inspector) targetSidecars(identity model.AssetID, targetsRoot string) [
 	for _, target := range orderedTargets {
 		config := targets[target]
 		overlay := model.TargetOverlay{Target: target}
-		fileEntries := make(map[model.RelativePath][]byte)
+		fileEntries := make(map[model.RelativePath]model.FileContent)
 		if config.jsonPath != "" {
 			data, ok := i.readInput(config.jsonPath)
 			if !ok {
 				continue
 			}
-			parsed, err := parseTargetSidecar(data)
+			parsed, err := parseTargetSidecar(data, model.SourceLocation{Path: model.RelativePath(i.relativePath(config.jsonPath))})
 			if err != nil {
 				i.error(i.relativePath(config.jsonPath), "target sidecar: "+err.Error())
 			} else {
@@ -387,7 +395,7 @@ func (i *inspector) targetSidecars(identity model.AssetID, targetsRoot string) [
 		}
 		sort.Slice(paths, func(i, j int) bool { return paths[i] < paths[j] })
 		for _, path := range paths {
-			overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Content: model.FileContent{Bytes: fileEntries[path]}})
+			overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Content: fileEntries[path]})
 		}
 		overlays = append(overlays, overlay)
 	}
@@ -399,8 +407,8 @@ type targetFiles struct {
 	treePath string
 }
 
-func (i *inspector) filesTree(root string) map[model.RelativePath][]byte {
-	files := make(map[model.RelativePath][]byte)
+func (i *inspector) filesTree(root string) map[model.RelativePath]model.FileContent {
+	files := make(map[model.RelativePath]model.FileContent)
 	info, err := i.lstat(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -430,7 +438,12 @@ func (i *inspector) filesTree(root string) map[model.RelativePath][]byte {
 				walk(path)
 				continue
 			}
-			if !entry.Type().IsRegular() {
+			info, err := entry.Info()
+			if err != nil {
+				i.error(i.relativePath(path), "inspect target file: "+err.Error())
+				continue
+			}
+			if !info.Mode().IsRegular() {
 				i.error(i.relativePath(path), "target files entries must be regular files or directories")
 				continue
 			}
@@ -448,7 +461,11 @@ func (i *inspector) filesTree(root string) map[model.RelativePath][]byte {
 				i.error(i.relativePath(path), "target file path: "+err.Error())
 				continue
 			}
-			files[normalized] = content
+			files[normalized] = model.FileContent{
+				Bytes:      content,
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: model.RelativePath(i.relativePath(path))}},
+			}
 		}
 	}
 	walk(root)
@@ -601,7 +618,7 @@ func parseAssetSidecar(data []byte) ([]string, error) {
 type parsedTargetSidecar struct {
 	FrontmatterPatch *map[string]any
 	BodyPatch        *model.BodyPatch
-	Files            map[model.RelativePath][]byte
+	Files            map[model.RelativePath]model.FileContent
 	DeletedFiles     []model.RelativePath
 	Acknowledgments  []sidecarAcknowledgment
 }
@@ -611,7 +628,7 @@ type sidecarAcknowledgment struct {
 	Reason string              `json:"reason"`
 }
 
-func parseTargetSidecar(data []byte) (parsedTargetSidecar, error) {
+func parseTargetSidecar(data []byte, location model.SourceLocation) (parsedTargetSidecar, error) {
 	var raw struct {
 		FrontmatterPatch json.RawMessage `json:"frontmatterPatch"`
 		BodyPatch        json.RawMessage `json:"bodyPatch"`
@@ -622,7 +639,7 @@ func parseTargetSidecar(data []byte) (parsedTargetSidecar, error) {
 	if err := decodeStrictJSONObject(data, &raw); err != nil {
 		return parsedTargetSidecar{}, err
 	}
-	result := parsedTargetSidecar{Files: make(map[model.RelativePath][]byte)}
+	result := parsedTargetSidecar{Files: make(map[model.RelativePath]model.FileContent)}
 	if raw.FrontmatterPatch != nil {
 		var patch map[string]any
 		if err := decodeStrictJSONObject(raw.FrontmatterPatch, &patch); err != nil {
@@ -638,7 +655,7 @@ func parseTargetSidecar(data []byte) (parsedTargetSidecar, error) {
 		result.BodyPatch = &patch
 	}
 	if raw.Files != nil {
-		files, err := parseJSONFiles(raw.Files)
+		files, err := parseJSONFiles(raw.Files, location)
 		if err != nil {
 			return result, fmt.Errorf("files: %w", err)
 		}
@@ -684,31 +701,25 @@ func parseBodyPatch(data []byte) (model.BodyPatch, error) {
 	return patch, nil
 }
 
-func parseJSONFiles(data []byte) (map[model.RelativePath][]byte, error) {
+func parseJSONFiles(data []byte, location model.SourceLocation) (map[model.RelativePath]model.FileContent, error) {
 	var raw map[string]json.RawMessage
 	if err := decodeStrictJSONObject(data, &raw); err != nil {
 		return nil, err
 	}
-	files := make(map[model.RelativePath][]byte, len(raw))
-	for path, value := range raw {
+	paths := make([]string, 0, len(raw))
+	for path := range raw {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	files := make(map[model.RelativePath]model.FileContent, len(raw))
+	for _, path := range paths {
 		normalized, err := model.NewRelativePath(path)
 		if err != nil {
 			return nil, fmt.Errorf("file path %q: %w", path, err)
 		}
-		var text string
-		if err := decodeStrictJSON(value, &text); err == nil {
-			files[normalized] = []byte(text)
-			continue
-		}
-		var encoded struct {
-			Base64 *string `json:"base64"`
-		}
-		if err := decodeStrictJSONObject(value, &encoded); err != nil || encoded.Base64 == nil {
-			return nil, fmt.Errorf("file %q must be a UTF-8 string or {\"base64\": String}", path)
-		}
-		content, err := base64.StdEncoding.DecodeString(*encoded.Base64)
+		content, err := model.DecodeOverlayFileContentJSON(raw[path], location)
 		if err != nil {
-			return nil, fmt.Errorf("file %q base64: %w", path, err)
+			return nil, fmt.Errorf("file %q: %w", path, err)
 		}
 		files[normalized] = content
 	}

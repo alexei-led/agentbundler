@@ -19,7 +19,7 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	writeFixture(t, workspace, "bundle/src/skills/example/SKILL.md", "---\n{\"name\":\"Example\"}\n---\nUse the skill.\n")
 	writeFixture(t, workspace, "bundle/src/skills/example/references/guide.txt", "guide")
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/asset.json", `{"capabilities":["tool-use"]}`)
-	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi.json", `{"frontmatterPatch":{"model":"pi"},"bodyPatch":{"mode":"replace","text":"target body"},"files":{"README.md":"from JSON","binary":{"base64":"AQI="}},"deletedFiles":["obsolete.txt"],"acknowledgments":[{"asset":"skill/example","target":"pi","key":"tool-use","reason":"native support"}]}`)
+	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi.json", `{"frontmatterPatch":{"model":"pi"},"bodyPatch":{"mode":"replace","text":"target body"},"files":{"README.md":{"text":"from JSON","executable":true},"binary":{"base64":"AQI=","executable":true}},"deletedFiles":["obsolete.txt"],"acknowledgments":[{"asset":"skill/example","target":"pi","key":"tool-use","reason":"native support"}]}`)
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi/files/README.md", "from tree")
 	writeFixture(t, workspace, "bundle/src/agents/reviewer.md", "Review changes.\n")
 	writeFixture(t, workspace, "bundle/src/hooks/check.json", `{"event":"pre-tool","matcher":{"tools":["command"]},"handler":{"mode":"exec","program":"go","arguments":[{"literal":"test"},{"literal":"./..."}]},"timeoutMilliseconds":10000,"asynchronous":false,"failurePolicy":"closed","order":100}`)
@@ -56,6 +56,12 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	}
 	if got, want := filePatchBytes(overlay.Files), map[model.RelativePath]string{"README.md": "from tree", "binary": string([]byte{1, 2})}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("overlay files = %#v, want %#v", got, want)
+	}
+	if got := filePatch(overlay.Files, "README.md").Content; got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "src/skills/example/.agentbundler/targets/pi/files/README.md"}}) {
+		t.Fatalf("tree overlay file = %#v", got)
+	}
+	if got := filePatch(overlay.Files, "binary").Content; !got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "src/skills/example/.agentbundler/targets/pi.json"}}) {
+		t.Fatalf("JSON overlay file = %#v", got)
 	}
 	hook := alpha.Assets[1].Hook
 	if hook == nil || hook.Identity != "hook/check" || hook.Location.Path != "src/hooks/check.json" || hook.Event != model.HookEventPreTool || hook.Handler.Mode != model.HookHandlerModeExec {
@@ -278,6 +284,29 @@ func TestInspectBundleRejectsCommandOnlyHookDescriptor(t *testing.T) {
 	}
 }
 
+func TestInspectBundleRejectsInvalidExecutableAwareOverlayFileValues(t *testing.T) {
+	values := []string{
+		`{"text":"one","base64":"dHdv"}`,
+		`{"text":"one","unknown":true}`,
+		`{"text":"one","executable":null}`,
+		`{"text":null}`,
+		`{"executable":true}`,
+	}
+	for _, value := range values {
+		t.Run(value, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/skills/example"]}`)
+			writeFixture(t, workspace, "bundle/src/skills/example/SKILL.md", "body")
+			writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi.json", `{"files":{"scripts/run.sh":`+value+`}}`)
+
+			inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+			if !hasError(diagnostics) || !reflect.DeepEqual(inventory, model.SourceInventory{}) || !diagnosticsContain(diagnostics, "overlay file", "src/skills/example/.agentbundler/targets/pi.json") {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+		})
+	}
+}
+
 func TestInspectBundleRejectsInvalidPackageAndSidecar(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/skills/example","src/skills/example"]}`)
@@ -367,6 +396,15 @@ func filePatchBytes(files []model.FilePatch) map[model.RelativePath]string {
 		values[file.Path] = string(file.Content.Bytes)
 	}
 	return values
+}
+
+func filePatch(files []model.FilePatch, path model.RelativePath) model.FilePatch {
+	for _, file := range files {
+		if file.Path == path {
+			return file
+		}
+	}
+	return model.FilePatch{}
 }
 
 func capabilityKeys(uses []model.CapabilityUse) []model.CapabilityKey {
