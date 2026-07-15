@@ -24,17 +24,19 @@ flowchart LR
    Source importers share root-containment and no-symlink checks for workspace
    paths; text parsers reject malformed UTF-8 before string conversion.
 3. **Source importers** read one of `skills-repository`, `bundle`, or
-   `claude-plugin` and normalize packages, assets, metadata, frontmatter, body,
-   support files, capabilities, and native gaps.
+   `claude-plugin` and normalize packages, typed hooks, executable-aware payload
+   files, metadata, capabilities, and native gaps.
 4. **Composition** clones each selected package for a target, applies overlays
    and preambles, checks capability acknowledgments, and resolves native-gap
-   policy.
-5. **Target renderers** turn normalized packages into a target-relative
-   distribution `BuildPlan`. Installable profiles keep package roots separate;
-   project profiles retain their target-specific package contract. Renderers do
-   not write files.
-6. **Artifact handling** adds provenance, stages output for `build`, or compares
-   the plan against existing files for `check`.
+   policy without translating vendor event names.
+5. **Target renderers** consume an explicit render input: ordered packages,
+   distribution metadata, and separate/aggregate package mode. Target leaves own
+   native manifests, event mappings, root syntax, catalogs, and safe native-check
+   declarations. Renderers return a target-relative `BuildPlan` and do not write
+   files.
+6. **Artifact handling** adds provenance, stages output for `build`, compares
+   the plan against existing files for read-only `check`, and invokes declared
+   native validators only for `check --native` after drift passes.
 
 ## Package ownership
 
@@ -47,9 +49,14 @@ flowchart LR
 - `internal/compiler/composition`: overlays, preambles, capabilities,
   acknowledgments, and native gaps.
 - `internal/target`: target adapters and target-relative build plans.
-- `internal/target/packageoutput`: shared package-root aggregation and file layout.
-  Target leaves own package manifests and agent serializers through package codecs;
-  aggregation does not select vendor schemas.
+- `internal/target/packageoutput`: shared package-root, payload, and collision
+  mechanics. Target leaves own package, agent, hook, and catalog serialization.
+- `internal/target/marketplace`: pure validation and deterministic ordering of
+  common catalog entries; it has no publication, filesystem, process, clock,
+  Git, or network behavior.
+- `internal/target/pi/runtime`: dependency-free TypeScript hook runtime owned by
+  the Pi adapter. Go embeds the reviewed source bytes and emits one thin adapter
+  for an explicit aggregate package.
 - `internal/artifact/write`: staging and complete output replacement.
 - `internal/artifact/compare`: exact output drift detection.
 - `internal/artifact/provenance`: configuration, input, output, and
@@ -59,10 +66,12 @@ flowchart LR
 
 ## Determinism and ownership
 
-The compiler normalizes and sorts input, assets, files, targets, and output paths.
-Build output does not depend on network state, wall clock, hostname, locale, or
-absolute source paths. The provenance file records hashes so a later `check`
-can identify drift.
+The compiler normalizes and sorts input, assets, hooks, files, packages,
+catalog entries, targets, and output paths. Build output may depend on source
+bytes, explicit manifests, target revisions, and embedded Pi runtime bytes. It
+does not depend on network state, wall clock, hostname, locale, Git state,
+installed vendor versions, or absolute source paths. The provenance file records
+hashes so a later `check` can identify drift.
 
 `build` owns the complete configured output directory. It writes through a
 staging/journal path and replaces the output only after the plan is ready.
@@ -126,11 +135,13 @@ archfit analyze --config .archfit.yaml --refresh --ai-summary
 ```
 
 CI installs Archfit v1.6.0 and pinned SCIP, ast-grep, and jscpd analyzers, then
-runs the deterministic gate in strict tool mode. Local pre-push uses the same
-config and requires those analyzers, but local tool versions may differ. The
-pre-push hook fails closed if Archfit or a required analyzer is missing. Update
-the version, config, and CI tool pins together; run `archfit doctor` after an
-upgrade.
+runs the deterministic gate in strict tool mode. It also runs Go tests/race/vet,
+Go lint, the pinned Bun TypeScript gate, the six-target deterministic fixture,
+and checksum/version-pinned Claude and Grok validators. Local pre-push uses the
+same architecture config and requires its analyzers, but local tool versions may
+differ. The pre-push hook fails closed if Archfit or a required analyzer is
+missing. Update versions, config, CI pins, and validator evidence together; run
+`archfit doctor` after an upgrade.
 
 A green gate proves only the declared boundaries under available analyzer
 coverage. Review the human report and architecture intent when adding a module
@@ -138,12 +149,24 @@ or changing package responsibilities.
 
 ## Current boundary
 
-Project renderers accept one package containing skills. Installable package
-profiles additionally render portable resources, supported native agent forms,
-and multiple self-contained package roots. The source model is deliberately
-broader so richer assets and native gaps can be imported, validated, and reported,
-but hooks, scripts, and target-native resources still need target-specific
-rendering contracts.
+The portable contract covers command hooks with typed event, matcher, arguments,
+timeout, async, failure-policy, order, decision capabilities, payload bytes, and
+executable intent. HTTP, prompt-handler, agent-handler, and MCP-tool-handler
+hooks remain outside it. Target-native resources remain explicit gaps.
+
+Pi's runtime is the only generated runtime shim. It stays cohesive inside the Pi
+adapter, scans no global package roots, and loads only the generated descriptor
+passed by its thin adapter. All other vendor mappings stay in their target
+leaves. Catalog generation is local metadata only; installation, publication,
+authentication, and network fetching stay outside the compiler.
+
+After hook or target-contract changes, the scoped human re-review covers
+`internal/compiler/model`, `internal/compiler/source`,
+`internal/compiler/composition`, `internal/target`,
+`internal/target/pi/runtime`, and `internal/artifact`. Trace bundle/Claude import
+through composition, rendering, Pi embedding, artifact write/check, and native
+verification; re-check target-neutral semantics, dependency direction, runtime
+ownership, capability truthfulness, and D1–D14 from the implementation plan.
 
 For user-facing behavior, see [targets and CLI](targets-and-cli.md). For the
 input contract, see [configuration](configuration.md).

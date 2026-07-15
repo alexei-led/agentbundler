@@ -249,23 +249,91 @@ func writeCLIFile(t *testing.T, root, relative, contents string) {
 	}
 }
 
-func TestReleaseBuildPrintsInjectedVersion(t *testing.T) {
+func TestReleaseBuildEmbedsTestedRuntimeAndPrintsInjectedVersion(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "agbun")
 	const version = "v9.8.7"
 	build := exec.Command(
-		"go", "build", "-o", binary,
+		"go", "build", "-trimpath", "-o", binary,
 		"-ldflags", "-X github.com/alexei-led/agentbundler/internal/buildinfo.releaseVersion="+version,
 		".",
 	)
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("release build failed: %v\n%s", err, output)
 	}
-	output, err := exec.Command(binary, "--version").Output()
-	if err != nil {
-		t.Fatalf("release binary --version failed: %v", err)
+	for _, argument := range []string{"version", "--version"} {
+		output, err := exec.Command(binary, argument).Output()
+		if err != nil {
+			t.Fatalf("release binary %s failed: %v", argument, err)
+		}
+		if got, want := string(output), "agbun "+version+"\n"; got != want {
+			t.Fatalf("release binary %s = %q, want %q", argument, got, want)
+		}
 	}
-	if got, want := string(output), "agbun "+version+"\n"; got != want {
-		t.Fatalf("release binary version = %q, want %q", got, want)
+
+	workspace := t.TempDir()
+	fixture := filepath.Join("..", "..", "internal", "compiler", "testdata", "hooks-pi")
+	if err := os.CopyFS(workspace, os.DirFS(fixture)); err != nil {
+		t.Fatalf("copy Pi release fixture: %v", err)
+	}
+	command := exec.Command(binary, "build", "--root", workspace)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("release binary Pi build failed: %v\n%s", err, output)
+	}
+	for _, name := range []string{"index.ts", "matcher.ts", "process.ts", "runtime.ts", "schema.ts"} {
+		source, err := os.ReadFile(filepath.Join("..", "..", "internal", "target", "pi", "runtime", "src", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		generated, err := os.ReadFile(filepath.Join(workspace, "generated", "pi", "extensions", "_agentbundler-hooks", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(generated, source) {
+			t.Errorf("release binary embedded runtime %q differs from tested source bytes", name)
+		}
+	}
+}
+
+func TestRunCCThingzAcceptanceFixtureBuildCheckAndSelectors(t *testing.T) {
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS(filepath.Join("..", "..", "testdata", "cc-thingz-hooks"))); err != nil {
+		t.Fatalf("copy cc-thingz fixture: %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 || stdout.String() != "build: ok\n" || stderr.Len() != 0 {
+		t.Fatalf("acceptance build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	if status := run([]string{"check"}, root, &stdout, &stderr, compiler.Compile); status != 0 || stdout.String() != "check: current\n" || stderr.Len() != 0 {
+		t.Fatalf("acceptance check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	for _, relative := range []string{
+		"generated/claude/.claude-plugin/marketplace.json",
+		"generated/codex/.agents/plugins/marketplace.json",
+		"generated/copilot/.github/plugin/marketplace.json",
+		"generated/cursor/.cursor-plugin/marketplace.json",
+		"generated/grok/.claude-plugin/marketplace.json",
+		"generated/pi/extensions/agentbundler-hooks.ts",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); err != nil {
+			t.Errorf("acceptance output %q: %v", relative, err)
+		}
+	}
+
+	selectedRoot := t.TempDir()
+	if err := os.CopyFS(selectedRoot, os.DirFS(filepath.Join("..", "..", "testdata", "cc-thingz-hooks"))); err != nil {
+		t.Fatalf("copy selected cc-thingz fixture: %v", err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := run([]string{"build", "--target", "codex", "--package", "core-tools"}, selectedRoot, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("selected acceptance build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(selectedRoot, "generated", "codex", ".codex-plugin", "plugin.json")); err != nil {
+		t.Fatalf("selected flat Codex package: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(selectedRoot, "generated", "claude")); !os.IsNotExist(err) {
+		t.Fatalf("selected build unexpectedly wrote Claude output: %v", err)
 	}
 }
 

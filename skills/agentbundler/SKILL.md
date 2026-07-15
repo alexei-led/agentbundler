@@ -82,12 +82,12 @@ Source kinds:
 - `claude-plugin`: imports `.claude-plugin/plugin.json` and recognized Claude
   plugin assets.
 
-Current renderers emit skills, portable resources, and supported native agent
-forms. Package profiles support Claude, Codex, Pi, GitHub Copilot, and Cursor;
-multiple packages are emitted under self-contained package-ID roots. Grok emits
-project-local skills/resources and accepts a Claude-compatible package root.
-Renderers do not generate marketplaces, install packages, or run built-in vendor
-validation.
+Current renderers emit skills, portable resources, supported native agents,
+typed command hooks with payloads, and deterministic catalogs. Claude, Codex,
+Copilot, Cursor, and Grok package profiles support separate package-ID roots. Pi
+supports an explicit aggregate package with one registered embedded hook runtime.
+Renderers do not publish or install packages. `check --native` runs only declared
+safe Claude and Grok validators after drift passes.
 
 ## Create a skill source
 
@@ -231,10 +231,10 @@ check --native` runs only declared checks; built-in adapters do not invoke
   keys.
 - Section patch errors: use the exact heading path once; do not use Setext
   headings or anchors inside fenced code.
-- Unsupported capability/native-gap errors: current renderers support one
-  package of skills, portable resources, and only the target agent forms listed
-  in the target-layout docs. A policy can classify a gap but cannot make an
-  unsupported hook, script, or native resource renderable.
+- Unsupported capability/native-gap errors: check the target hook event,
+  matcher, decision, timeout, async, and failure-policy cells. Advisory
+  conversions require an exact acknowledgment. A policy cannot make an
+  unsupported security decision or target-native resource safe.
 - Target not recognizing files: confirm the generated target path, then check
   the target agent's current runtime documentation. **Agent Bundler** creates files;
   it does not install, enable, or register an agent plugin. Validate a published

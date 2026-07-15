@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+first=$(mktemp -d)
+second=$(mktemp -d)
+cleanup() {
+  find "$first" "$second" -depth -delete
+}
+trap cleanup EXIT
+
+cp -R testdata/cc-thingz-hooks/. "$first/"
+cp -R testdata/cc-thingz-hooks/. "$second/"
+
+go run ./cmd/agbun build --root "$first" >/dev/null
+go run ./cmd/agbun check --root "$first" >/dev/null
+go run ./cmd/agbun build --root "$second" >/dev/null
+
+diff -ru "$first/generated" "$second/generated"
+printf '%s\n' 'acceptance fixture: all six target trees are current and deterministic'

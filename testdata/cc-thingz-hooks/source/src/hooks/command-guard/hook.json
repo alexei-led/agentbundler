@@ -1,0 +1,27 @@
+{
+  "event": "pre-tool",
+  "matcher": {
+    "tools": [
+      "command"
+    ]
+  },
+  "handler": {
+    "mode": "exec",
+    "program": "bash",
+    "arguments": [
+      {
+        "literal": "-eu"
+      },
+      {
+        "packageFile": "check.sh"
+      },
+      {
+        "packageFile": "rules.json"
+      }
+    ]
+  },
+  "timeoutMilliseconds": 5000,
+  "asynchronous": false,
+  "failurePolicy": "open",
+  "order": 10
+}

@@ -39,15 +39,16 @@ by hand or point `output` at a project root containing unrelated agent files.
 
 ## What Agent Bundler does today
 
-The current adapters render skills, portable package resources, and supported
-native agent forms into target-native project or installable package layouts.
-Installable profiles can render multiple self-contained packages under
-package-owned roots. They do not install an agent, run a model, publish a
-marketplace package, or promise that every target supports every frontmatter key.
+The current adapters render skills, portable package resources, supported native
+agent forms, typed command hooks with payloads, and deterministic catalogs into
+target-native project or installable package layouts. Separate profiles can
+render multiple package-owned roots; Pi supports one explicit aggregate package
+with one embedded hook runtime. They do not install an agent, run a model, or
+publish a marketplace package.
 
-The source model can recognize richer assets and native gaps. The current target
-renderers still reject hooks, scripts, and target-native resources. Unsupported
-capabilities fail explicitly in the compiler.
+Hook event, matcher, decision, timeout, async, and failure semantics differ by
+target. Unsupported cells and target-native resources fail explicitly instead
+of being silently omitted.
 
 ## Choose your next page
 

@@ -5,69 +5,60 @@ package pi_test
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexei-led/agentbundler/internal/compiler"
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/testutil/vendorsmoke"
 )
 
 func TestInstalledPiDiscoversAggregatePackageWithoutRealConfigChanges(t *testing.T) {
-	pi, err := exec.LookPath("pi")
-	if err != nil {
-		t.Skip("installed Pi smoke unavailable: pi executable is not on PATH")
-	}
-	workspace, packageRoot := compilePiSmokeFixture(t)
-	isolatedConfig := t.TempDir()
-	t.Setenv("PI_CODING_AGENT_DIR", isolatedConfig)
-	realConfig := realPiConfigPath(t)
-	before := readOptionalFile(t, realConfig)
+	pi := vendorsmoke.RequireExecutable(t, "pi")
+	realRoot := filepath.Join(vendorsmoke.UserHome(t), ".pi", "agent")
+	vendorsmoke.ProtectPaths(t, realRoot)
 
-	install := exec.Command(pi, "install", packageRoot, "-l", "--approve")
-	install.Dir = workspace
-	install.Env = append(os.Environ(), "PI_OFFLINE=1")
-	if output, err := install.CombinedOutput(); err != nil {
-		t.Fatalf("pi install -l: %v\n%s", err, output)
-	}
+	workspace, packageRoot := compilePiSmokeFixture(t)
+	isolatedRoot := t.TempDir()
+	environment := vendorsmoke.Environment(map[string]string{
+		"HOME":                filepath.Join(isolatedRoot, "home"),
+		"PI_CODING_AGENT_DIR": filepath.Join(isolatedRoot, "pi-agent"),
+		"XDG_CONFIG_HOME":     filepath.Join(isolatedRoot, "config"), "XDG_CACHE_HOME": filepath.Join(isolatedRoot, "cache"),
+		"PI_OFFLINE": "1", "HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
+	})
+
+	vendorsmoke.Run(t, vendorsmoke.Command{
+		Name: "pi install -l", Path: pi, Args: []string{"install", packageRoot, "-l", "--approve"},
+		Dir: workspace, Env: environment, Timeout: 30 * time.Second,
+	})
 	projectSettings := filepath.Join(workspace, ".pi", "settings.json")
 	settings := readOptionalFile(t, projectSettings)
 	if !settings.exists || !bytes.Contains(settings.bytes, []byte(packageRoot)) {
 		t.Fatalf("project settings do not contain aggregate package %q: %s", packageRoot, settings.bytes)
 	}
 
-	list := exec.Command(pi, "list", "--approve")
-	list.Dir = workspace
-	list.Env = append(os.Environ(), "PI_OFFLINE=1")
-	output, err := list.CombinedOutput()
-	if err != nil {
-		t.Fatalf("pi list: %v\n%s", err, output)
-	}
-	if !bytes.Contains(output, []byte(packageRoot)) && !bytes.Contains(output, []byte("pi-hook-suite")) {
+	output := vendorsmoke.Run(t, vendorsmoke.Command{
+		Name: "pi list", Path: pi, Args: []string{"list", "--approve"},
+		Dir: workspace, Env: environment, Timeout: 30 * time.Second,
+	})
+	if !strings.Contains(output, packageRoot) && !strings.Contains(output, "pi-hook-suite") {
 		t.Fatalf("pi list did not discover aggregate package:\n%s", output)
-	}
-	if after := readOptionalFile(t, realConfig); after.exists != before.exists || !bytes.Equal(after.bytes, before.bytes) {
-		t.Fatalf("Pi smoke changed real config %q", realConfig)
 	}
 }
 
 func TestInstalledPiLoaderImportsGeneratedAdapterOnceAndReportsSchemaMismatch(t *testing.T) {
-	pi, err := exec.LookPath("pi")
-	if err != nil {
-		t.Skip("installed Pi loader smoke unavailable: pi executable is not on PATH")
-	}
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("installed Pi loader smoke unavailable: node executable is not on PATH")
-	}
+	pi := vendorsmoke.RequireExecutable(t, "pi")
+	node := vendorsmoke.RequireExecutable(t, "node")
 	loader, ok := installedPiLoader(pi)
 	if !ok {
-		t.Skip("installed Pi loader smoke unavailable: pi is not a Node package installation")
+		t.Skip("vendor smoke unavailable: installed pi is not a Node package with the documented extension loader")
 	}
+	realRoot := filepath.Join(vendorsmoke.UserHome(t), ".pi", "agent")
+	vendorsmoke.ProtectPaths(t, realRoot)
 	workspace, packageRoot := compilePiSmokeFixture(t)
 	adapter := filepath.Join(packageRoot, "extensions", "agentbundler-hooks.ts")
 
@@ -108,14 +99,19 @@ const result=await loadExtensions([process.argv[2]],process.argv[3]);
 const counts={};
 for(const extension of result.extensions) for(const [name, handlers] of extension.handlers) counts[name]=(counts[name]??0)+handlers.length;
 console.log(JSON.stringify({extensions:result.extensions.length,paths:result.extensions.map(value=>value.path),handlerCounts:counts,errors:result.errors.map(value=>value.path+": "+String(value.error?.stack??value.error))}));`
-	command := exec.Command(node, "--input-type=module", "--eval", script, fileURL(loader), adapter, cwd)
-	command.Env = append(os.Environ(), "PI_OFFLINE=1")
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("Pi extension loader: %v\n%s", err, output)
-	}
+	isolatedRoot := filepath.Join(cwd, ".vendor-smoke")
+	output := vendorsmoke.Run(t, vendorsmoke.Command{
+		Name: "Pi extension loader", Path: node,
+		Args: []string{"--input-type=module", "--eval", script, fileURL(loader), adapter, cwd},
+		Env: vendorsmoke.Environment(map[string]string{
+			"HOME": filepath.Join(isolatedRoot, "home"), "PI_CODING_AGENT_DIR": filepath.Join(isolatedRoot, "pi-agent"),
+			"XDG_CONFIG_HOME": filepath.Join(isolatedRoot, "config"), "XDG_CACHE_HOME": filepath.Join(isolatedRoot, "cache"),
+			"PI_OFFLINE": "1", "HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
+		}),
+		Timeout: 30 * time.Second,
+	})
 	var result loaderResult
-	if err := json.Unmarshal(bytes.TrimSpace(output), &result); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &result); err != nil {
 		t.Fatalf("decode Pi loader output %q: %v", output, err)
 	}
 	return result
@@ -175,16 +171,4 @@ func readOptionalFile(t *testing.T, path string) optionalFile {
 		t.Fatalf("read %q: %v", path, err)
 	}
 	return optionalFile{exists: true, bytes: data}
-}
-
-func realPiConfigPath(t *testing.T) string {
-	t.Helper()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if home == "" {
-		t.Fatal(fmt.Errorf("user home directory is empty"))
-	}
-	return filepath.Join(home, ".pi", "agent", "settings.json")
 }

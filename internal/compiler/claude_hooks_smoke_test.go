@@ -3,31 +3,33 @@
 package compiler
 
 import (
-	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/alexei-led/agentbundler/internal/testutil/vendorsmoke"
 )
 
 func TestInstalledClaudeStrictlyValidatesGeneratedHookFixtureOffline(t *testing.T) {
-	claude, err := exec.LookPath("claude")
-	if err != nil {
-		t.Skip("installed Claude smoke unavailable: claude executable is not on PATH")
+	claude := vendorsmoke.RequireExecutable(t, "claude")
+	realHome := vendorsmoke.UserHome(t)
+	normalRoots := []string{
+		filepath.Join(realHome, ".claude"),
+		filepath.Join(realHome, ".config", "claude"),
 	}
+	vendorsmoke.ProtectPaths(t, normalRoots...)
+
 	workspace, _ := compileClaudeHookFixture(t)
-	isolatedHome := t.TempDir()
+	isolatedRoot := t.TempDir()
 	pluginRoot := filepath.Join(workspace, "generated", "claude")
-	command := exec.Command(claude, "plugin", "validate", "--strict", pluginRoot)
-	command.Env = []string{
-		"HOME=" + isolatedHome,
-		"CLAUDE_CONFIG_DIR=" + filepath.Join(isolatedHome, ".claude"),
-		"XDG_CONFIG_HOME=" + filepath.Join(isolatedHome, ".config"),
-		"PATH=" + os.Getenv("PATH"),
-		"HTTP_PROXY=http://127.0.0.1:9",
-		"HTTPS_PROXY=http://127.0.0.1:9",
-		"NO_PROXY=",
-	}
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("claude plugin validate --strict: %v\n%s", err, output)
-	}
+	vendorsmoke.Run(t, vendorsmoke.Command{
+		Name: "claude plugin validate --strict", Path: claude,
+		Args: []string{"plugin", "validate", "--strict", pluginRoot},
+		Env: vendorsmoke.Environment(map[string]string{
+			"HOME": isolatedRoot, "CLAUDE_CONFIG_DIR": filepath.Join(isolatedRoot, ".claude"),
+			"XDG_CONFIG_HOME": filepath.Join(isolatedRoot, ".config"),
+			"HTTP_PROXY":      "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
+		}),
+		Timeout: 30 * time.Second,
+	})
 }

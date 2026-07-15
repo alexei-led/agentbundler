@@ -110,15 +110,99 @@ Package file:
 ```
 
 Bundle package assets use exact forms such as `src/skills/<name>`,
-`src/agents/<name>.md`, `src/resources/<name>`, `src/hooks/<name>.json`, and
+`src/agents/<name>.md`, `src/resources/<name>`, `src/hooks/<name>`, and
 `src/plugins/<target>/<file>`. The `src/` prefix is optional. Asset target
 lists are exact allow-lists. Portable resource directories render under
 `resources/` in package profiles; target-native resources remain explicit gaps.
+The old exact `src/hooks/<name>.json` form remains compatible only for a
+payload-free descriptor.
 
 Pi package metadata may include a `dependencies` object with package-name keys
 and non-empty string versions. **Agent Bundler** writes it only to Pi
 `package.json`; use it to ship runtime package prerequisites such as
 `pi-subagents` alongside generated subagents.
+
+### Canonical command hook
+
+A payload-owning hook is one directory. `hook.json` is strict JSON. Other
+regular files in the directory are copied as hook payloads; walks are sorted,
+contained, and symlink-free.
+
+```text
+src/hooks/command-guard/
+├── hook.json
+├── check.sh
+├── rules.json
+└── .agentbundler/
+    ├── asset.json
+    └── targets/copilot.json
+```
+
+Exact descriptor:
+
+```json
+{
+  "event": "pre-tool",
+  "matcher": { "tools": ["command"] },
+  "handler": {
+    "mode": "exec",
+    "program": "bash",
+    "arguments": [
+      { "literal": "-eu" },
+      { "packageFile": "check.sh" },
+      { "packageFile": "rules.json" }
+    ]
+  },
+  "timeoutMilliseconds": 5000,
+  "asynchronous": false,
+  "failurePolicy": "open",
+  "order": 10
+}
+```
+
+Use `exec` for canonical hooks. Literal and package-file arguments remain
+separate until the target renders its own package-root syntax. Use `shell` only
+when arbitrary shell syntax is intentional:
+
+```json
+{
+  "event": "stop",
+  "handler": { "mode": "shell", "shellCommand": "printf '%s\\n' done" },
+  "timeoutMilliseconds": 1000,
+  "asynchronous": false,
+  "failurePolicy": "open",
+  "order": 20
+}
+```
+
+A hook that can deny or rewrite must declare that semantic capability in
+`.agentbundler/asset.json`, for example:
+
+```json
+{ "capabilities": ["hook.decision.block"] }
+```
+
+Target-specific advisories require an exact acknowledgment. This example accepts
+Copilot's safe exec-to-command-string conversion without changing the hook:
+
+```json
+{
+  "acknowledgments": [
+    {
+      "asset": "hook/command-guard",
+      "target": "copilot",
+      "key": "hook.command.exec",
+      "reason": "Copilot uses a quoted command string."
+    }
+  ]
+}
+```
+
+Put it at
+`src/hooks/command-guard/.agentbundler/targets/copilot.json`. Target allow-lists
+on the package asset entry are the right way to exclude a hook from targets
+that cannot preserve its semantics. See the complete six-target example in
+`testdata/cc-thingz-hooks`.
 
 #### Example manifest
 

@@ -34,6 +34,8 @@ git clone https://github.com/alexei-led/agentbundler.git
 cd agentbundler
 go build -o ./bin/agbun ./cmd/agbun
 ./bin/agbun --help
+./bin/agbun version
+./bin/agbun --version
 ```
 
 ## Verify the CLI
@@ -44,8 +46,14 @@ agbun --help
 agbun help targets
 ```
 
+`agbun version` and `agbun --version` must print the same value. Release binaries
+report their injected `vMAJOR.MINOR.PATCH`; development checkouts normally report
+`agbun-dev`.
+
 The command supports `build` and `check`. See the
-[CLI reference](targets-and-cli.md) for all selectors and exit statuses.
+[CLI reference](targets-and-cli.md) for all selectors and exit statuses, and
+[release validation](release.md) for the embedded Pi runtime and release-build
+checks.
 
 **Agent Bundler** is a local compiler. It does not need network access to
 build or check a bundle.

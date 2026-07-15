@@ -1,0 +1,35 @@
+{
+  "id": "core-tools",
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Shared command guard and review assets",
+    "displayName": "Core tools",
+    "author": {
+      "name": "Agent Bundler"
+    },
+    "homepage": "https://github.com/alexei-led/agentbundler",
+    "repository": "https://github.com/alexei-led/agentbundler",
+    "license": "MIT",
+    "keywords": [
+      "guard",
+      "hooks"
+    ],
+    "dependencies": {
+      "pi-subagents": "^0.3.0"
+    }
+  },
+  "assets": [
+    "src/skills/review",
+    {
+      "path": "src/agents/reviewer.md",
+      "targets": [
+        "claude",
+        "pi",
+        "copilot",
+        "cursor",
+        "grok"
+      ]
+    },
+    "src/hooks/command-guard"
+  ]
+}

@@ -34,24 +34,26 @@ canonical source + manifest
           ▼
    import → customize → render
           │
-          ├── Claude Code   .claude/skills/…
-          ├── Codex         .codex-plugin/ + skills/…
-          ├── Pi            .pi/skills/…
-          ├── Copilot       plugin.json + skills/…
-          ├── Grok Build    .grok/{skills,resources}/…
-          └── Cursor       .cursor-plugin/ + skills/ + agents/…
+          ├── Claude Code   .claude-plugin/ + hooks/ + skills/ + agents/
+          ├── Codex         .codex-plugin/ + hooks/ + skills/
+          ├── Pi            package.json + one TypeScript hook extension
+          ├── Copilot CLI   plugin.json + hooks.json + skills/ + agents/
+          ├── Grok Build    Claude-compatible plugin + Grok hook roots
+          └── Cursor        .cursor-plugin/ + hooks/ + skills/ + agents/
 ```
 
 ## Current scope
 
-Today the target renderers produce **skills**, portable package resources, and
-selected native agent forms. Package profiles emit installable Claude, Codex,
-Pi, GitHub Copilot, and Cursor roots; one package keeps its historical flat root,
-while multiple packages are self-contained below package-ID roots. Grok emits a
-project skill/resource tree and accepts the Claude-compatible package format.
-Hooks, scripts, and target-native resources are not rendered by the current
-adapters.
-Unsupported capabilities fail instead of being silently discarded.
+Package profiles produce **skills, agents, portable resources, command hooks,
+payload files, and deterministic catalogs** in each vendor's native layout.
+Claude, Codex, Copilot CLI, Cursor, and Grok use separate plugin roots. Pi can
+merge several logical packages into one explicit aggregate package with one
+registered TypeScript extension and one embedded, dependency-free hook runtime.
+Project profiles remain available for their narrower target layouts.
+
+Hook portability is semantic, not name-based. An unsupported event, matcher,
+decision, timeout, async mode, or failure policy fails with an exact diagnostic;
+Agent Bundler never silently weakens a security hook or drops an asset.
 
 **Agent Bundler** is a compiler, not an agent runtime, installer, marketplace, or
 publisher. It creates target-ready files; your project or release workflow
@@ -88,8 +90,11 @@ Use `agbun help build`, `agbun help check`, and `agbun help targets` for the
 full command, safety, and target-ID reference.
 
 `build` replaces the configured output directory. Use a dedicated generated
-directory, not a working project root. For a complete first bundle, see the
-[quick start](docs/quickstart.md).
+directory, not a working project root. `check` is read-only; add `--native` to
+run only declared safe validators for Claude and Grok after drift passes.
+For a complete first bundle, see the [quick start](docs/quickstart.md). For a
+multi-package hook example that builds all six targets, see
+[`testdata/cc-thingz-hooks`](testdata/cc-thingz-hooks).
 
 ## What can be customized
 
@@ -116,6 +121,7 @@ examples.
 - [Targets and CLI reference](docs/targets-and-cli.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Architecture](docs/architecture.md)
+- [Release validation](docs/release.md)
 - [**Agent Bundler** Agent Skill](skills/agentbundler/SKILL.md)
 
 ## License

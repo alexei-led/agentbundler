@@ -1,0 +1,10 @@
+{
+  "acknowledgments": [
+    {
+      "asset": "hook/file-audit",
+      "target": "copilot",
+      "key": "hook.command.exec",
+      "reason": "Copilot receives the canonical argv as an explicitly quoted command string."
+    }
+  ]
+}

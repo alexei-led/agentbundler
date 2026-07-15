@@ -48,15 +48,18 @@ agbun check --json
 
 ## `unsupported capability` or native-gap errors
 
-Current renderers emit skills, portable resources, and supported native agent
-forms. Installable profiles may emit multiple self-contained package roots.
-Hooks, scripts, target-native resources, and arbitrary custom capability uses are
-not rendered. A composition policy can classify or resolve a
-native gap, but it cannot make an unsupported asset appear in the output.
+Current renderers emit skills, portable resources, supported native agents,
+typed command hooks with payloads, and deterministic catalogs. An error usually
+means the selected target cannot preserve the hook's event, matcher, decision,
+timeout, async, or failure behavior, or an advisory conversion lacks an exact
+acknowledgment. Target-native resources and non-command hook handlers remain
+unsupported. A policy can classify a gap but cannot make a semantic mismatch
+safe.
 
-If the asset is not needed for the target, exclude it in the source/package
-selection or use a target that supports the required representation. Otherwise,
-keep the richer source for a future adapter and publish only the skill subset.
+If the asset is not needed for the target, use an asset target allow-list. If an
+advisory conversion is acceptable, add the exact key/reason acknowledgment to
+the target sidecar. Never acknowledge an unsupported security decision; change
+the hook or target instead.
 
 ## `unsupported-agent-field`
 
