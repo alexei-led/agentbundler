@@ -51,7 +51,7 @@ hooks/hooks.v1.json
 
 Portable mappings use Pi extension events including `session_start`, idempotent `session_shutdown`, `input`/`before_agent_start`, `tool_call`, `tool_result`, `turn_end`/`agent_end`, and compaction events. `tool_call` preflight is sequential even when sibling tools later execute concurrently. Input rewrite mutates `event.input` only after runtime validation because Pi does not revalidate it.
 
-The runtime implements the portable exec/shell process protocol, package-file resolution, matchers, deterministic hook order, bounded output, timeout, cancellation, and fail-open/fail-closed translation. Unsupported event or decision cells fail before output.
+The runtime implements the portable exec/shell process protocol, package-file resolution, matchers, deterministic hook order, bounded output, timeout, cancellation, and fail-open/fail-closed translation. Shutdown closes dispatch and drains terminated child processes before resolving; Pi session shutdown includes session-end hooks in that final drain. Unsupported event or decision cells fail before output.
 
 Primary evidence: installed `@earendil-works/pi-coding-agent` 0.80.7 `docs/packages.md`, `docs/extensions.md`, `README.md`, and `examples/extensions/`, checked 2026-07-15. See `docs/vendor-package-contracts.md`.
 
@@ -84,4 +84,4 @@ Aggregation merges dependency maps only when equal values agree. Duplicate depen
 - Aggregate identity, metadata, dependencies, skills, agents, hooks, and paths merge deterministically or fail with complete collision evidence.
 - Package JSON registers exactly one thin adapter and its bytes import the one embedded runtime.
 - Cross-language fixtures keep Go descriptor serialization and TypeScript schema-v1 decoding aligned.
-- Runtime tests cover every supported event, blocking, rewrite validation, order, fail policy, path containment, timeout, cancellation, output bounds, and idempotent shutdown.
+- Runtime tests cover every supported event, blocking, rewrite validation, order, fail policy, path containment, timeout, cancellation, output bounds, and idempotent shutdown with no active child process.

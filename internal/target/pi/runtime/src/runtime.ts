@@ -45,6 +45,7 @@ export function createPiHookRuntime(pi: PiExtensionAPI, value: unknown, options:
   const config = decodeConfig(value);
   const runner = options.runner ?? runProcess;
   const active = new Set<{ controller: AbortController; done: Promise<void> }>();
+  let closed = false;
   let shutdownPromise: Promise<void> | undefined;
 
   const invoke = async (hook: HookDescriptor, event: Record<string, unknown>, context: PiEventContext): Promise<HookDecision> => {
@@ -77,69 +78,96 @@ export function createPiHookRuntime(pi: PiExtensionAPI, value: unknown, options:
     }
   };
 
+  const dispatchHooks = async (
+    hooks: HookDescriptor[],
+    event: Record<string, unknown>,
+    context: PiEventContext,
+    allowAfterClosure = false,
+  ): Promise<unknown> => {
+    for (const hook of hooks) {
+      if (closed && !allowAfterClosure) return undefined;
+      if (hook.event === "post-tool" && event.isError === true) continue;
+      if (hook.event === "post-tool-failure" && event.isError !== true) continue;
+      const toolName = typeof event.toolName === "string" ? event.toolName : "";
+      if ((hook.event === "pre-tool" || hook.event === "post-tool" || hook.event === "post-tool-failure") &&
+          !matchesTool(hook, toolName)) continue;
+
+      if (hook.asynchronous) {
+        void invoke(hook, snapshot(event), context).catch((error: unknown) => report(error, hook, options.onError));
+        continue;
+      }
+
+      let decision: HookDecision;
+      try {
+        decision = await invoke(hook, snapshot(event), context);
+      } catch (error) {
+        report(error, hook, options.onError);
+        if (hook.failurePolicy === "open") continue;
+        if (hook.event === "pre-tool") return { block: true, reason: errorMessage(error) };
+        throw error;
+      }
+
+      if (hook.event !== "pre-tool") {
+        if (decision.decision !== "allow") {
+          const error = new Error(`${decision.decision} is only valid for pre-tool hooks`);
+          report(error, hook, options.onError);
+          if (hook.failurePolicy === "closed") throw error;
+        }
+        continue;
+      }
+      if (decision.decision === "deny") return { block: true, ...(decision.reason === undefined ? {} : { reason: decision.reason }) };
+      if (decision.decision === "rewrite-input") {
+        const input = event.input;
+        if (!isPlainRecord(input)) {
+          const error = new Error("Pi tool input is not a plain object; refusing rewrite");
+          report(error, hook, options.onError);
+          if (hook.failurePolicy === "closed") return { block: true, reason: error.message };
+          continue;
+        }
+        replaceRecord(input, decision.input);
+      }
+    }
+    return undefined;
+  };
+
   for (const [piEvent, portableEvent] of PI_EVENTS) {
     const hooks = config.hooks.filter((hook) => hook.event === portableEvent ||
       (piEvent === "tool_result" && hook.event === "post-tool-failure"));
     if (hooks.length === 0 && piEvent !== "session_shutdown") continue;
 
     pi.on(piEvent, async (event, context) => {
-      if (piEvent === "session_shutdown") {
-        await shutdown();
-        if (hooks.length === 0) return;
+      if (piEvent !== "session_shutdown") {
+        if (closed) return undefined;
+        return await dispatchHooks(hooks, event, context);
       }
-      for (const hook of hooks) {
-        if (hook.event === "post-tool" && event.isError === true) continue;
-        if (hook.event === "post-tool-failure" && event.isError !== true) continue;
-        const toolName = typeof event.toolName === "string" ? event.toolName : "";
-        if ((hook.event === "pre-tool" || hook.event === "post-tool" || hook.event === "post-tool-failure") &&
-            !matchesTool(hook, toolName)) continue;
-
-        if (hook.asynchronous) {
-          void invoke(hook, snapshot(event), context).catch((error: unknown) => report(error, hook, options.onError));
-          continue;
-        }
-
-        let decision: HookDecision;
+      if (shutdownPromise !== undefined) {
+        await shutdownPromise;
+        return undefined;
+      }
+      closed = true;
+      shutdownPromise = (async () => {
+        await drainActive();
         try {
-          decision = await invoke(hook, snapshot(event), context);
-        } catch (error) {
-          report(error, hook, options.onError);
-          if (hook.failurePolicy === "open") continue;
-          if (hook.event === "pre-tool") return { block: true, reason: errorMessage(error) };
-          throw error;
+          await dispatchHooks(hooks, event, context, true);
+        } finally {
+          await drainActive();
         }
-
-        if (hook.event !== "pre-tool") {
-          if (decision.decision !== "allow") {
-            const error = new Error(`${decision.decision} is only valid for pre-tool hooks`);
-            report(error, hook, options.onError);
-            if (hook.failurePolicy === "closed") throw error;
-          }
-          continue;
-        }
-        if (decision.decision === "deny") return { block: true, ...(decision.reason === undefined ? {} : { reason: decision.reason }) };
-        if (decision.decision === "rewrite-input") {
-          const input = event.input;
-          if (!isPlainRecord(input)) {
-            const error = new Error("Pi tool input is not a plain object; refusing rewrite");
-            report(error, hook, options.onError);
-            if (hook.failurePolicy === "closed") return { block: true, reason: error.message };
-            continue;
-          }
-          replaceRecord(input, decision.input);
-        }
-      }
+      })();
+      await shutdownPromise;
       return undefined;
     });
   }
 
+  async function drainActive(): Promise<void> {
+    const pending = [...active];
+    for (const invocation of pending) invocation.controller.abort("session shutdown");
+    await Promise.all(pending.map((invocation) => invocation.done));
+  }
+
   function shutdown(): Promise<void> {
     if (shutdownPromise !== undefined) return shutdownPromise;
-    shutdownPromise = (async () => {
-      const pending = [...active];
-      for (const invocation of pending) invocation.controller.abort("session shutdown");
-      await Promise.all(pending.map((invocation) => invocation.done));
-    })();
+    closed = true;
+    shutdownPromise = drainActive();
     return shutdownPromise;
   }
 

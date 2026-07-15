@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync, rmSync } from "node:fs";
 import {
   createPiHookRuntime,
   decodeConfig,
@@ -49,6 +50,28 @@ describe("schema v1", () => {
     const fixture = await Bun.file(new URL("../testdata/hooks.v1.json", import.meta.url)).json();
     const decoded = decodeConfig(fixture);
     expect(decoded.hooks.map((value) => value.identity)).toEqual(["hook/session", "hook/pre-tool"]);
+  });
+
+  test("matches Go byte ordering for non-ASCII hook identities", async () => {
+    const fixture = await Bun.file(new URL("../testdata/hook-order.v1.json", import.meta.url)).json() as {
+      config: unknown;
+      expectedIdentities: string[];
+    };
+    const decoded = decodeConfig(fixture.config);
+    expect(decoded.hooks.map((value) => value.identity)).toEqual(fixture.expectedIdentities);
+  });
+
+  test("preserves repeated exec arguments", () => {
+    const repeated = hook("repeat", "session-start", {
+      handler: {
+        mode: "exec",
+        program: "printf",
+        arguments: [{ literal: "%s %s" }, { literal: "value" }, { literal: "value" }],
+      },
+    });
+    expect(decodeConfig(config(repeated)).hooks[0]?.handler.arguments).toEqual([
+      { literal: "%s %s" }, { literal: "value" }, { literal: "value" },
+    ]);
   });
 
   test("rejects unknown versions, fields, duplicates, and malformed commands", () => {
@@ -277,7 +300,7 @@ describe("process dispatch", () => {
 });
 
 describe("shutdown", () => {
-  test("cancels asynchronous work and is idempotent", async () => {
+  test("cancels asynchronous work, prevents new work, and is idempotent", async () => {
     let starts = 0;
     let aborts = 0;
     const runner: ProcessRunner = async (_command, options) => {
@@ -300,7 +323,78 @@ describe("shutdown", () => {
     await first;
     expect(starts).toBe(1);
     expect(aborts).toBe(1);
+    await pi.emit("tool_result", { toolName: "bash", isError: false });
     await pi.emit("session_shutdown");
+    expect(starts).toBe(1);
     expect(aborts).toBe(1);
+  });
+
+  test("waits for an asynchronous child process to exit", async () => {
+    const pidFile = `/tmp/agentbundler-pi-runtime-${String(process.pid)}-${String(Date.now())}.pid`;
+    const command = hook("async", "post-tool", {
+      asynchronous: true,
+      handler: {
+        mode: "exec",
+        program: "node",
+        arguments: [
+          { literal: "-e" },
+          { literal: "process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(process.argv[1],String(process.pid));setInterval(()=>{},1000)" },
+          { literal: pidFile },
+        ],
+      },
+    });
+    const pi = new FakePi();
+    const runtime = createPiHookRuntime(pi, config(command), { packageRoot: "/tmp" });
+
+    try {
+      await pi.emit("tool_result", { toolName: "bash", isError: false });
+      let childPID = 0;
+      for (let attempt = 0; attempt < 100 && childPID === 0; attempt++) {
+        try { childPID = Number.parseInt(readFileSync(pidFile, "utf8"), 10); }
+        catch { await new Promise((resolve) => setTimeout(resolve, 10)); }
+      }
+      if (!Number.isSafeInteger(childPID) || childPID <= 0) throw new Error("child process did not write its PID");
+
+      await runtime.shutdown();
+      let running = true;
+      try { process.kill(childPID, 0); } catch { running = false; }
+      expect(running).toBe(false);
+    } finally {
+      await runtime.shutdown();
+      rmSync(pidFile, { force: true });
+    }
+  });
+
+  test("drains asynchronous session-end work before resolving", async () => {
+    let active = 0;
+    let starts = 0;
+    let aborts = 0;
+    const runner: ProcessRunner = async (_command, options) => {
+      starts++;
+      active++;
+      try {
+        return await new Promise((_resolve, reject) => {
+          options.signal?.addEventListener("abort", () => {
+            aborts++;
+            reject(new Error("aborted"));
+          }, { once: true });
+        });
+      } finally {
+        active--;
+      }
+    };
+    const pi = new FakePi();
+    const runtime = createPiHookRuntime(pi, config(hook("end", "session-end", { asynchronous: true })), {
+      packageRoot: "/tmp/package", runner,
+    });
+
+    await pi.emit("session_shutdown", { reason: "quit" });
+    expect(starts).toBe(1);
+    expect(aborts).toBe(1);
+    expect(active).toBe(0);
+    await runtime.shutdown();
+    await pi.emit("session_shutdown", { reason: "again" });
+    expect(starts).toBe(1);
+    expect(active).toBe(0);
   });
 });

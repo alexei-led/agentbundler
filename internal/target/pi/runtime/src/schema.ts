@@ -84,7 +84,7 @@ export function decodeConfig(value: unknown): HookConfigV1 {
     }
     identities.add(hook.identity);
   }
-  hooks.sort((left, right) => left.order - right.order || left.identity.localeCompare(right.identity));
+  hooks.sort((left, right) => left.order - right.order || compareUTF8(left.identity, right.identity));
   return { version: SCHEMA_VERSION, hooks };
 }
 
@@ -165,8 +165,6 @@ function decodeCommand(value: unknown, field: string): HookCommand {
       throw new Error(`${field}.arguments must be an array`);
     }
     const arguments_ = object.arguments.map((argument, index) => decodeArgument(argument, `${field}.arguments[${index}]`));
-    const keys = arguments_.map((argument) => "literal" in argument ? `literal\0${argument.literal}` : `packageFile\0${argument.packageFile}`);
-    if (new Set(keys).size !== keys.length) throw new Error(`${field}.arguments contains a duplicate`);
     return { mode: "exec", program, arguments: arguments_ };
   }
   if (object.mode === "shell") {
@@ -201,6 +199,16 @@ function validatePackageFileSyntax(value: string, field: string): void {
   if (value.startsWith("/") || value.includes("\\") || value.split("/").some((segment) => segment === "" || segment === "." || segment === "..")) {
     throw new Error(`${field} must be a contained relative path`);
   }
+}
+
+function compareUTF8(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const length = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index++) {
+    if (leftBytes[index] !== rightBytes[index]) return leftBytes[index]! - rightBytes[index]!;
+  }
+  return leftBytes.length - rightBytes.length;
 }
 
 function asObject(value: unknown, field: string): JSONObject {

@@ -103,6 +103,34 @@ func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
 	}
 }
 
+func TestRuntimeHookOrderFixtureMatchesPortableModel(t *testing.T) {
+	data, err := os.ReadFile("runtime/testdata/hook-order.v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Config struct {
+			Version int                    `json:"version"`
+			Hooks   []model.HookDescriptor `json:"hooks"`
+		} `json:"config"`
+		ExpectedIdentities []model.AssetID `json:"expectedIdentities"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Config.Version != 1 {
+		t.Fatalf("schema version = %d, want 1", fixture.Config.Version)
+	}
+	model.SortHookDescriptors(fixture.Config.Hooks)
+	got := make([]model.AssetID, len(fixture.Config.Hooks))
+	for index, hook := range fixture.Config.Hooks {
+		got[index] = hook.Identity
+	}
+	if !reflect.DeepEqual(got, fixture.ExpectedIdentities) {
+		t.Fatalf("Go hook order = %#v, want %#v", got, fixture.ExpectedIdentities)
+	}
+}
+
 func TestCapabilitiesExposeAggregatePiHooksAndSubagents(t *testing.T) {
 	if FormatRevision != 4 {
 		t.Fatalf("FormatRevision = %d, want 4", FormatRevision)

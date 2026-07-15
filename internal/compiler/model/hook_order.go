@@ -2,7 +2,7 @@ package model
 
 import "sort"
 
-// SortHookDescriptors sorts hooks by declared order, identity, then source location.
+// SortHookDescriptors sorts hooks by declared order, UTF-8 identity bytes, then source location.
 func SortHookDescriptors(hooks []HookDescriptor) {
 	sort.SliceStable(hooks, func(left, right int) bool {
 		if hooks[left].Order != hooks[right].Order {
