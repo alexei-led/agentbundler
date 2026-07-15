@@ -21,7 +21,7 @@ func TestComposeAppliesOverlayAndSkillPreamble(t *testing.T) {
 					"nested": map[string]any{"keep": "yes", "drop": "no"},
 				},
 				Body:  "base body",
-				Files: map[model.RelativePath][]byte{"keep.txt": []byte("base"), "remove.txt": []byte("remove")},
+				Files: map[model.RelativePath]model.FileContent{"keep.txt": {Bytes: []byte("base")}, "remove.txt": {Bytes: []byte("remove")}},
 			},
 			Overlays: []model.TargetOverlay{{
 				Target: model.TargetPi,
@@ -29,7 +29,7 @@ func TestComposeAppliesOverlayAndSkillPreamble(t *testing.T) {
 					"drop":   nil,
 					"nested": map[string]any{"drop": nil, "add": "new"},
 				},
-				Files:        []model.FilePatch{{Path: "keep.txt", Bytes: []byte("overlay")}, {Path: "new.txt", Bytes: []byte("new")}},
+				Files:        []model.FilePatch{{Path: "keep.txt", Content: model.FileContent{Bytes: []byte("overlay"), Executable: true}}, {Path: "new.txt", Content: model.FileContent{Bytes: []byte("new")}}},
 				DeletedFiles: []model.RelativePath{"remove.txt"},
 			}},
 		}},
@@ -46,7 +46,7 @@ func TestComposeAppliesOverlayAndSkillPreamble(t *testing.T) {
 	if asset.Content.Body != "Target policy\n\nbase body" {
 		t.Errorf("body = %q", asset.Content.Body)
 	}
-	wantFiles := map[model.RelativePath][]byte{"keep.txt": []byte("overlay"), "new.txt": []byte("new")}
+	wantFiles := map[model.RelativePath]model.FileContent{"keep.txt": {Bytes: []byte("overlay"), Executable: true}, "new.txt": {Bytes: []byte("new")}}
 	if !reflect.DeepEqual(asset.Content.Files, wantFiles) {
 		t.Errorf("files = %#v, want %#v", asset.Content.Files, wantFiles)
 	}
@@ -150,14 +150,14 @@ func TestComposeRequiresExactAdvisoryAcknowledgment(t *testing.T) {
 			{
 				Identity:       "skill/demo",
 				Kind:           model.AssetKindSkill,
-				Base:           model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{}},
+				Base:           model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}},
 				CapabilityUses: []model.CapabilityUse{{Key: "network", Location: model.SourceLocation{Path: "demo.md"}}},
 				Overlays:       []model.TargetOverlay{{Target: model.TargetPi, Acknowledgments: []model.Acknowledgment{{Asset: "skill/demo", Target: model.TargetPi, Key: "network", Reason: "Target requires approval."}}}},
 			},
 			{
 				Identity:       "skill/other",
 				Kind:           model.AssetKindSkill,
-				Base:           model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{}},
+				Base:           model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}},
 				CapabilityUses: []model.CapabilityUse{{Key: "networking", Location: model.SourceLocation{Path: "other.md"}}},
 			},
 		},
@@ -199,8 +199,8 @@ func TestComposeNativeGapPolicies(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			inventory := model.SourceInventory{
 				Packages: []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{
-					{Identity: "native-resource/tool", Kind: model.AssetKindNativeResource, Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{}}},
-					{Identity: "skill/replacement", Kind: model.AssetKindSkill, Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{}}},
+					{Identity: "native-resource/tool", Kind: model.AssetKindNativeResource, Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}}},
+					{Identity: "skill/replacement", Kind: model.AssetKindSkill, Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}}},
 				}}},
 				NativeGaps: []model.NativeGap{{Component: "tool", Asset: assetPointer("native-resource/tool"), Location: model.SourceLocation{Path: "native.json"}}},
 			}
@@ -237,7 +237,7 @@ func oneAssetInventory(body string, patch model.BodyPatch) model.SourceInventory
 		Assets: []model.SourceAsset{{
 			Identity: "skill/demo",
 			Kind:     model.AssetKindSkill,
-			Base:     model.AssetContent{Frontmatter: map[string]any{}, Body: body, Files: map[model.RelativePath][]byte{}},
+			Base:     model.AssetContent{Frontmatter: map[string]any{}, Body: body, Files: map[model.RelativePath]model.FileContent{}},
 			Overlays: []model.TargetOverlay{{Target: model.TargetPi, BodyPatch: &patch}},
 		}},
 	}}}

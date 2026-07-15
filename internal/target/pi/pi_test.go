@@ -39,7 +39,7 @@ func TestPackageRenderIncludesPiSubagent(t *testing.T) {
 			Content: model.AssetContent{
 				Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"},
 				Body:        "Review.\n",
-				Files:       map[model.RelativePath][]byte{},
+				Files:       map[model.RelativePath]model.FileContent{},
 			},
 		}},
 	}
@@ -70,7 +70,7 @@ func TestCapabilitiesExposePiSubagentEquivalent(t *testing.T) {
 func skillPackage() []model.NormalizedPackage {
 	return []model.NormalizedPackage{{Identity: "demo", Target: Target, Assets: []model.NormalizedAsset{{
 		Identity: "skill/guide", Kind: model.AssetKindSkill,
-		Content:        model.AssetContent{Frontmatter: map[string]any{"name": "guide"}, Body: "# Guide\n", Files: map[model.RelativePath][]byte{"docs/readme.md": []byte("help")}},
+		Content:        model.AssetContent{Frontmatter: map[string]any{"name": "guide"}, Body: "# Guide\n", Files: map[model.RelativePath]model.FileContent{"docs/readme.md": {Bytes: []byte("help")}}},
 		CapabilityUses: []model.CapabilityUse{{Key: "asset.skill", Location: model.SourceLocation{Path: "source/SKILL.md"}}},
 	}}}}
 }

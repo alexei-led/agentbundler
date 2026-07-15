@@ -388,11 +388,11 @@ Manual checks:
 - Confirm no target names or vendor root variables appear in the normalized hook types.
 - Confirm invalid shell/exec combinations fail with stable diagnostic codes.
 
-- [ ] Implement `FileContent` and migrate base/overlay file records to carry bytes plus executable intent.
-- [ ] Implement typed portable hook events, canonical tool categories, handler modes, argument kinds, failure policy, timeout, async, and order fields.
-- [ ] Add aggregate validation for hook-kind/descriptor consistency, package-file containment, duplicate arguments/paths where relevant, timeout bounds, and async blocking-event rejection.
-- [ ] Add model tests covering valid exec and explicit shell hooks, malformed descriptors, path escape, zero/negative timeout, incompatible flags, and deterministic ordering.
-- [ ] Run focused and cross-package tests; fix compile failures by adapting callers without adding rendering behavior yet.
+- [x] Implement `FileContent` and migrate base/overlay file records to carry bytes plus executable intent.
+- [x] Implement typed portable hook events, canonical tool categories, handler modes, argument kinds, failure policy, timeout, async, and order fields.
+- [x] Add aggregate validation for hook-kind/descriptor consistency, package-file containment, duplicate arguments/paths where relevant, timeout bounds, and async blocking-event rejection.
+- [x] Add model tests covering valid exec and explicit shell hooks, malformed descriptors, path escape, zero/negative timeout, incompatible flags, and deterministic ordering.
+- [x] Run focused and cross-package tests; fix compile failures by adapting callers without adding rendering behavior yet.
 
 ### Task 3: Add explicit target render and distribution configuration
 

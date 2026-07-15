@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -20,7 +21,7 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi.json", `{"frontmatterPatch":{"model":"pi"},"bodyPatch":{"mode":"replace","text":"target body"},"files":{"README.md":"from JSON","binary":{"base64":"AQI="}},"deletedFiles":["obsolete.txt"],"acknowledgments":[{"asset":"skill/example","target":"pi","key":"tool-use","reason":"native support"}]}`)
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi/files/README.md", "from tree")
 	writeFixture(t, workspace, "bundle/src/agents/reviewer.md", "Review changes.\n")
-	writeFixture(t, workspace, "bundle/src/hooks/check.json", `{"command":"go test ./..."}`)
+	writeFixture(t, workspace, "bundle/src/hooks/check.json", `{"event":"pre-tool","matcher":{"tools":["command"]},"handler":{"mode":"exec","program":"go","arguments":[{"literal":"test"},{"literal":"./..."}]},"timeoutMilliseconds":10000,"asynchronous":false,"failurePolicy":"closed","order":100}`)
 	writeFixture(t, workspace, "bundle/src/plugins/pi/resource.bin", string([]byte{0, 1, 2}))
 	writeFixture(t, workspace, "bundle/src/skills/unlisted/SKILL.md", "not imported")
 
@@ -39,7 +40,7 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	if skill.Base.Body != "Use the skill.\n" || skill.Base.Frontmatter["name"] != "Example" {
 		t.Fatalf("skill base = %#v", skill.Base)
 	}
-	if got := string(skill.Base.Files["references/guide.txt"]); got != "guide" {
+	if got := string(skill.Base.Files["references/guide.txt"].Bytes); got != "guide" {
 		t.Fatalf("skill support file = %q, want guide", got)
 	}
 	if got, want := skill.CapabilityUses, []model.CapabilityUse{{Key: "tool-use", Location: model.SourceLocation{Path: "src/skills/example/.agentbundler/asset.json"}}}; !reflect.DeepEqual(got, want) {
@@ -55,7 +56,11 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	if got, want := filePatchBytes(overlay.Files), map[model.RelativePath]string{"README.md": "from tree", "binary": string([]byte{1, 2})}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("overlay files = %#v, want %#v", got, want)
 	}
-	if got := alpha.Assets[2].Base.Files["resource.bin"]; !reflect.DeepEqual(got, []byte{0, 1, 2}) {
+	hook := alpha.Assets[1].Hook
+	if hook == nil || hook.Identity != "hook/check" || hook.Location.Path != "src/hooks/check.json" || hook.Event != model.HookEventPreTool || hook.Handler.Mode != model.HookHandlerModeExec {
+		t.Fatalf("typed hook = %#v", hook)
+	}
+	if got := alpha.Assets[2].Base.Files["resource.bin"].Bytes; !reflect.DeepEqual(got, []byte{0, 1, 2}) {
 		t.Fatalf("native resource = %#v", got)
 	}
 	if got, want := inventory.NativeGaps, []model.NativeGap{{
@@ -87,11 +92,25 @@ func TestInspectBundleImportsTargetFilteredResources(t *testing.T) {
 	if got, want := assetIDs(inventory.Packages[0]), []model.AssetID{"agent/reviewer", "resource/templates"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("asset IDs = %#v, want %#v", got, want)
 	}
-	if got := string(inventory.Packages[0].Assets[1].Base.Files["design.md"]); got != "# Design\n" {
+	if got := string(inventory.Packages[0].Assets[1].Base.Files["design.md"].Bytes); got != "# Design\n" {
 		t.Fatalf("resource file = %q", got)
 	}
 	if got := inventory.Packages[0].Assets[0].Base.Frontmatter["name"]; got != "reviewer" {
 		t.Fatalf("agent frontmatter = %#v", got)
+	}
+}
+
+func TestInspectBundleRejectsCommandOnlyHookDescriptor(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/hooks/check.json"]}`)
+	writeFixture(t, workspace, "bundle/src/hooks/check.json", `{"command":"go test ./..."}`)
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if !hasError(diagnostics) || !reflect.DeepEqual(inventory, model.SourceInventory{}) {
+		t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+	}
+	if got := diagnostics[0].Message; !strings.Contains(got, "hook descriptor") {
+		t.Fatalf("diagnostic = %q", got)
 	}
 }
 
@@ -173,7 +192,7 @@ func assetIDs(pkg model.SourcePackage) []model.AssetID {
 func filePatchBytes(files []model.FilePatch) map[model.RelativePath]string {
 	values := make(map[model.RelativePath]string, len(files))
 	for _, file := range files {
-		values[file.Path] = string(file.Bytes)
+		values[file.Path] = string(file.Content.Bytes)
 	}
 	return values
 }

@@ -79,14 +79,14 @@ func render(target model.TargetID, root, resourceRoot string, packages []model.N
 	return model.TargetPlan{Target: target, Packages: []model.PackageID{pkg.Identity}, Files: files, NativeChecks: []model.NativeCheck{}}, nil
 }
 
-func addSupportFiles(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, base string, supportFiles map[model.RelativePath][]byte) error {
+func addSupportFiles(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, base string, supportFiles map[model.RelativePath]model.FileContent) error {
 	supportPaths := make([]model.RelativePath, 0, len(supportFiles))
 	for path := range supportFiles {
 		supportPaths = append(supportPaths, path)
 	}
 	sort.Slice(supportPaths, func(i, j int) bool { return supportPaths[i] < supportPaths[j] })
 	for _, path := range supportPaths {
-		if err := add(files, paths, model.RelativePath(base+"/"+string(path)), supportFiles[path]); err != nil {
+		if err := add(files, paths, model.RelativePath(base+"/"+string(path)), supportFiles[path].Bytes); err != nil {
 			return err
 		}
 	}

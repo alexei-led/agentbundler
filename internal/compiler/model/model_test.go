@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -130,6 +131,45 @@ func TestValidateSourceInventoryRejectsInvalidOverlayBodyPatch(t *testing.T) {
 	}
 }
 
+func TestValidateSourceInventoryRejectsInvalidFilePatches(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		files []FilePatch
+	}{
+		{
+			name: "duplicate path",
+			files: []FilePatch{
+				{Path: "scripts/run.sh", Content: FileContent{Bytes: []byte("one")}},
+				{Path: "scripts/run.sh", Content: FileContent{Bytes: []byte("two")}},
+			},
+		},
+		{
+			name: "invalid origin",
+			files: []FilePatch{{
+				Path:    "scripts/run.sh",
+				Content: FileContent{Bytes: []byte("one"), Origin: []SourceLocation{{Path: "../run.sh"}}},
+			}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			inventory := SourceInventory{Packages: []SourcePackage{{
+				Identity: "base",
+				Assets: []SourceAsset{{
+					Identity: "skill/example",
+					Kind:     AssetKindSkill,
+					Overlays: []TargetOverlay{{Target: TargetClaude, Files: test.files}},
+				}},
+			}}}
+			if diagnostics := ValidateSourceInventory(inventory); !hasError(diagnostics) {
+				t.Fatalf("ValidateSourceInventory() diagnostics = %#v, want error", diagnostics)
+			}
+		})
+	}
+}
+
 func TestValidateNormalizedPackageRejectsIncompleteAcknowledgment(t *testing.T) {
 	t.Parallel()
 
@@ -238,6 +278,239 @@ func TestDiagnosticJSONLocationContract(t *testing.T) {
 		t.Fatalf("location = %#v, want omitted", withoutLocationDiagnostic["location"])
 	}
 }
+
+func TestValidateNormalizedPackageAcceptsTypedHooks(t *testing.T) {
+	t.Parallel()
+
+	literal := "-eu"
+	packageFile := RelativePath("scripts/run.sh")
+	exec := NormalizedAsset{
+		Identity: "hook/check",
+		Kind:     AssetKindHook,
+		Content: AssetContent{Files: map[RelativePath]FileContent{
+			packageFile: {Bytes: []byte("#!/bin/sh\n"), Executable: true, Origin: []SourceLocation{{Path: "src/hooks/check/scripts/run.sh"}}},
+		}},
+		Hook: &HookDescriptor{
+			Identity: "hook/check",
+			Location: SourceLocation{Path: "src/hooks/check/hook.json"},
+			Event:    HookEventPreTool,
+			Matcher:  &HookMatcher{Tools: []HookToolCategory{HookToolCategoryCommand}},
+			Handler: HookCommand{
+				Mode:      HookHandlerModeExec,
+				Program:   stringPointer("bash"),
+				Arguments: []HookArgument{{Literal: &literal}, {PackageFile: &packageFile}},
+			},
+			TimeoutMilliseconds: 10_000,
+			FailurePolicy:       HookFailurePolicyClosed,
+			Order:               100,
+		},
+	}
+	shell := NormalizedAsset{
+		Identity: "hook/notify",
+		Kind:     AssetKindHook,
+		Hook: &HookDescriptor{
+			Identity:            "hook/notify",
+			Location:            SourceLocation{Path: "src/hooks/notify.json"},
+			Event:               HookEventNotification,
+			Handler:             HookCommand{Mode: HookHandlerModeShell, ShellCommand: stringPointer("printf done")},
+			TimeoutMilliseconds: MaxHookTimeoutMilliseconds,
+			Asynchronous:        true,
+			FailurePolicy:       HookFailurePolicyOpen,
+		},
+	}
+
+	pkg := NormalizedPackage{Identity: "base", Target: TargetClaude, Assets: []NormalizedAsset{exec, shell}}
+	if diagnostics := ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
+		t.Fatalf("ValidateNormalizedPackage() diagnostics = %#v", diagnostics)
+	}
+	source := SourceInventory{Packages: []SourcePackage{{Identity: "base", Assets: []SourceAsset{
+		{Identity: exec.Identity, Kind: exec.Kind, Base: exec.Content, Hook: exec.Hook},
+		{Identity: shell.Identity, Kind: shell.Kind, Base: shell.Content, Hook: shell.Hook},
+	}}}}
+	if diagnostics := ValidateSourceInventory(source); len(diagnostics) != 0 {
+		t.Fatalf("ValidateSourceInventory() diagnostics = %#v", diagnostics)
+	}
+	if content := exec.Content.Files[packageFile]; !content.Executable || string(content.Bytes) != "#!/bin/sh\n" {
+		t.Fatalf("file content = %#v", content)
+	}
+}
+
+func TestValidateNormalizedPackageRejectsMalformedHookDescriptors(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		mutate func(*NormalizedAsset)
+	}{
+		{name: "hook missing descriptor", mutate: func(asset *NormalizedAsset) { asset.Hook = nil }},
+		{name: "descriptor on non-hook", mutate: func(asset *NormalizedAsset) {
+			asset.Kind = AssetKindSkill
+			asset.Identity = "skill/check"
+			asset.Hook.Identity = "skill/check"
+		}},
+		{name: "identity mismatch", mutate: func(asset *NormalizedAsset) { asset.Hook.Identity = "hook/other" }},
+		{name: "invalid event", mutate: func(asset *NormalizedAsset) { asset.Hook.Event = "unknown" }},
+		{name: "matcher on non-tool event", mutate: func(asset *NormalizedAsset) { asset.Hook.Event = HookEventStop }},
+		{name: "empty matcher", mutate: func(asset *NormalizedAsset) { asset.Hook.Matcher.Tools = nil }},
+		{name: "invalid tool", mutate: func(asset *NormalizedAsset) { asset.Hook.Matcher.Tools[0] = "database" }},
+		{name: "duplicate tool", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Matcher.Tools = append(asset.Hook.Matcher.Tools, HookToolCategoryCommand)
+		}},
+		{name: "invalid mode", mutate: func(asset *NormalizedAsset) { asset.Hook.Handler.Mode = "http" }},
+		{name: "exec missing program", mutate: func(asset *NormalizedAsset) { asset.Hook.Handler.Program = nil }},
+		{name: "exec with shell command", mutate: func(asset *NormalizedAsset) { asset.Hook.Handler.ShellCommand = stringPointer("echo bad") }},
+		{name: "argument has both kinds", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler.Arguments[0].Literal = stringPointer("run")
+		}},
+		{name: "argument has neither kind", mutate: func(asset *NormalizedAsset) { asset.Hook.Handler.Arguments[0] = HookArgument{} }},
+		{name: "package file escapes", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler.Arguments[0] = HookArgument{PackageFile: relativePathPointer("../run.sh")}
+		}},
+		{name: "package file missing", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler.Arguments[0] = HookArgument{PackageFile: relativePathPointer("scripts/missing.sh")}
+		}},
+		{name: "duplicate argument", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler.Arguments = append(asset.Hook.Handler.Arguments, asset.Hook.Handler.Arguments[0])
+		}},
+		{name: "invalid file origin", mutate: func(asset *NormalizedAsset) {
+			content := asset.Content.Files["scripts/run.sh"]
+			content.Origin = []SourceLocation{{Path: "../run.sh"}}
+			asset.Content.Files["scripts/run.sh"] = content
+		}},
+		{name: "zero timeout", mutate: func(asset *NormalizedAsset) { asset.Hook.TimeoutMilliseconds = 0 }},
+		{name: "negative timeout", mutate: func(asset *NormalizedAsset) { asset.Hook.TimeoutMilliseconds = -1 }},
+		{name: "timeout over maximum", mutate: func(asset *NormalizedAsset) { asset.Hook.TimeoutMilliseconds = MaxHookTimeoutMilliseconds + 1 }},
+		{name: "negative order", mutate: func(asset *NormalizedAsset) { asset.Hook.Order = -1 }},
+		{name: "invalid failure policy", mutate: func(asset *NormalizedAsset) { asset.Hook.FailurePolicy = "retry" }},
+		{name: "async blocking event", mutate: func(asset *NormalizedAsset) { asset.Hook.Asynchronous = true }},
+		{name: "async closed failure", mutate: func(asset *NormalizedAsset) { asset.Hook.Event = HookEventPostTool; asset.Hook.Asynchronous = true }},
+		{name: "async block capability", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Event = HookEventPostTool
+			asset.Hook.Asynchronous = true
+			asset.Hook.FailurePolicy = HookFailurePolicyOpen
+			asset.CapabilityUses = []CapabilityUse{{Key: "hook.decision.block", Location: SourceLocation{Path: "src/hooks/check/hook.json"}}}
+		}},
+		{name: "shell missing command", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler = HookCommand{Mode: HookHandlerModeShell}
+		}},
+		{name: "shell with program", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler = HookCommand{Mode: HookHandlerModeShell, Program: stringPointer("sh"), ShellCommand: stringPointer("echo bad")}
+		}},
+		{name: "shell with arguments", mutate: func(asset *NormalizedAsset) {
+			asset.Hook.Handler = HookCommand{Mode: HookHandlerModeShell, ShellCommand: stringPointer("echo bad"), Arguments: []HookArgument{{Literal: stringPointer("bad")}}}
+		}},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			asset := validHookAsset()
+			test.mutate(&asset)
+			pkg := NormalizedPackage{Identity: "base", Target: TargetClaude, Assets: []NormalizedAsset{asset}}
+			diagnostics := ValidateNormalizedPackage(pkg)
+			if !hasError(diagnostics) {
+				t.Fatalf("ValidateNormalizedPackage() diagnostics = %#v, want error", diagnostics)
+			}
+			for _, diagnostic := range diagnostics {
+				if diagnostic.Code != diagnosticCodeInvalidModel {
+					t.Fatalf("diagnostic code = %q, want %q", diagnostic.Code, diagnosticCodeInvalidModel)
+				}
+			}
+		})
+	}
+}
+
+func TestDecodeHookDescriptorJSONIsStrict(t *testing.T) {
+	t.Parallel()
+
+	valid := `{"event":"stop","handler":{"mode":"shell","arguments":[],"shellCommand":"done"},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"open","order":0}`
+	for _, test := range []struct {
+		name string
+		data string
+	}{
+		{name: "missing event", data: strings.Replace(valid, `"event":"stop",`, "", 1)},
+		{name: "missing handler", data: strings.Replace(valid, `"handler":{"mode":"shell","arguments":[],"shellCommand":"done"},`, "", 1)},
+		{name: "missing timeout", data: strings.Replace(valid, `"timeoutMilliseconds":1000,`, "", 1)},
+		{name: "missing asynchronous", data: strings.Replace(valid, `"asynchronous":false,`, "", 1)},
+		{name: "missing failure policy", data: strings.Replace(valid, `"failurePolicy":"open",`, "", 1)},
+		{name: "missing order", data: strings.Replace(valid, `,"order":0`, "", 1)},
+		{name: "unknown field", data: strings.Replace(valid, `"order":0`, `"order":0,"vendor":true`, 1)},
+		{name: "nested unknown field", data: strings.Replace(valid, `"shellCommand":"done"`, `"shellCommand":"done","vendor":true`, 1)},
+		{name: "duplicate field", data: strings.Replace(valid, `"event":"stop"`, `"event":"stop","event":"stop"`, 1)},
+		{name: "author identity", data: strings.Replace(valid, `"event":"stop"`, `"identity":"hook/check","event":"stop"`, 1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := DecodeHookDescriptorJSON([]byte(test.data), "hook/check", SourceLocation{Path: "src/hooks/check.json"})
+			if err == nil {
+				t.Fatal("DecodeHookDescriptorJSON() succeeded")
+			}
+		})
+	}
+
+	descriptor, err := DecodeHookDescriptorJSON([]byte(valid), "hook/check", SourceLocation{Path: "src/hooks/check.json"})
+	if err != nil {
+		t.Fatalf("DecodeHookDescriptorJSON() error = %v", err)
+	}
+	if descriptor.Identity != "hook/check" || descriptor.Location.Path != "src/hooks/check.json" || descriptor.Handler.Mode != HookHandlerModeShell {
+		t.Fatalf("DecodeHookDescriptorJSON() = %#v", descriptor)
+	}
+}
+
+func TestSortHookDescriptorsUsesDeterministicTieBreaks(t *testing.T) {
+	t.Parallel()
+
+	lineOne := 1
+	lineTwo := 2
+	hooks := []HookDescriptor{
+		{Identity: "hook/zeta", Order: 10, Location: SourceLocation{Path: "z.json"}},
+		{Identity: "hook/alpha", Order: 10, Location: SourceLocation{Path: "z.json"}},
+		{Identity: "hook/first", Order: 1, Location: SourceLocation{Path: "z.json"}},
+		{Identity: "hook/alpha", Order: 10, Location: SourceLocation{Path: "a.json", Line: &lineTwo}},
+		{Identity: "hook/alpha", Order: 10, Location: SourceLocation{Path: "a.json", Line: &lineOne}},
+	}
+	SortHookDescriptors(hooks)
+
+	got := make([]string, len(hooks))
+	for index, hook := range hooks {
+		line := 0
+		if hook.Location.Line != nil {
+			line = *hook.Location.Line
+		}
+		got[index] = string(hook.Identity) + ":" + string(hook.Location.Path) + ":" + strconv.Itoa(line)
+	}
+	want := []string{"hook/first:z.json:0", "hook/alpha:a.json:1", "hook/alpha:a.json:2", "hook/alpha:z.json:0", "hook/zeta:z.json:0"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sorted hooks = %#v, want %#v", got, want)
+	}
+}
+
+func validHookAsset() NormalizedAsset {
+	packageFile := RelativePath("scripts/run.sh")
+	return NormalizedAsset{
+		Identity: "hook/check",
+		Kind:     AssetKindHook,
+		Content: AssetContent{Files: map[RelativePath]FileContent{
+			packageFile: {Bytes: []byte("exit 0\n")},
+		}},
+		Hook: &HookDescriptor{
+			Identity: "hook/check",
+			Location: SourceLocation{Path: "src/hooks/check/hook.json"},
+			Event:    HookEventPreTool,
+			Matcher:  &HookMatcher{Tools: []HookToolCategory{HookToolCategoryCommand}},
+			Handler: HookCommand{
+				Mode:      HookHandlerModeExec,
+				Program:   stringPointer("bash"),
+				Arguments: []HookArgument{{PackageFile: &packageFile}},
+			},
+			TimeoutMilliseconds: 10_000,
+			FailurePolicy:       HookFailurePolicyClosed,
+			Order:               100,
+		},
+	}
+}
+
+func stringPointer(value string) *string { return &value }
+
+func relativePathPointer(value RelativePath) *RelativePath { return &value }
 
 func hasError(diagnostics []Diagnostic) bool {
 	for _, diagnostic := range diagnostics {

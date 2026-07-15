@@ -17,7 +17,7 @@ func TestRenderProducesDeterministicNativeSkillTree(t *testing.T) {
 			Content: model.AssetContent{
 				Frontmatter: map[string]any{"description": "Guide", "name": "guide"},
 				Body:        "# Guide\n",
-				Files:       map[model.RelativePath][]byte{"docs/readme.md": []byte("help")},
+				Files:       map[model.RelativePath]model.FileContent{"docs/readme.md": {Bytes: []byte("help")}},
 			},
 			CapabilityUses: []model.CapabilityUse{{Key: "asset.skill", Location: model.SourceLocation{Path: "source/SKILL.md"}}},
 		}},
@@ -42,12 +42,12 @@ func TestRenderProducesSiblingResourceTree(t *testing.T) {
 			{
 				Identity: "skill/guide",
 				Kind:     model.AssetKindSkill,
-				Content:  model.AssetContent{Body: "# Guide\n", Files: map[model.RelativePath][]byte{}},
+				Content:  model.AssetContent{Body: "# Guide\n", Files: map[model.RelativePath]model.FileContent{}},
 			},
 			{
 				Identity: "resource/templates",
 				Kind:     model.AssetKindResource,
-				Content:  model.AssetContent{Files: map[model.RelativePath][]byte{"report.md": []byte("# Report\n")}},
+				Content:  model.AssetContent{Files: map[model.RelativePath]model.FileContent{"report.md": {Bytes: []byte("# Report\n")}}},
 			},
 		},
 	}

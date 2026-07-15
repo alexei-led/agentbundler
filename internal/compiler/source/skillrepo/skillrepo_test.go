@@ -40,7 +40,7 @@ func TestInspectSkillRepoImportsSkillsAndSidecars(t *testing.T) {
 	if asset.Base.Body != "Use alpha.\n" || asset.Base.Frontmatter["description"] != "alpha" {
 		t.Fatalf("InspectSkillRepo() base = %#v", asset.Base)
 	}
-	if got := string(asset.Base.Files["scripts/run.sh"]); got != "#!/bin/sh\n" {
+	if got := string(asset.Base.Files["scripts/run.sh"].Bytes); got != "#!/bin/sh\n" {
 		t.Fatalf("InspectSkillRepo() support file = %q", got)
 	}
 	if !reflect.DeepEqual(asset.CapabilityUses, []model.CapabilityUse{{
@@ -191,7 +191,7 @@ func writeFixture(t *testing.T, root, relative, content string) {
 func filePatchBytes(files []model.FilePatch, path model.RelativePath) []byte {
 	for _, file := range files {
 		if file.Path == path {
-			return file.Bytes
+			return file.Content.Bytes
 		}
 	}
 	return nil

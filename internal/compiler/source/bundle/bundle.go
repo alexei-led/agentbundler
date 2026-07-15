@@ -239,7 +239,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		return model.SourceAsset{}, nil, false
 	}
 
-	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath][]byte)}
+	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath]model.FileContent)}
 	if kind == model.AssetKindResource {
 		i.readSupportFiles(assetDir, &content)
 	} else {
@@ -257,7 +257,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 			content.Frontmatter = frontmatter
 			content.Body = body
 		} else if kind == model.AssetKindNativeResource {
-			content.Files[model.RelativePath(filepath.Base(mainFile))] = append([]byte(nil), data...)
+			content.Files[model.RelativePath(filepath.Base(mainFile))] = model.FileContent{Bytes: append([]byte(nil), data...)}
 		} else {
 			content.Body = string(data)
 		}
@@ -266,10 +266,21 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		}
 	}
 
+	var hook *model.HookDescriptor
+	if kind == model.AssetKindHook {
+		descriptor, err := model.DecodeHookDescriptorJSON([]byte(content.Body), identity, model.SourceLocation{Path: model.RelativePath(mainFile)})
+		if err != nil {
+			i.addDiagnostic(model.RelativePath(mainFile), "hook descriptor: %v", err)
+			return model.SourceAsset{}, nil, false
+		}
+		hook = &descriptor
+	}
+
 	asset := model.SourceAsset{
 		Identity:       identity,
 		Kind:           kind,
 		Base:           content,
+		Hook:           hook,
 		CapabilityUses: i.readCapabilities(assetDir),
 		Overlays:       i.readOverlays(assetDir, identity),
 	}
@@ -345,7 +356,7 @@ func (i *inspector) readSupportFiles(assetDir string, content *model.AssetConten
 		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, rel)))
 		data, ok := i.readRegular(path)
 		if ok {
-			content.Files[model.RelativePath(rel)] = data
+			content.Files[model.RelativePath(rel)] = model.FileContent{Bytes: data}
 		}
 		return nil
 	})
@@ -518,7 +529,7 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 		return model.TargetOverlay{}, false
 	}
 	for path, data := range files {
-		overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Bytes: data})
+		overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Content: model.FileContent{Bytes: data}})
 	}
 	sort.Slice(overlay.Files, func(a, b int) bool { return overlay.Files[a].Path < overlay.Files[b].Path })
 	sort.Slice(overlay.DeletedFiles, func(a, b int) bool { return overlay.DeletedFiles[a] < overlay.DeletedFiles[b] })

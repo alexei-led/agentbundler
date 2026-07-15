@@ -37,8 +37,15 @@ func TestInspectClaudePluginImportsComponentsSidecarsAndGaps(t *testing.T) {
 	if len(pkg.Assets) != 3 || pkg.Assets[0].Identity != "agent/review" || pkg.Assets[1].Identity != "hook/PreToolUse-1" || pkg.Assets[2].Identity != "skill/alpha" {
 		t.Fatalf("assets = %#v", pkg.Assets)
 	}
-	if got := string(pkg.Assets[2].Base.Files["scripts/run.sh"]); got != "#!/bin/sh\n" {
+	if got := string(pkg.Assets[2].Base.Files["scripts/run.sh"].Bytes); got != "#!/bin/sh\n" {
 		t.Fatalf("skill file = %q", got)
+	}
+	hook := pkg.Assets[1].Hook
+	if hook == nil || hook.Event != model.HookEventPreTool || hook.Handler.Mode != model.HookHandlerModeShell || hook.TimeoutMilliseconds != 5_000 || hook.FailurePolicy != model.HookFailurePolicyOpen || hook.Order != 0 {
+		t.Fatalf("typed hook = %#v", hook)
+	}
+	if hook.Matcher == nil || len(hook.Matcher.Tools) != 1 || hook.Matcher.Tools[0] != model.HookToolCategoryCommand {
+		t.Fatalf("typed hook matcher = %#v", hook.Matcher)
 	}
 	if got := pkg.Assets[0].CapabilityUses; len(got) != 1 || got[0].Key != "tool-use" {
 		t.Fatalf("agent capabilities = %#v", got)
@@ -102,8 +109,59 @@ func TestInspectClaudePluginReadsHookSidecars(t *testing.T) {
 	if len(diagnostics) != 0 {
 		t.Fatalf("diagnostics = %#v", diagnostics)
 	}
-	if got := inventory.Packages[0].Assets[0].CapabilityUses; len(got) != 1 || got[0].Key != "prompt-injection" {
+	asset := inventory.Packages[0].Assets[0]
+	if got := asset.CapabilityUses; len(got) != 1 || got[0].Key != "prompt-injection" {
 		t.Fatalf("hook capabilities = %#v", got)
+	}
+	if asset.Hook == nil || asset.Hook.TimeoutMilliseconds != model.MaxHookTimeoutMilliseconds || asset.Hook.Order != 0 {
+		t.Fatalf("Stop hook = %#v", asset.Hook)
+	}
+}
+
+func TestInspectClaudePluginUsesPortableTimeoutDefaultsAndOrdinalOrder(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo","hooks":{"Stop":[{"command":"first"},{"command":"second"}],"UserPromptSubmit":[{"command":"prompt"}]}}`)
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+	assets := inventory.Packages[0].Assets
+	byID := make(map[model.AssetID]*model.HookDescriptor, len(assets))
+	for _, asset := range assets {
+		byID[asset.Identity] = asset.Hook
+	}
+	if hook := byID["hook/Stop-1"]; hook == nil || hook.TimeoutMilliseconds != 600_000 || hook.Order != 0 {
+		t.Fatalf("Stop-1 hook = %#v", hook)
+	}
+	if hook := byID["hook/Stop-2"]; hook == nil || hook.TimeoutMilliseconds != 600_000 || hook.Order != 1 {
+		t.Fatalf("Stop-2 hook = %#v", hook)
+	}
+	if hook := byID["hook/UserPromptSubmit-1"]; hook == nil || hook.TimeoutMilliseconds != 30_000 || hook.Order != 0 {
+		t.Fatalf("UserPromptSubmit hook = %#v", hook)
+	}
+}
+
+func TestInspectClaudePluginRejectsUnportableHookValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		hooks string
+	}{
+		{name: "zero timeout", hooks: `{"Stop":[{"command":"done","timeout":0}]}`},
+		{name: "timeout above model bound", hooks: `{"Stop":[{"command":"done","timeout":601}]}`},
+		{name: "regex matcher", hooks: `{"PreToolUse":[{"matcher":"Bash|Read","command":"check"}]}`},
+		{name: "matcher on non-tool event", hooks: `{"Stop":[{"matcher":"Bash","command":"done"}]}`},
+		{name: "unknown event", hooks: `{"SomethingNew":[{"command":"done"}]}`},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo","hooks":`+test.hooks+`}`)
+			inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+			if !hasErrors(diagnostics) || len(inventory.Packages) != 0 {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+		})
 	}
 }
 

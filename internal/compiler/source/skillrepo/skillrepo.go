@@ -204,8 +204,8 @@ func (i *inspector) inspectSkill(skillFile string) (model.SourceAsset, bool) {
 	}, true
 }
 
-func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.RelativePath][]byte {
-	files := make(map[model.RelativePath][]byte)
+func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.RelativePath]model.FileContent {
+	files := make(map[model.RelativePath]model.FileContent)
 	var walk func(string)
 	walk = func(directory string) {
 		entries, err := i.readDir(directory)
@@ -246,7 +246,7 @@ func (i *inspector) supportFiles(assetRoot, skillFile string) map[model.Relative
 				i.error(i.relativePath(path), "support file path: "+err.Error())
 				continue
 			}
-			files[normalized] = content
+			files[normalized] = model.FileContent{Bytes: content}
 		}
 	}
 	walk(assetRoot)
@@ -387,7 +387,7 @@ func (i *inspector) targetSidecars(identity model.AssetID, targetsRoot string) [
 		}
 		sort.Slice(paths, func(i, j int) bool { return paths[i] < paths[j] })
 		for _, path := range paths {
-			overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Bytes: fileEntries[path]})
+			overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Content: model.FileContent{Bytes: fileEntries[path]}})
 		}
 		overlays = append(overlays, overlay)
 	}

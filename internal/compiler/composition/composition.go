@@ -105,6 +105,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 				Identity:       sourceAsset.Identity,
 				Kind:           sourceAsset.Kind,
 				Content:        content,
+				Hook:           sourceAsset.Hook,
 				CapabilityUses: sourceAsset.CapabilityUses,
 			})
 		}
@@ -221,7 +222,7 @@ func applyOverlay(base model.AssetContent, overlay *model.TargetOverlay, asset m
 		delete(content.Files, path)
 	}
 	for _, file := range overlay.Files {
-		content.Files[file.Path] = append([]byte(nil), file.Bytes...)
+		content.Files[file.Path] = cloneFileContent(file.Content)
 	}
 	if overlay.BodyPatch == nil {
 		return content, nil
@@ -238,12 +239,20 @@ func cloneContent(content model.AssetContent) model.AssetContent {
 	clone := model.AssetContent{
 		Frontmatter: cloneMap(content.Frontmatter),
 		Body:        content.Body,
-		Files:       make(map[model.RelativePath][]byte, len(content.Files)),
+		Files:       make(map[model.RelativePath]model.FileContent, len(content.Files)),
 	}
-	for path, bytes := range content.Files {
-		clone.Files[path] = append([]byte(nil), bytes...)
+	for path, content := range content.Files {
+		clone.Files[path] = cloneFileContent(content)
 	}
 	return clone
+}
+
+func cloneFileContent(content model.FileContent) model.FileContent {
+	return model.FileContent{
+		Bytes:      append([]byte(nil), content.Bytes...),
+		Executable: content.Executable,
+		Origin:     append([]model.SourceLocation(nil), content.Origin...),
+	}
 }
 
 func cloneMap(values map[string]any) map[string]any {
