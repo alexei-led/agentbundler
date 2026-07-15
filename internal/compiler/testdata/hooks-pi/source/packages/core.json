@@ -1,0 +1,15 @@
+{
+  "id": "core",
+  "metadata": {
+    "dependencies": {
+      "pi-subagents": "^0.3.0",
+      "shared-runtime": "1.0.0"
+    }
+  },
+  "assets": [
+    "src/skills/safety",
+    "src/agents/reviewer.md",
+    "src/hooks/deny",
+    "src/hooks/rewrite"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "kind": "bundle",
+  "root": "source",
+  "targets": [
+    "pi"
+  ],
+  "output": "generated",
+  "composition": [
+    {
+      "target": "pi",
+      "profile": "package",
+      "packageMode": "aggregate",
+      "aggregate": {
+        "identity": "pi-hook-suite",
+        "metadata": {
+          "version": "1.0.0",
+          "description": "Aggregate Pi hook smoke fixture"
+        }
+      }
+    }
+  ],
+  "bundle": {
+    "packages": [
+      "packages/core.json",
+      "packages/observability.json"
+    ]
+  }
+}

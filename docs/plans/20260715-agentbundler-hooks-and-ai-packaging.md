@@ -904,11 +904,11 @@ Manual checks:
 - Confirm the smoke process leaves the normal Pi settings and package directories unchanged.
 - Confirm Pi loader errors include generated adapter/runtime paths and schema diagnostics.
 
-- [ ] Add an aggregate multi-package Pi fixture with skills, agents, pre-tool hooks, passive hooks, and conflicting dependency negative cases.
-- [ ] Add isolated `pi install -l`/`pi list` package-discovery smoke coverage; the test itself must create `t.TempDir()`, set `PI_CODING_AGENT_DIR` with `t.Setenv`, and assert no real config path changed.
-- [ ] Add a real extension-loader import smoke and prove one registration; keep active-turn behavior in the deterministic fake-runtime tests when a model would otherwise be required.
-- [ ] Prove pre-tool deny and input rewrite, passive post-tool dispatch, timeout/cancellation, and schema mismatch behavior through the combined Go/TypeScript fixtures.
-- [ ] Run the full validation suite as the Pi checkpoint before enabling remaining targets.
+- [x] Add an aggregate multi-package Pi fixture with skills, agents, pre-tool hooks, passive hooks, and conflicting dependency negative cases.
+- [x] Add isolated `pi install -l`/`pi list` package-discovery smoke coverage; the test itself must create `t.TempDir()`, set `PI_CODING_AGENT_DIR` with `t.Setenv`, and assert no real config path changed.
+- [x] Add a real extension-loader import smoke and prove one registration; keep active-turn behavior in the deterministic fake-runtime tests when a model would otherwise be required.
+- [x] Prove pre-tool deny and input rewrite, passive post-tool dispatch, timeout/cancellation, and schema mismatch behavior through the combined Go/TypeScript fixtures.
+- [x] Run the full validation suite as the Pi checkpoint before enabling remaining targets.
 
 ### Task 13: Implement Codex-native hooks and plugin agent paths
 

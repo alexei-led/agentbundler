@@ -1,0 +1,12 @@
+{
+  "id": "observability",
+  "metadata": {
+    "dependencies": {
+      "shared-runtime": "1.0.0"
+    }
+  },
+  "assets": [
+    "src/hooks/post-tool",
+    "src/hooks/timeout"
+  ]
+}
