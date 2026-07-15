@@ -22,7 +22,7 @@ This module renders GitHub Copilot CLI project profiles and installable plugins 
 ## Encapsulated Knowledge
 
 - Root plugin manifest, component paths, `${PLUGIN_ROOT}`, and marketplace schema.
-- Copilot CLI camelCase hook events, command fields, matchers, decision output, timeout, and failure behavior.
+- Copilot CLI PascalCase/VS Code-compatible hook events, command fields, matchers, decision output, timeout, and failure behavior.
 - The absence of an official production native validator.
 
 ## Public Contract
@@ -45,9 +45,9 @@ hooks.json
 
 The manifest points to the root `hooks.json`. Package-file command arguments use `${PLUGIN_ROOT}` through a target-owned representation. Copilot command hooks are shell command fields (`bash`, `powershell`, or `command`); an exec-form portable hook is equivalent only when the adapter can render its literal and package-file arguments without changing quoting or injection semantics on every emitted platform form.
 
-Verified portable events include session start/end, prompt submit, pre/post tool, post-tool failure, stop (`agentStop`), notification, and pre-compact. `preToolUse` supports tool-category matching, explicit block, and input rewrite. Hook entries execute in order. Notification is inherently async and cannot block. There is no documented `postCompact` event.
+Verified portable events render with the documented PascalCase/VS Code-compatible names: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, and `PreCompact`. `PreToolUse` uses Claude-compatible matcher semantics and supports explicit block and input rewrite. Hook entries execute in order. Notification is inherently async and cannot block. There is no documented `PostCompact` event.
 
-Failure behavior is event-specific: most command failures and timeouts fail open; pre-tool command crashes/nonzero exits fail closed while pre-tool timeout still fails open. `hook.failure.closed` is supported only when the requested failure cases exactly match this behavior. HTTP and prompt handlers are outside the initial command-hook contract.
+Failure behavior is event-specific: most command failures and timeouts fail open; pre-tool command crashes/nonzero exits fail closed while pre-tool timeout still fails open. Portable `hook.failure.closed` is therefore unsupported. Pre-tool behavior and conversion of portable exec arguments into Copilot's cross-platform shell `command` field are advisory and require exact acknowledgments. HTTP and prompt handlers are outside the initial command-hook contract.
 
 Primary sources: <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference> and <https://docs.github.com/en/copilot/reference/hooks-reference>, accessed 2026-07-15. See `docs/vendor-package-contracts.md`.
 
@@ -66,7 +66,7 @@ Primary sources: <https://docs.github.com/en/copilot/reference/copilot-cli-refer
 - Unsupported post-compact, async blocking, exec quoting, or failure semantics return diagnostics with no partial plan.
 - Executable intent on payloads is preserved even when a handler invokes them through an interpreter.
 - Marketplace generation never registers, installs, publishes, or changes Copilot configuration.
-- No official stable offline non-mutating validator is declared. Install/list/load smoke tests are test-only, opt-in, and isolate `COPILOT_HOME` and cache paths.
+- No official stable offline non-mutating validator is declared. Install/list smoke tests are test-only, opt-in, isolate `HOME`, `COPILOT_HOME`, and cache paths, and hash normal Copilot configuration trees before and after execution.
 - Native output changes increment the explicit format revision; hook-free version-1 inputs remain compatible.
 
 ## Test Specification

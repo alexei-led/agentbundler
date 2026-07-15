@@ -1,0 +1,1 @@
+{"version":1,"hooks":{"PostToolUse":[{"type":"command","command":"printf done | cat","matcher":"Write","timeoutSec":7.25}],"PreToolUse":[{"type":"command","command":"'bash' '-eu' \"${PLUGIN_ROOT}/hooks/guard/scripts/guard.sh\"","matcher":"Bash","timeoutSec":5}]}}
