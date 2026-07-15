@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderUsesPiNativeSkillRoot(t *testing.T) {
-	plan, diagnostics := Render(skillPackage())
+	plan, diagnostics := Render(separate(skillPackage()))
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -21,7 +21,7 @@ func TestProjectRenderRejectsAgent(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Assets[0].Kind = model.AssetKindAgent
 	pkg.Assets[0].Identity = "agent/reviewer"
-	_, diagnostics := Render([]model.NormalizedPackage{pkg})
+	_, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -43,7 +43,7 @@ func TestPackageRenderIncludesPiSubagent(t *testing.T) {
 			},
 		}},
 	}
-	plan, diagnostics := Render([]model.NormalizedPackage{pkg})
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -65,6 +65,10 @@ func TestCapabilitiesExposePiSubagentEquivalent(t *testing.T) {
 		}
 	}
 	t.Fatal("agent capability is missing")
+}
+
+func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
+	return model.TargetRenderInput{Packages: packages, PackageMode: model.TargetPackageModeSeparate}
 }
 
 func skillPackage() []model.NormalizedPackage {

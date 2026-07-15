@@ -93,7 +93,8 @@ func Compile(request CompileRequest) CompilationResult {
 		if hasErrors(composeDiagnostics) {
 			continue
 		}
-		targetPlan, renderDiagnostics := target.Render(adapter, packages)
+		renderInput := targetRenderInput(request.Manifest, policy, packages)
+		targetPlan, renderDiagnostics := target.Render(adapter, renderInput)
 		result.Diagnostics = append(result.Diagnostics, renderDiagnostics...)
 		if hasErrors(renderDiagnostics) {
 			continue
@@ -220,6 +221,21 @@ func selectPackages(inventory model.SourceInventory, requested []model.PackageID
 		}
 	}
 	return filtered
+}
+
+func targetRenderInput(manifest model.SourceManifest, policy model.TargetComposition, packages []model.NormalizedPackage) model.TargetRenderInput {
+	packageMode := policy.PackageMode
+	if packageMode == "" {
+		packageMode = model.TargetPackageModeSeparate
+	}
+	input := model.TargetRenderInput{
+		Packages:     append([]model.NormalizedPackage(nil), packages...),
+		Distribution: manifest.Distribution,
+		PackageMode:  packageMode,
+		Aggregate:    policy.Aggregate,
+	}
+	model.SortTargetRenderInput(&input)
+	return input
 }
 
 func compositionPolicy(manifest model.SourceManifest, targetID model.TargetID, capabilities []model.CapabilityRule) model.TargetComposition {

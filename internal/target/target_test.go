@@ -69,16 +69,48 @@ func TestRenderDispatchesToResolvedAdapter(t *testing.T) {
 	if len(diagnostics) != 0 {
 		t.Fatalf("Resolve() diagnostics = %#v", diagnostics)
 	}
-	got, diagnostics := Render(adapter, packages)
+	input := model.TargetRenderInput{Packages: packages, PackageMode: model.TargetPackageModeSeparate}
+	got, diagnostics := Render(adapter, input)
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
-	want, diagnostics := claude.Render(packages)
+	want, diagnostics := claude.Render(input)
 	if len(diagnostics) != 0 {
 		t.Fatalf("claude.Render() diagnostics = %#v", diagnostics)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Render() plan = %#v, want %#v", got, want)
+	}
+}
+
+func TestRenderCanonicalizesExplicitTargetInputBeforeDispatch(t *testing.T) {
+	t.Parallel()
+
+	var received model.TargetRenderInput
+	adapter := Adapter{
+		Target:         model.TargetClaude,
+		FormatRevision: 1,
+		render: func(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+			received = input
+			return emptyPlan(model.TargetClaude), nil
+		},
+	}
+	input := model.TargetRenderInput{
+		Packages: []model.NormalizedPackage{
+			{Identity: "zeta", Target: model.TargetClaude},
+			{Identity: "alpha", Target: model.TargetClaude},
+		},
+		Distribution: model.DistributionMetadata{"name": "Team tools"},
+		PackageMode:  model.TargetPackageModeSeparate,
+	}
+	if _, diagnostics := Render(adapter, input); len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	if got := []model.PackageID{received.Packages[0].Identity, received.Packages[1].Identity}; !reflect.DeepEqual(got, []model.PackageID{"alpha", "zeta"}) {
+		t.Fatalf("received package order = %#v", got)
+	}
+	if received.PackageMode != model.TargetPackageModeSeparate || !reflect.DeepEqual(received.Distribution, input.Distribution) {
+		t.Fatalf("received render input = %#v", received)
 	}
 }
 
@@ -89,10 +121,13 @@ func TestRenderRejectsTargetMismatch(t *testing.T) {
 	if len(diagnostics) != 0 {
 		t.Fatalf("Resolve() diagnostics = %#v", diagnostics)
 	}
-	plan, diagnostics := Render(adapter, []model.NormalizedPackage{{
-		Identity: "example",
-		Target:   model.TargetCodex,
-	}})
+	plan, diagnostics := Render(adapter, model.TargetRenderInput{
+		Packages: []model.NormalizedPackage{{
+			Identity: "example",
+			Target:   model.TargetCodex,
+		}},
+		PackageMode: model.TargetPackageModeSeparate,
+	})
 	if !hasDiagnostic(diagnostics, "target-mismatch") {
 		t.Fatalf("Render() diagnostics = %#v, want target-mismatch", diagnostics)
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderUsesGrokNativeSkillRoot(t *testing.T) {
-	plan, diagnostics := Render(skillPackage())
+	plan, diagnostics := Render(separate(skillPackage()))
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -33,10 +33,14 @@ func TestRenderRejectsNonSkillAssets(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Assets[0].Kind = model.AssetKindAgent
 	pkg.Assets[0].Identity = "agent/reviewer"
-	_, diagnostics := Render([]model.NormalizedPackage{pkg})
+	_, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
+}
+
+func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
+	return model.TargetRenderInput{Packages: packages, PackageMode: model.TargetPackageModeSeparate}
 }
 
 func skillPackage() []model.NormalizedPackage {

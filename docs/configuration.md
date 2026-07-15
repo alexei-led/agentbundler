@@ -12,7 +12,9 @@ The common fields are:
 - `root`: source root, relative to the manifest directory.
 - `targets`: one or more supported target IDs.
 - `output`: dedicated generated-output directory.
-- `composition`: optional target-wide policy, once per target at most.
+- `distribution`: optional target-wide JSON metadata for generated catalogs.
+- `composition`: optional target-wide policy, once per target at most. It may
+  declare `packageMode` and an `aggregate` package.
 - Source block: exactly one block matching `kind`.
 
 The smallest useful `skills-repository` manifest is:
@@ -144,10 +146,91 @@ explicit unsupported capability. They are not rendered by current target
 adapters. Unrecognized regular files in a Claude plugin are treated as Claude
 native gaps, not portable support files.
 
+## Distribution and package mode
+
+`distribution` is target-wide metadata. It is not copied from an arbitrary
+source package. Values must be JSON values. Catalog renderers define and validate
+the fields they consume; no catalog is published or installed by a build.
+
+Each target composition may set `packageMode`:
+
+- `separate`: render independent package roots. This is the version-1 default
+  when `packageMode` is omitted.
+- `aggregate`: render one explicitly declared package. In version 1 this is
+  valid only for target `pi` with profile `package`.
+
+An `aggregate` object is valid only with `packageMode: "aggregate"`. It requires
+both `identity` and `metadata`; `metadata` must be present even when it is `{}`.
+Package dependency maps must contain non-empty string versions. Equal versions
+may merge, while conflicting versions fail validation.
+
+Separate package example:
+
+```json
+{
+  "version": 1,
+  "kind": "bundle",
+  "root": "bundle",
+  "targets": ["claude"],
+  "output": "generated",
+  "distribution": {
+    "name": "Team tools",
+    "owner": "platform"
+  },
+  "composition": [
+    {
+      "target": "claude",
+      "profile": "package",
+      "packageMode": "separate"
+    }
+  ],
+  "bundle": { "packages": ["packages/team.json"] }
+}
+```
+
+Explicit Pi aggregate example:
+
+```json
+{
+  "version": 1,
+  "kind": "bundle",
+  "root": "bundle",
+  "targets": ["pi"],
+  "output": "generated",
+  "distribution": {
+    "name": "Team tools",
+    "owner": "platform"
+  },
+  "composition": [
+    {
+      "target": "pi",
+      "profile": "package",
+      "packageMode": "aggregate",
+      "aggregate": {
+        "identity": "team-tools",
+        "metadata": {
+          "version": "1.0.0",
+          "description": "Shared team tools"
+        }
+      }
+    }
+  ],
+  "bundle": {
+    "packages": ["packages/core.json", "packages/review.json"]
+  }
+}
+```
+
+Aggregate mode is explicit. It is never inferred from the number of packages.
+The Pi aggregate renderer is added with Pi hook package support; until then the
+configuration is validated but rendering reports that aggregation is not yet
+implemented.
+
 ## Package selection
 
-A manifest may describe more than one bundle package. Current renderers render
-one package per target plan. Select a package explicitly when needed:
+A manifest may describe more than one bundle package. Separate package mode
+renders every selected package in one target plan. Select packages explicitly
+when needed:
 
 ```sh
 agbun build --package team-skills

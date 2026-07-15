@@ -29,9 +29,9 @@ func Capabilities() []model.CapabilityRule {
 	return append([]model.CapabilityRule(nil), capabilityRules...)
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
-func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return skills.RenderProject(adapter.Target(), ".grok/skills", ".grok/resources", packages)
+func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	return skills.RenderProject(adapter.Target(), ".grok/skills", ".grok/resources", input.Packages)
 }
-func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return New().Render(packages)
+func Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	return New().Render(input)
 }

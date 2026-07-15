@@ -63,6 +63,95 @@ func TestDecodeSourceManifestJSONRejectsStrictInvalidInput(t *testing.T) {
 	}
 }
 
+func TestDecodeSourceManifestJSONAcceptsOptionalDistributionAndAggregateFields(t *testing.T) {
+	t.Parallel()
+
+	data := `{"version":1,"kind":"bundle","root":"source","targets":["pi"],"output":"generated","distribution":{"name":"Team tools","owner":"platform"},"composition":[{"target":"pi","profile":"package","packageMode":"aggregate","aggregate":{"identity":"team-tools","metadata":{"version":"1.0.0","description":"Team tools"}}}],"bundle":{"packages":["packages/base"]}}`
+	manifest, diagnostics := DecodeSourceManifestJSON([]byte(data))
+	if len(diagnostics) != 0 {
+		t.Fatalf("DecodeSourceManifestJSON() diagnostics = %#v", diagnostics)
+	}
+	if manifest.Version != 1 || manifest.Distribution["name"] != "Team tools" {
+		t.Fatalf("manifest = %#v", manifest)
+	}
+	composition := manifest.Composition[0]
+	if composition.PackageMode != TargetPackageModeAggregate || composition.Aggregate == nil || composition.Aggregate.Identity != "team-tools" {
+		t.Fatalf("composition = %#v", composition)
+	}
+}
+
+func TestDecodeSourceManifestJSONStrictlyRejectsRenderConfigurationFields(t *testing.T) {
+	t.Parallel()
+
+	valid := `{"version":1,"kind":"bundle","root":"source","targets":["pi"],"output":"generated","distribution":{"name":"Team tools"},"composition":[{"target":"pi","profile":"package","packageMode":"aggregate","aggregate":{"identity":"team-tools","metadata":{}}}],"bundle":{"packages":["packages/base"]}}`
+	for _, test := range []struct {
+		name string
+		data string
+	}{
+		{name: "duplicate distribution", data: strings.Replace(valid, `"distribution":{"name":"Team tools"}`, `"distribution":{},"distribution":{"name":"Team tools"}`, 1)},
+		{name: "duplicate package mode", data: strings.Replace(valid, `"packageMode":"aggregate"`, `"packageMode":"aggregate","packageMode":"aggregate"`, 1)},
+		{name: "duplicate aggregate identity", data: strings.Replace(valid, `"identity":"team-tools"`, `"identity":"team-tools","identity":"other"`, 1)},
+		{name: "unknown composition field", data: strings.Replace(valid, `"packageMode":"aggregate"`, `"packageMode":"aggregate","packagesTogether":true`, 1)},
+		{name: "unknown aggregate field", data: strings.Replace(valid, `"metadata":{}`, `"metadata":{},"displayName":"Team"`, 1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, diagnostics := DecodeSourceManifestJSON([]byte(test.data))
+			if !hasError(diagnostics) {
+				t.Fatalf("DecodeSourceManifestJSON() diagnostics = %#v, want error", diagnostics)
+			}
+		})
+	}
+}
+
+func TestDecodeSourceManifestJSONKeepsVersionOneRenderDefaultsBackwardCompatible(t *testing.T) {
+	t.Parallel()
+
+	manifest, diagnostics := DecodeSourceManifestJSON([]byte(`{"version":1,"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base"]}}`))
+	if len(diagnostics) != 0 {
+		t.Fatalf("DecodeSourceManifestJSON() diagnostics = %#v", diagnostics)
+	}
+	if manifest.Distribution != nil || len(manifest.Composition) != 0 {
+		t.Fatalf("manifest defaults = %#v", manifest)
+	}
+}
+
+func TestValidateTargetCompositionRequiresExplicitPiAggregateConfiguration(t *testing.T) {
+	t.Parallel()
+
+	valid := TargetComposition{
+		Target:      TargetPi,
+		Profile:     TargetProfilePackage,
+		PackageMode: TargetPackageModeAggregate,
+		Aggregate:   &AggregatePackage{Identity: "team-tools", Metadata: PackageMetadata{}},
+	}
+	if diagnostics := ValidateTargetComposition(valid); len(diagnostics) != 0 {
+		t.Fatalf("ValidateTargetComposition() diagnostics = %#v", diagnostics)
+	}
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*TargetComposition)
+	}{
+		{name: "missing aggregate", mutate: func(input *TargetComposition) { input.Aggregate = nil }},
+		{name: "missing metadata", mutate: func(input *TargetComposition) { input.Aggregate.Metadata = nil }},
+		{name: "invalid identity", mutate: func(input *TargetComposition) { input.Aggregate.Identity = "../team" }},
+		{name: "project profile", mutate: func(input *TargetComposition) { input.Profile = TargetProfileProject }},
+		{name: "non-Pi target", mutate: func(input *TargetComposition) { input.Target = TargetClaude }},
+		{name: "aggregate with separate mode", mutate: func(input *TargetComposition) { input.PackageMode = TargetPackageModeSeparate }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := valid
+			aggregate := *valid.Aggregate
+			input.Aggregate = &aggregate
+			test.mutate(&input)
+			if diagnostics := ValidateTargetComposition(input); !hasError(diagnostics) {
+				t.Fatalf("ValidateTargetComposition() diagnostics = %#v, want error", diagnostics)
+			}
+		})
+	}
+}
+
 func TestValidateTargetCompositionAllowsUnsupportedCapability(t *testing.T) {
 	t.Parallel()
 
@@ -184,6 +273,99 @@ func TestValidateNormalizedPackageRejectsIncompleteAcknowledgment(t *testing.T) 
 	}
 	if diagnostics := ValidateNormalizedPackage(pkg); !hasError(diagnostics) {
 		t.Fatalf("ValidateNormalizedPackage() diagnostics = %#v, want error", diagnostics)
+	}
+}
+
+func TestValidateTargetRenderInputOrdersPackagesAndRejectsDuplicateIdentities(t *testing.T) {
+	t.Parallel()
+
+	input := TargetRenderInput{
+		Packages: []NormalizedPackage{
+			{Identity: "zeta", Target: TargetClaude},
+			{Identity: "alpha", Target: TargetClaude},
+		},
+		Distribution: DistributionMetadata{"owner": "platform"},
+		PackageMode:  TargetPackageModeSeparate,
+	}
+	if diagnostics := ValidateTargetRenderInput(input); !hasError(diagnostics) {
+		t.Fatalf("ValidateTargetRenderInput(unordered) diagnostics = %#v, want error", diagnostics)
+	}
+	SortTargetRenderInput(&input)
+	if got := []PackageID{input.Packages[0].Identity, input.Packages[1].Identity}; !reflect.DeepEqual(got, []PackageID{"alpha", "zeta"}) {
+		t.Fatalf("ordered identities = %#v", got)
+	}
+	if diagnostics := ValidateTargetRenderInput(input); len(diagnostics) != 0 {
+		t.Fatalf("ValidateTargetRenderInput() diagnostics = %#v", diagnostics)
+	}
+
+	input.Packages[1].Identity = "alpha"
+	if diagnostics := ValidateTargetRenderInput(input); !hasError(diagnostics) {
+		t.Fatalf("ValidateTargetRenderInput(duplicate) diagnostics = %#v, want error", diagnostics)
+	}
+}
+
+func TestValidateTargetRenderInputValidatesAggregateDependencyConflicts(t *testing.T) {
+	t.Parallel()
+
+	input := TargetRenderInput{
+		Packages: []NormalizedPackage{
+			{Identity: "alpha", Target: TargetPi, Profile: TargetProfilePackage, Metadata: PackageMetadata{"dependencies": map[string]any{"shared": "1.0.0"}}},
+			{Identity: "zeta", Target: TargetPi, Profile: TargetProfilePackage, Metadata: PackageMetadata{"dependencies": map[string]any{"shared": "1.0.0"}}},
+		},
+		PackageMode: TargetPackageModeAggregate,
+		Aggregate: &AggregatePackage{
+			Identity: "team-tools",
+			Metadata: PackageMetadata{"version": "1.0.0", "dependencies": map[string]any{"runtime": "2.0.0"}},
+		},
+	}
+	if diagnostics := ValidateTargetRenderInput(input); len(diagnostics) != 0 {
+		t.Fatalf("ValidateTargetRenderInput() diagnostics = %#v", diagnostics)
+	}
+
+	missingAggregate := input
+	missingAggregate.Aggregate = nil
+	if diagnostics := ValidateTargetRenderInput(missingAggregate); !hasError(diagnostics) || !diagnosticsContain(diagnostics, "aggregate target render input requires aggregate configuration") {
+		t.Fatalf("ValidateTargetRenderInput(missing aggregate) diagnostics = %#v", diagnostics)
+	}
+
+	input.Packages[1].Metadata = PackageMetadata{"dependencies": map[string]any{"shared": "2.0.0"}}
+	diagnostics := ValidateTargetRenderInput(input)
+	if !hasError(diagnostics) || !diagnosticsContain(diagnostics, `aggregate dependency "shared" conflicts between package "alpha" ("1.0.0") and package "zeta" ("2.0.0")`) {
+		t.Fatalf("ValidateTargetRenderInput() diagnostics = %#v, want dependency conflict", diagnostics)
+	}
+}
+
+func TestTargetRenderInputSerializationIsDeterministicAfterOrdering(t *testing.T) {
+	t.Parallel()
+
+	first := TargetRenderInput{
+		Packages: []NormalizedPackage{
+			{Identity: "zeta", Target: TargetClaude, Metadata: PackageMetadata{"b": 2, "a": 1}},
+			{Identity: "alpha", Target: TargetClaude},
+		},
+		Distribution: DistributionMetadata{"publisher": "team", "name": "tools"},
+		PackageMode:  TargetPackageModeSeparate,
+	}
+	second := TargetRenderInput{
+		Packages: []NormalizedPackage{
+			{Identity: "alpha", Target: TargetClaude},
+			{Identity: "zeta", Target: TargetClaude, Metadata: PackageMetadata{"a": 1, "b": 2}},
+		},
+		Distribution: DistributionMetadata{"name": "tools", "publisher": "team"},
+		PackageMode:  TargetPackageModeSeparate,
+	}
+	SortTargetRenderInput(&first)
+	SortTargetRenderInput(&second)
+	firstJSON, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondJSON, err := json.Marshal(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(firstJSON) != string(secondJSON) {
+		t.Fatalf("render input differs:\nfirst:  %s\nsecond: %s", firstJSON, secondJSON)
 	}
 }
 
@@ -481,6 +663,15 @@ func TestSortHookDescriptorsUsesDeterministicTieBreaks(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sorted hooks = %#v, want %#v", got, want)
 	}
+}
+
+func diagnosticsContain(diagnostics []Diagnostic, message string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Message == message {
+			return true
+		}
+	}
+	return false
 }
 
 func validHookAsset() NormalizedAsset {

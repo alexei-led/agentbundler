@@ -22,14 +22,14 @@ func Capabilities() []model.CapabilityRule {
 	return append([]model.CapabilityRule(nil), capabilityRules...)
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
-func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	if packagesHaveProfile(packages, model.TargetProfilePackage) {
-		return packageoutput.RenderWithCodec(packages, PackageCodec())
+func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
+		return packageoutput.RenderWithCodec(input, PackageCodec())
 	}
-	if len(packages) != 1 {
-		return plugin.Render(adapter.Target(), ".codex-plugin/plugin.json", packages, nil)
+	if len(input.Packages) != 1 {
+		return plugin.Render(adapter.Target(), ".codex-plugin/plugin.json", input.Packages, nil)
 	}
-	pkg := packages[0]
+	pkg := input.Packages[0]
 	manifest := map[string]any{"name": pkg.Identity, "skills": "./skills"}
 	if value, ok := pkg.Metadata["version"].(string); ok {
 		manifest["version"] = value
@@ -37,10 +37,10 @@ func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetP
 	if value, ok := pkg.Metadata["description"].(string); ok {
 		manifest["description"] = value
 	}
-	return plugin.Render(adapter.Target(), ".codex-plugin/plugin.json", packages, manifest)
+	return plugin.Render(adapter.Target(), ".codex-plugin/plugin.json", input.Packages, manifest)
 }
-func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return New().Render(packages)
+func Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	return New().Render(input)
 }
 
 func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {

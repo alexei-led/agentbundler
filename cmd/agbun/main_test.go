@@ -136,7 +136,7 @@ func TestRunBuildThenCheckDetectsRealDrift(t *testing.T) {
 
 func TestRunMapsManifestAndSelectors(t *testing.T) {
 	root := t.TempDir()
-	manifest := `{"kind":"bundle","root":"source","targets":["claude"],"output":"generated","bundle":{"packages":["packages/base.json"]}}`
+	manifest := `{"version":1,"kind":"bundle","root":"source","targets":["claude"],"output":"generated","distribution":{"name":"Team tools"},"composition":[{"target":"claude","profile":"package","packageMode":"separate"}],"bundle":{"packages":["packages/base.json"]}}`
 	if err := os.WriteFile(filepath.Join(root, "agentbundle.json"), []byte(manifest), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +151,9 @@ func TestRunMapsManifestAndSelectors(t *testing.T) {
 	}
 	if request.Manifest.Kind != model.SourceKindBundle || len(request.Targets) != 1 || request.Targets[0] != model.TargetClaude {
 		t.Fatalf("request = %#v", request)
+	}
+	if request.Manifest.Distribution["name"] != "Team tools" || len(request.Manifest.Composition) != 1 || request.Manifest.Composition[0].PackageMode != model.TargetPackageModeSeparate {
+		t.Fatalf("render configuration = %#v", request.Manifest)
 	}
 	if request.Mode != compiler.BuildModeCheck || request.WorkspaceRoot != root {
 		t.Fatalf("request = %#v", request)

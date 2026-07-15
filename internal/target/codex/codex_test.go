@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderUsesCodexPluginLayout(t *testing.T) {
-	plan, diagnostics := Render(skillPackage())
+	plan, diagnostics := Render(separate(skillPackage()))
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -24,10 +24,14 @@ func TestRenderUsesCodexPluginLayout(t *testing.T) {
 func TestRenderRejectsInvalidPluginName(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Identity = "Demo Plugin"
-	_, diagnostics := Render([]model.NormalizedPackage{pkg})
+	_, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-plugin-name" {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
+}
+
+func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
+	return model.TargetRenderInput{Packages: packages, PackageMode: model.TargetPackageModeSeparate}
 }
 
 func skillPackage() []model.NormalizedPackage {
