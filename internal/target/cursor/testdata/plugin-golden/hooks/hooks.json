@@ -1,0 +1,1 @@
+{"version":1,"hooks":{"postToolUse":[{"command":"printf done | cat","matcher":"Write","timeout":7.25}],"preToolUse":[{"command":"'bash' '-eu' './hooks/guard/scripts/guard.sh'","matcher":"Shell","timeout":5,"failClosed":true}],"sessionEnd":[{"command":"./hooks/audit/audit.sh","timeout":3}]}}

@@ -1051,12 +1051,12 @@ Manual checks:
 - Compare generated `hooks/hooks.json` with the official plugin template.
 - Verify IDE, CLI, and cloud availability claims are scoped to behavior actually tested.
 
-- [ ] Render `.cursor-plugin/plugin.json`, native component paths, `hooks/hooks.json`, payloads, and stable package metadata.
-- [ ] Map portable session/command/file events to documented camelCase events and treat non-equivalent decisions as unsupported/advisory.
-- [ ] Increment the Cursor format revision and preserve project-profile output separately.
-- [ ] Add official-template golden, hook-free regression, event mapping, matcher, timeout, decision-gap, collision, and determinism tests.
-- [ ] Add an isolated optional local plugin load smoke when the installed Cursor CLI provides a noninteractive proof path.
-- [ ] Run focused/full/architecture checks before Task 16.
+- [x] Render `.cursor-plugin/plugin.json`, native component paths, `hooks/hooks.json`, payloads, and stable package metadata.
+- [x] Map portable session/command/file events to documented camelCase events and treat non-equivalent decisions as unsupported/advisory.
+- [x] Increment the Cursor format revision and preserve project-profile output separately.
+- [x] Add official-template golden, hook-free regression, event mapping, matcher, timeout, decision-gap, collision, and determinism tests.
+- [x] Add an isolated optional local plugin load smoke when the installed Cursor CLI provides a noninteractive proof path.
+- [x] Run focused/full/architecture checks before Task 16.
 
 ### Task 16: Implement Grok installable plugin compatibility and hooks
 
