@@ -30,7 +30,7 @@ hooks/hooks.json
 
 Claude's default plugin hook file is `hooks/hooks.json`; `.claude-plugin/plugin.json#hooks` may instead contain an inline hook object or one or more contained `./`-prefixed plugin-relative paths. Declaring the manifest field replaces default-file discovery. The importer does not treat arbitrary undeclared `hooks/<name>.json` files as native hooks.
 
-Known Claude command hooks map event, matcher, timeout, async flag, explicit decision semantics, and command to `HookDescriptor`. Native `command` plus `args` stays exec form. A statically unambiguous plugin-root payload argument, or a legacy interpreter plus one plugin-root script reference, becomes a package-file argument with imported payload. Other command strings remain explicit `shell` mode only when they contain no Claude path placeholder; the importer never pretends to parse arbitrary shell syntax into safe argv. HTTP, prompt, agent, MCP-tool, and unmodeled condition handlers remain native gaps until their portable semantics are approved.
+Known Claude command hooks map event, matcher, timeout, async flag, explicit decision semantics, and command to `HookDescriptor`. A portable tool category is adopted only when the matcher contains that category's complete Claude tool-name expansion; a partial expansion fails instead of widening on later target rendering. Native `command` plus `args` stays exec form. A statically unambiguous plugin-root payload argument, or a legacy interpreter plus one plugin-root script reference, becomes a package-file argument with imported payload. Other command strings remain explicit `shell` mode only when they contain no Claude path placeholder; the importer never pretends to parse arbitrary shell syntax into safe argv. HTTP, prompt, agent, MCP-tool, and unmodeled condition handlers remain native gaps until their portable semantics are approved.
 
 The native contract was verified against <https://code.claude.com/docs/en/plugins-reference> and <https://code.claude.com/docs/en/hooks>, accessed 2026-07-15. Target output details are pinned in `docs/vendor-package-contracts.md`.
 
@@ -74,4 +74,4 @@ Every recognized hook produces exact semantic capabilities in addition to `asset
 
 - Official default and manifest-selected hook layouts import.
 - Legacy shell, simple script, complex shell, invalid schema, missing payload, source mode, and no-source-write cases are covered.
-- Round-trip capability tests prove arbitrary shell is never labeled exec.
+- Round-trip capability tests prove arbitrary shell is never labeled exec and partial native matcher categories never widen.

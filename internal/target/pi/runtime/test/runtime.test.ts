@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import {
   createPiHookRuntime,
@@ -278,6 +279,46 @@ describe("process dispatch", () => {
       packageRoot: "/tmp", input: {}, timeoutMilliseconds: 2_000,
     });
     expect(JSON.parse(shell.stdout)).toEqual({ decision: "allow" });
+  });
+
+  test("does not inherit parent secrets while preserving command lookup", async () => {
+    const sentinel = "AGENTBUNDLER_PI_HOOK_SECRET_SENTINEL";
+    const previous = process.env[sentinel];
+    process.env[sentinel] = "must-not-reach-hook";
+    try {
+      const result = await runProcess({
+        mode: "exec",
+        program: "node",
+        arguments: [
+          { literal: "-e" },
+          { literal: `process.stdout.write(JSON.stringify({hasPath:typeof process.env.PATH==="string"&&process.env.PATH.length>0,hasSecret:Object.prototype.hasOwnProperty.call(process.env,${JSON.stringify(sentinel)})}))` },
+        ],
+      }, { packageRoot: "/tmp", input: {}, timeoutMilliseconds: 2_000 });
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ hasPath: true, hasSecret: false });
+    } finally {
+      if (previous === undefined) delete process.env[sentinel];
+      else process.env[sentinel] = previous;
+    }
+  });
+
+  test("contains broken-pipe errors when a hook closes stdin", () => {
+    const runtimeURL = new URL("../src/process.ts", import.meta.url).href;
+    const script = `
+      import { runProcess } from ${JSON.stringify(runtimeURL)};
+      try {
+        await runProcess({mode:"exec",program:"node",arguments:[{literal:"-e"},{literal:"require('node:fs').closeSync(0);setInterval(()=>{},1000)"}]},{packageRoot:"/tmp",input:{payload:"x".repeat(8*1024*1024)},timeoutMilliseconds:2000});
+        console.error("runProcess unexpectedly resolved");
+        process.exitCode = 1;
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes("EPIPE")) {
+          console.error(error);
+          process.exitCode = 1;
+        }
+      }
+    `;
+    const host = spawnSync("node", ["--input-type=module", "--eval", script], { encoding: "utf8", timeout: 5_000 });
+    if (host.status !== 0) throw new Error(`Node host exited ${String(host.status)}:\n${host.stderr}`);
   });
 
   test("bounds stdout and stderr independently", async () => {

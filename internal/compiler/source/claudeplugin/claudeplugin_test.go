@@ -1,6 +1,7 @@
 package claudeplugin
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -208,7 +209,7 @@ func TestInspectClaudePluginUsesManifestSelectedAndInlineOfficialHooks(t *testin
 func TestInspectClaudePluginNormalizesSimpleScriptAndPreservesComplexShell(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
-	writeFixture(t, workspace, "source/plugin/hooks/hooks.json", `{"hooks":{"PostToolUse":[{"matcher":"Write|Edit","hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/scripts/check.sh\""},{"type":"command","command":"printf '%s\\n' done | tee /tmp/hook.log"},{"type":"command","command":"python3","args":["${CLAUDE_PLUGIN_ROOT}/scripts/check.py","--quiet"],"timeout":7,"async":true}]}]}}`)
+	writeFixture(t, workspace, "source/plugin/hooks/hooks.json", `{"hooks":{"PostToolUse":[{"matcher":"Write|Edit|NotebookEdit","hooks":[{"type":"command","command":"bash \"${CLAUDE_PLUGIN_ROOT}/scripts/check.sh\""},{"type":"command","command":"printf '%s\\n' done | tee /tmp/hook.log"},{"type":"command","command":"python3","args":["${CLAUDE_PLUGIN_ROOT}/scripts/check.py","--quiet"],"timeout":7,"async":true}]}]}}`)
 	writeFixture(t, workspace, "source/plugin/scripts/check.sh", "#!/bin/sh\n")
 	writeFixture(t, workspace, "source/plugin/scripts/check.py", "print('ok')\n")
 
@@ -246,6 +247,42 @@ func TestInspectClaudePluginNormalizesSimpleScriptAndPreservesComplexShell(t *te
 	}
 	if got, want := async.Hook.Matcher.Tools, []model.HookToolCategory{model.HookToolCategoryWrite, model.HookToolCategoryEdit}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("matcher tools = %#v, want %#v", got, want)
+	}
+}
+
+func TestInspectClaudePluginPreservesOnlyCompleteNativeMatcherCategories(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo","hooks":{"PreToolUse":[{"matcher":"NotebookEdit|Edit|Grep|Glob|WebSearch|WebFetch|Agent|Task","command":"check"}]}}`)
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+	assets := inventory.Packages[0].Assets
+	if len(assets) != 1 || assets[0].Hook == nil {
+		t.Fatalf("assets = %#v", assets)
+	}
+	if got, want := assets[0].Hook.Matcher.Tools, []model.HookToolCategory{
+		model.HookToolCategoryEdit,
+		model.HookToolCategorySearch,
+		model.HookToolCategoryWeb,
+		model.HookToolCategoryTask,
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("matcher tools = %#v, want %#v", got, want)
+	}
+}
+
+func TestInspectClaudePluginRejectsPartialNativeMatcherCategories(t *testing.T) {
+	for _, matcher := range []string{"Edit", "NotebookEdit", "Glob", "Grep", "WebFetch", "WebSearch", "Task", "Agent"} {
+		t.Run(matcher, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo","hooks":{"PreToolUse":[{"matcher":`+fmt.Sprintf("%q", matcher)+`,"command":"check"}]}}`)
+
+			inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+			if !hasErrors(diagnostics) || len(inventory.Packages) != 0 || !containsDiagnostic(diagnostics, "complete native expansion") {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+		})
 	}
 }
 

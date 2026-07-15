@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetPi
-	FormatRevision = 4
+	FormatRevision = 5
 )
 
 // Adapter renders Pi's lossless native skill subset.

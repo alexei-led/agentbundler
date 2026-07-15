@@ -4,6 +4,9 @@ import type { HookCommand } from "./schema.js";
 
 export const DEFAULT_OUTPUT_LIMIT_BYTES = 64 * 1024;
 const KILL_GRACE_MILLISECONDS = 100;
+const HOOK_ENVIRONMENT_VARIABLES = process.platform === "win32"
+  ? new Set(["COMSPEC", "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR"])
+  : new Set(["PATH"]);
 
 export interface ProcessResult {
   exitCode: number | null;
@@ -51,6 +54,7 @@ export const runProcess: ProcessRunner = async (command, options) => {
       child = spawn(invocation.program, invocation.arguments, {
         cwd: options.packageRoot,
         detached: process.platform !== "win32",
+        env: hookEnvironment(),
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
@@ -101,6 +105,7 @@ export const runProcess: ProcessRunner = async (command, options) => {
     child.stdout?.on("data", (chunk) => collect(stdout, chunk, "stdout"));
     child.stderr?.on("data", (chunk) => collect(stderr, chunk, "stderr"));
     child.once("error", fail);
+    child.stdin.once("error", fail);
     child.once("close", (exitCode, signal) => {
       if (settled) return;
       settled = true;
@@ -119,6 +124,17 @@ export const runProcess: ProcessRunner = async (command, options) => {
     child.stdin.end(`${JSON.stringify(options.input)}\n`);
   });
 };
+
+function hookEnvironment(): Record<string, string> {
+  const environment: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    const canonicalName = process.platform === "win32" ? name.toUpperCase() : name;
+    if (value !== undefined && HOOK_ENVIRONMENT_VARIABLES.has(canonicalName)) {
+      environment[canonicalName] = value;
+    }
+  }
+  return environment;
+}
 
 function invocationFor(command: HookCommand, packageRoot: string): { program: string; arguments: string[] } {
   if (command.mode === "shell") {
