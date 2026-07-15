@@ -30,11 +30,15 @@ This module owns target-neutral package rooting, common asset copying, hook payl
 <!-- contract: TargetRenderInput, NormalizedPackage, NormalizedAsset, FileContent, HookDescriptor, PlannedFile, TargetPlan, Diagnostic — restated from internal/compiler/model/module.md -->
 
 ```text
-PackageCodec = target-owned pure callbacks for manifest, agent, hook, catalog, and optional aggregate serialization
-render-with-codec(TargetID, TargetRenderInput, PackageCodec) -> TargetPlan + [Diagnostic]
+HookPayloadFile = immutable { path, packagePath, bytes, executable, origin }
+HookInput = immutable { descriptor, payloadRoot, payloadFiles }
+HookRenderInput = immutable { packageID, hooks ordered by order/identity/source }
+HookManifest = target-owned { path, bytes }
+PackageCodec = target-owned pure callbacks for package manifest, agent, and hook manifest serialization
+render-with-codec(TargetRenderInput, PackageCodec) -> TargetPlan + [Diagnostic]
 ```
 
-The hook callback receives sorted immutable hooks and their payload file views. Shared code may place payload bytes under a codec-selected contained package root, but the codec owns native event names, matcher representation, decisions, timeout units, shell/exec representation, root variables, hook manifest bytes, and native check declarations.
+The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. The codec owns the native manifest path and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables.
 
 ## Integrations
 
@@ -46,7 +50,7 @@ The hook callback receives sorted immutable hooks and their payload file views. 
 
 ## Internal Design
 
-`separate` is rendered explicitly and never inferred from package count. Aggregate requests are rejected unless the codec explicitly implements them; Pi owns the only version-1 aggregate implementation. The common `add` path always copies `FileContent.executable` and origins into `PlannedFile` rather than defaulting mode.
+`separate` is rendered explicitly and never inferred from package count. Aggregate requests remain rejected until a target implements its explicit aggregate callback. The common file-add path copies `FileContent.executable` and origins into `PlannedFile`; generated manifests, READMEs, and agents remain non-executable.
 
 ## Change Vectors
 
