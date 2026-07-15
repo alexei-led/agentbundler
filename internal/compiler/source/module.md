@@ -57,6 +57,8 @@ import(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 
 The parent performs no topology-specific traversal beyond manifest discovery. A child importer returns one complete inventory. The parent neither converts native-only content into portable semantics nor loses typed hook/file data.
 
+All child importers use one strict overlay file value: a string is non-executable UTF-8 shorthand; an object contains exactly one of `text` or `base64` plus optional `executable`. JSON sidecars provide the origin. A filesystem overlay file replaces the complete JSON `FileContent` at the same path and derives executable intent and origin from that file.
+
 ## Change Vectors
 
 - Add a source kind after repeated adoption evidence.

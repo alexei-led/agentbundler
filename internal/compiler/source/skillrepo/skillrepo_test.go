@@ -14,12 +14,15 @@ func TestInspectSkillRepoImportsSkillsAndSidecars(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "source/skills/alpha/SKILL.md", "---\n{\"description\":\"alpha\"}\n---\nUse alpha.\n")
 	writeFixture(t, workspace, "source/skills/alpha/scripts/run.sh", "#!/bin/sh\n")
+	if err := os.Chmod(filepath.Join(workspace, "source/skills/alpha/scripts/run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	writeFixture(t, workspace, "source/unlisted/ignored/SKILL.md", "Ignored.\n")
 	writeFixture(t, workspace, "source/.agentbundler/assets/skill/alpha/asset.json", `{"capabilities":["tool-use"]}`)
 	writeFixture(t, workspace, "source/.agentbundler/assets/skill/alpha/targets/pi.json", `{
 		"frontmatterPatch":{"model":"pi"},
 		"bodyPatch":{"mode":"replace","text":"Pi body."},
-		"files":{"README.md":"JSON copy","bin.dat":{"base64":"`+base64.StdEncoding.EncodeToString([]byte{0, 1, 2})+`"}},
+		"files":{"README.md":{"text":"JSON copy","executable":true},"bin.dat":{"base64":"`+base64.StdEncoding.EncodeToString([]byte{0, 1, 2})+`","executable":true}},
 		"deletedFiles":["scripts/run.sh"],
 		"acknowledgments":[{"key":"tool-use","reason":"Pi requires approval."}]
 	}`)
@@ -40,8 +43,8 @@ func TestInspectSkillRepoImportsSkillsAndSidecars(t *testing.T) {
 	if asset.Base.Body != "Use alpha.\n" || asset.Base.Frontmatter["description"] != "alpha" {
 		t.Fatalf("InspectSkillRepo() base = %#v", asset.Base)
 	}
-	if got := string(asset.Base.Files["scripts/run.sh"].Bytes); got != "#!/bin/sh\n" {
-		t.Fatalf("InspectSkillRepo() support file = %q", got)
+	if got := asset.Base.Files["scripts/run.sh"]; string(got.Bytes) != "#!/bin/sh\n" || !got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/skills/alpha/scripts/run.sh"}}) {
+		t.Fatalf("InspectSkillRepo() support file = %#v", got)
 	}
 	if !reflect.DeepEqual(asset.CapabilityUses, []model.CapabilityUse{{
 		Key:      "tool-use",
@@ -59,11 +62,11 @@ func TestInspectSkillRepoImportsSkillsAndSidecars(t *testing.T) {
 	if overlay.BodyPatch == nil || overlay.BodyPatch.Mode != model.BodyModeReplace || overlay.BodyPatch.Text == nil || *overlay.BodyPatch.Text != "Pi body." {
 		t.Fatalf("InspectSkillRepo() overlay body patch = %#v", overlay.BodyPatch)
 	}
-	if got := string(filePatchBytes(overlay.Files, "README.md")); got != "tree copy" {
-		t.Fatalf("InspectSkillRepo() files-tree precedence = %q", got)
+	if got := filePatch(overlay.Files, "README.md").Content; string(got.Bytes) != "tree copy" || got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/.agentbundler/assets/skill/alpha/targets/pi/files/README.md"}}) {
+		t.Fatalf("InspectSkillRepo() files-tree precedence = %#v", got)
 	}
-	if got := filePatchBytes(overlay.Files, "bin.dat"); !reflect.DeepEqual(got, []byte{0, 1, 2}) {
-		t.Fatalf("InspectSkillRepo() base64 file = %v", got)
+	if got := filePatch(overlay.Files, "bin.dat").Content; !reflect.DeepEqual(got.Bytes, []byte{0, 1, 2}) || !got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/.agentbundler/assets/skill/alpha/targets/pi.json"}}) {
+		t.Fatalf("InspectSkillRepo() base64 file = %#v", got)
 	}
 	if !reflect.DeepEqual(overlay.DeletedFiles, []model.RelativePath{"scripts/run.sh"}) {
 		t.Fatalf("InspectSkillRepo() deleted files = %#v", overlay.DeletedFiles)
@@ -188,11 +191,11 @@ func writeFixture(t *testing.T, root, relative, content string) {
 	}
 }
 
-func filePatchBytes(files []model.FilePatch, path model.RelativePath) []byte {
+func filePatch(files []model.FilePatch, path model.RelativePath) model.FilePatch {
 	for _, file := range files {
 		if file.Path == path {
-			return file.Content.Bytes
+			return file
 		}
 	}
-	return nil
+	return model.FilePatch{}
 }

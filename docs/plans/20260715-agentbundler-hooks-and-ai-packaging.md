@@ -594,11 +594,11 @@ Manual checks:
 - Confirm a target overlay can replace a payload and its executable intent but cannot rewrite a hook into an invalid descriptor.
 - Confirm unsupported security behavior fails before rendering.
 
-- [ ] Migrate content/file cloning and overlay application to `FileContent` without aliasing byte slices.
-- [ ] Preserve typed descriptors, source locations, target allow-lists, deterministic order, and capability uses during composition.
-- [ ] Implement executable-aware overlay JSON and filesystem patch precedence with strict validation.
-- [ ] Add tests for target exclusion, replacement policy, exact acknowledgments, descriptor/file preservation, collisions, and invalid overlay combinations.
-- [ ] Run composition, compiler, race, and architecture checks before Task 7.
+- [x] Migrate content/file cloning and overlay application to `FileContent` without aliasing byte slices.
+- [x] Preserve typed descriptors, source locations, target allow-lists, deterministic order, and capability uses during composition.
+- [x] Implement executable-aware overlay JSON and filesystem patch precedence with strict validation.
+- [x] Add tests for target exclusion, replacement policy, exact acknowledgments, descriptor/file preservation, collisions, and invalid overlay combinations.
+- [x] Run composition, compiler, race, and architecture checks before Task 7.
 
 ### Task 7: Add shared hook payload and renderer seams
 

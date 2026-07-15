@@ -57,6 +57,19 @@ func TestComposeSelectsTargetFilteredAssets(t *testing.T) {
 		Identity: "bundle",
 		Assets: []model.SourceAsset{
 			{Identity: "agent/claude", Kind: model.AssetKindAgent, Targets: []model.TargetID{model.TargetClaude}},
+			{
+				Identity: "hook/claude",
+				Kind:     model.AssetKindHook,
+				Targets:  []model.TargetID{model.TargetClaude},
+				Hook: &model.HookDescriptor{
+					Identity:            "hook/claude",
+					Location:            model.SourceLocation{Path: "hooks.json"},
+					Event:               model.HookEventStop,
+					Handler:             model.HookCommand{Mode: model.HookHandlerModeShell, ShellCommand: stringPointer("done")},
+					TimeoutMilliseconds: 1_000,
+					FailurePolicy:       model.HookFailurePolicyOpen,
+				},
+			},
 			{Identity: "skill/shared", Kind: model.AssetKindSkill},
 		},
 	}}}
@@ -181,8 +194,160 @@ func TestComposeRequiresExactAdvisoryAcknowledgment(t *testing.T) {
 	}
 }
 
+func TestComposePreservesHookDescriptorFileAndSourceEvidenceWithoutAliasing(t *testing.T) {
+	line := 7
+	literal := "-eu"
+	payloadPath := model.RelativePath("scripts/check.sh")
+	argumentPath := payloadPath
+	descriptor := &model.HookDescriptor{
+		Identity: "hook/check",
+		Location: model.SourceLocation{Path: "src/hooks/check/hook.json", Line: &line},
+		Event:    model.HookEventPreTool,
+		Matcher:  &model.HookMatcher{Tools: []model.HookToolCategory{model.HookToolCategoryCommand}},
+		Handler: model.HookCommand{
+			Mode:      model.HookHandlerModeExec,
+			Program:   stringPointer("bash"),
+			Arguments: []model.HookArgument{{Literal: &literal}, {PackageFile: &argumentPath}},
+		},
+		TimeoutMilliseconds: 5_000,
+		FailurePolicy:       model.HookFailurePolicyClosed,
+		Order:               42,
+	}
+	inventory := model.SourceInventory{Packages: []model.SourcePackage{{
+		Identity: "bundle",
+		Metadata: model.PackageMetadata{"nested": map[string]any{"items": []any{"source"}}},
+		Assets: []model.SourceAsset{{
+			Identity: "hook/check",
+			Kind:     model.AssetKindHook,
+			Targets:  []model.TargetID{model.TargetPi},
+			Base: model.AssetContent{
+				Frontmatter: map[string]any{"nested": map[string]any{"items": []any{"source"}}},
+				Files: map[model.RelativePath]model.FileContent{
+					payloadPath: {Bytes: []byte("source"), Executable: true, Origin: []model.SourceLocation{{Path: "src/hooks/check/scripts/check.sh", Line: &line}}},
+				},
+			},
+			Hook: descriptor,
+			CapabilityUses: []model.CapabilityUse{
+				{Key: "asset.hook", Location: model.SourceLocation{Path: "src/hooks/check/hook.json", Line: &line}},
+				{Key: "hook.failure.closed", Location: model.SourceLocation{Path: "src/hooks/check/hook.json", Line: &line}},
+			},
+			Overlays: []model.TargetOverlay{{
+				Target: model.TargetPi,
+				Files: []model.FilePatch{{Path: payloadPath, Content: model.FileContent{
+					Bytes:  []byte("overlay"),
+					Origin: []model.SourceLocation{{Path: "src/hooks/check/.agentbundler/targets/pi.json"}},
+				}}},
+				Acknowledgments: []model.Acknowledgment{{Asset: "hook/check", Target: model.TargetPi, Key: "hook.failure.closed", Reason: "Pi preserves the decision with review."}},
+			}},
+		}},
+	}}}
+	target := model.TargetComposition{Target: model.TargetPi, Capabilities: []model.CapabilityRule{
+		{Key: "asset.hook", State: model.CapabilityStateNative},
+		{Key: "hook.failure.closed", State: model.CapabilityStateAdvisory},
+	}}
+
+	packages, diagnostics := Compose(inventory, target)
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose diagnostics = %#v", diagnostics)
+	}
+	asset := packages[0].Assets[0]
+	if asset.Hook == nil || asset.Hook == descriptor || asset.Hook.Order != 42 || asset.Hook.Location.Path != "src/hooks/check/hook.json" || asset.Hook.Handler.Arguments[1].PackageFile == &argumentPath {
+		t.Fatalf("hook descriptor = %#v", asset.Hook)
+	}
+	if got := asset.Content.Files[payloadPath]; string(got.Bytes) != "overlay" || got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "src/hooks/check/.agentbundler/targets/pi.json"}}) {
+		t.Fatalf("overlay payload = %#v", got)
+	}
+	if got := asset.CapabilityUses; len(got) != 2 || got[1].Location.Path != "src/hooks/check/hook.json" {
+		t.Fatalf("capability uses = %#v", got)
+	}
+	if got := packages[0].Acknowledgments; len(got) != 1 || got[0].Key != "hook.failure.closed" {
+		t.Fatalf("acknowledgments = %#v", got)
+	}
+
+	inventory.Packages[0].Metadata["nested"].(map[string]any)["items"].([]any)[0] = "mutated"
+	inventory.Packages[0].Assets[0].Base.Frontmatter["nested"].(map[string]any)["items"].([]any)[0] = "mutated"
+	inventory.Packages[0].Assets[0].Overlays[0].Files[0].Content.Bytes[0] = 'X'
+	inventory.Packages[0].Assets[0].Overlays[0].Files[0].Content.Origin[0].Path = "mutated"
+	inventory.Packages[0].Assets[0].CapabilityUses[0].Location.Path = "mutated"
+	descriptor.Matcher.Tools[0] = model.HookToolCategoryWrite
+	*descriptor.Handler.Arguments[0].Literal = "mutated"
+	*descriptor.Handler.Arguments[1].PackageFile = "mutated"
+	*descriptor.Location.Line = 99
+
+	asset = packages[0].Assets[0]
+	if got := packages[0].Metadata["nested"].(map[string]any)["items"].([]any)[0]; got != "source" {
+		t.Fatalf("metadata aliased source: %#v", packages[0].Metadata)
+	}
+	if got := asset.Content.Frontmatter["nested"].(map[string]any)["items"].([]any)[0]; got != "source" {
+		t.Fatalf("frontmatter aliased source: %#v", asset.Content.Frontmatter)
+	}
+	if got := asset.Content.Files[payloadPath]; string(got.Bytes) != "overlay" || got.Origin[0].Path != "src/hooks/check/.agentbundler/targets/pi.json" {
+		t.Fatalf("payload aliased source: %#v", got)
+	}
+	if asset.CapabilityUses[0].Location.Path != "src/hooks/check/hook.json" || asset.Hook.Matcher.Tools[0] != model.HookToolCategoryCommand || *asset.Hook.Handler.Arguments[0].Literal != "-eu" || *asset.Hook.Handler.Arguments[1].PackageFile != payloadPath || *asset.Hook.Location.Line != 7 {
+		t.Fatalf("normalized hook values aliased source: %#v, %#v", asset.Hook, asset.CapabilityUses)
+	}
+}
+
+func TestComposeRejectsInvalidOverlayAndCapabilityCombinations(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*model.SourceAsset)
+		want   string
+	}{
+		{name: "replaced and deleted file", mutate: func(asset *model.SourceAsset) {
+			asset.Overlays[0].DeletedFiles = []model.RelativePath{"scripts/check.sh"}
+		}, want: "both replaced and deleted"},
+		{name: "delete referenced hook payload", mutate: func(asset *model.SourceAsset) {
+			asset.Overlays[0].Files = nil
+			asset.Overlays[0].DeletedFiles = []model.RelativePath{"scripts/check.sh"}
+		}, want: "deletes hook package file"},
+		{name: "duplicate capability use", mutate: func(asset *model.SourceAsset) {
+			asset.CapabilityUses = append(asset.CapabilityUses, asset.CapabilityUses[0])
+		}, want: "capability use"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inventory := validHookInventoryForComposition()
+			tc.mutate(&inventory.Packages[0].Assets[0])
+			packages, diagnostics := Compose(inventory, validHookTargetForComposition())
+			if packages != nil || len(diagnostics) == 0 || diagnostics[0].Code != diagnosticCodeInvalidComposition || !diagnosticsContainText(diagnostics, tc.want) {
+				t.Fatalf("Compose = (%#v, %#v), want %q", packages, diagnostics, tc.want)
+			}
+		})
+	}
+}
+
+func TestComposeRejectsUnsupportedHookSecurityCapability(t *testing.T) {
+	packages, diagnostics := Compose(validHookInventoryForComposition(), model.TargetComposition{
+		Target:       model.TargetPi,
+		Capabilities: []model.CapabilityRule{{Key: "hook.failure.closed", State: model.CapabilityStateUnsupported}},
+	})
+	if packages != nil || !diagnosticsContainText(diagnostics, `unsupported capability "hook.failure.closed"`) {
+		t.Fatalf("Compose = (%#v, %#v)", packages, diagnostics)
+	}
+}
+
+func TestComposeRejectsAmbiguousNativeGapAssetCollision(t *testing.T) {
+	inventory := model.SourceInventory{
+		Packages: []model.SourcePackage{
+			{Identity: "first", Assets: []model.SourceAsset{{Identity: "native-resource/tool", Kind: model.AssetKindNativeResource}}},
+			{Identity: "second", Assets: []model.SourceAsset{{Identity: "native-resource/tool", Kind: model.AssetKindNativeResource}}},
+		},
+		NativeGaps: []model.NativeGap{{Component: "tool", Asset: assetPointer("native-resource/tool"), Location: model.SourceLocation{Path: "native.json"}}},
+	}
+	packages, diagnostics := Compose(inventory, model.TargetComposition{
+		Target:     model.TargetPi,
+		NativeGaps: []model.NativeGapPolicy{{Component: "tool", Action: model.NativeGapActionExclude}},
+	})
+	if packages != nil || !diagnosticsContainText(diagnostics, `ambiguous across packages "first", "second"`) {
+		t.Fatalf("Compose = (%#v, %#v)", packages, diagnostics)
+	}
+}
+
 func TestComposeNativeGapPolicies(t *testing.T) {
 	replacement := model.AssetID("skill/replacement")
+	self := model.AssetID("native-resource/tool")
 	cases := []struct {
 		name        string
 		action      model.NativeGapAction
@@ -191,6 +356,7 @@ func TestComposeNativeGapPolicies(t *testing.T) {
 	}{
 		{name: "replace", action: model.NativeGapActionReplace, replacement: &replacement},
 		{name: "replacement unavailable for target", action: model.NativeGapActionReplace, replacement: &replacement, wantError: true},
+		{name: "self replacement", action: model.NativeGapActionReplace, replacement: &self, wantError: true},
 		{name: "exclude", action: model.NativeGapActionExclude},
 		{name: "source only", action: model.NativeGapActionSourceOnly},
 		{name: "missing", wantError: true},
@@ -229,6 +395,56 @@ func TestComposeNativeGapPolicies(t *testing.T) {
 			}
 		})
 	}
+}
+
+func validHookInventoryForComposition() model.SourceInventory {
+	payloadPath := model.RelativePath("scripts/check.sh")
+	return model.SourceInventory{Packages: []model.SourcePackage{{
+		Identity: "bundle",
+		Assets: []model.SourceAsset{{
+			Identity: "hook/check",
+			Kind:     model.AssetKindHook,
+			Base: model.AssetContent{Files: map[model.RelativePath]model.FileContent{
+				payloadPath: {Bytes: []byte("source")},
+			}},
+			Hook: &model.HookDescriptor{
+				Identity: "hook/check",
+				Location: model.SourceLocation{Path: "src/hooks/check/hook.json"},
+				Event:    model.HookEventPreTool,
+				Handler: model.HookCommand{
+					Mode:      model.HookHandlerModeExec,
+					Program:   stringPointer("bash"),
+					Arguments: []model.HookArgument{{PackageFile: &payloadPath}},
+				},
+				TimeoutMilliseconds: 1_000,
+				FailurePolicy:       model.HookFailurePolicyClosed,
+			},
+			CapabilityUses: []model.CapabilityUse{{Key: "hook.failure.closed", Location: model.SourceLocation{Path: "src/hooks/check/hook.json"}}},
+			Overlays: []model.TargetOverlay{{Target: model.TargetPi, Files: []model.FilePatch{{
+				Path:    payloadPath,
+				Content: model.FileContent{Bytes: []byte("overlay")},
+			}}}},
+		}},
+	}}}
+}
+
+func validHookTargetForComposition() model.TargetComposition {
+	return model.TargetComposition{Target: model.TargetPi, Capabilities: []model.CapabilityRule{{
+		Key: "hook.failure.closed", State: model.CapabilityStateNative,
+	}}}
+}
+
+func diagnosticsContainText(diagnostics []model.Diagnostic, text string) bool {
+	for _, diagnostic := range diagnostics {
+		if strings.Contains(diagnostic.Message, text) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
 
 func oneAssetInventory(body string, patch model.BodyPatch) model.SourceInventory {

@@ -637,6 +637,51 @@ func TestDecodeHookDescriptorJSONIsStrict(t *testing.T) {
 	}
 }
 
+func TestDecodeOverlayFileContentJSONIsStrictAndExecutableAware(t *testing.T) {
+	t.Parallel()
+
+	line := 3
+	location := SourceLocation{Path: "targets/pi.json", Line: &line}
+	for _, test := range []struct {
+		name       string
+		data       string
+		want       []byte
+		executable bool
+	}{
+		{name: "string shorthand", data: `"text"`, want: []byte("text")},
+		{name: "text object", data: `{"text":"script","executable":true}`, want: []byte("script"), executable: true},
+		{name: "base64 object", data: `{"base64":"AAE=","executable":false}`, want: []byte{0, 1}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			content, err := DecodeOverlayFileContentJSON([]byte(test.data), location)
+			if err != nil {
+				t.Fatalf("DecodeOverlayFileContentJSON() error = %v", err)
+			}
+			if !reflect.DeepEqual(content.Bytes, test.want) || content.Executable != test.executable || len(content.Origin) != 1 || content.Origin[0].Path != location.Path || content.Origin[0].Line == nil || content.Origin[0].Line == location.Line || *content.Origin[0].Line != line {
+				t.Fatalf("DecodeOverlayFileContentJSON() = %#v", content)
+			}
+		})
+	}
+
+	for _, data := range []string{
+		`null`,
+		`true`,
+		`{}`,
+		`{"text":"one","base64":"dHdv"}`,
+		`{"text":null}`,
+		`{"base64":"!"}`,
+		`{"text":"one","executable":null}`,
+		`{"text":"one","extra":true}`,
+		`{"text":"one","text":"two"}`,
+	} {
+		t.Run("invalid "+data, func(t *testing.T) {
+			if _, err := DecodeOverlayFileContentJSON([]byte(data), location); err == nil {
+				t.Fatalf("DecodeOverlayFileContentJSON(%s) succeeded", data)
+			}
+		})
+	}
+}
+
 func TestSortHookDescriptorsUsesDeterministicTieBreaks(t *testing.T) {
 	t.Parallel()
 

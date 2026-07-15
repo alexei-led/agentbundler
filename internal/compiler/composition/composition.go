@@ -33,13 +33,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 		rules[rule.Key] = rule
 	}
 
-	assets := make(map[model.AssetID]model.SourceAsset)
-	for _, pkg := range inventory.Packages {
-		for _, asset := range pkg.Assets {
-			assets[asset.Identity] = asset
-		}
-	}
-
+	assets := indexAssets(inventory.Packages)
 	gapActions, gapDiagnostics := resolveNativeGaps(inventory.NativeGaps, target, assets)
 	diagnostics = append(diagnostics, gapDiagnostics...)
 
@@ -51,7 +45,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 		}
 		pkg := model.NormalizedPackage{
 			Identity: sourcePackage.Identity,
-			Metadata: sourcePackage.Metadata,
+			Metadata: cloneMap(sourcePackage.Metadata),
 			Target:   target.Target,
 			Profile:  profile,
 		}
@@ -105,8 +99,8 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 				Identity:       sourceAsset.Identity,
 				Kind:           sourceAsset.Kind,
 				Content:        content,
-				Hook:           sourceAsset.Hook,
-				CapabilityUses: sourceAsset.CapabilityUses,
+				Hook:           cloneHookDescriptor(sourceAsset.Hook),
+				CapabilityUses: cloneCapabilityUses(sourceAsset.CapabilityUses),
 			})
 		}
 		packages = append(packages, pkg)
@@ -119,7 +113,22 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 	return packages, diagnostics
 }
 
-func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, assets map[model.AssetID]model.SourceAsset) (map[model.AssetID]bool, []model.Diagnostic) {
+type assetReference struct {
+	packageID model.PackageID
+	asset     model.SourceAsset
+}
+
+func indexAssets(packages []model.SourcePackage) map[model.AssetID][]assetReference {
+	assets := make(map[model.AssetID][]assetReference)
+	for _, pkg := range packages {
+		for _, asset := range pkg.Assets {
+			assets[asset.Identity] = append(assets[asset.Identity], assetReference{packageID: pkg.Identity, asset: asset})
+		}
+	}
+	return assets
+}
+
+func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, assets map[model.AssetID][]assetReference) (map[model.AssetID]bool, []model.Diagnostic) {
 	policies := make(map[string]model.NativeGapPolicy, len(target.NativeGaps))
 	for _, policy := range target.NativeGaps {
 		policies[policy.Component] = policy
@@ -131,6 +140,24 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		if gap.Target != nil && *gap.Target != target.Target {
 			continue
 		}
+		if gap.Asset != nil {
+			references := assets[*gap.Asset]
+			if len(references) == 0 {
+				usedPolicies[gap.Component] = policyExists(policies, gap.Component)
+				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q references missing asset %q", gap.Component, *gap.Asset))
+				continue
+			}
+			if len(references) > 1 {
+				usedPolicies[gap.Component] = policyExists(policies, gap.Component)
+				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q asset %q is ambiguous across packages %s", gap.Component, *gap.Asset, packageList(references)))
+				continue
+			}
+			if !assetSelectedForTarget(references[0].asset, target.Target) {
+				usedPolicies[gap.Component] = policyExists(policies, gap.Component)
+				continue
+			}
+		}
+
 		policy, ok := policies[gap.Component]
 		if !ok {
 			diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q has no policy for target %q", gap.Component, target.Target))
@@ -140,10 +167,18 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		if policy.Action == model.NativeGapActionReplace {
 			if policy.Replacement == nil {
 				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement is missing", gap.Component))
-			} else if replacement, ok := assets[*policy.Replacement]; !ok {
-				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q does not exist", gap.Component, *policy.Replacement))
-			} else if !assetSelectedForTarget(replacement, target.Target) {
-				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q is unavailable for target %q", gap.Component, *policy.Replacement, target.Target))
+			} else if gap.Asset != nil && *policy.Replacement == *gap.Asset {
+				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q cannot replace asset %q with itself", gap.Component, *gap.Asset))
+			} else {
+				references := assets[*policy.Replacement]
+				switch {
+				case len(references) == 0:
+					diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q does not exist", gap.Component, *policy.Replacement))
+				case len(references) > 1:
+					diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q is ambiguous across packages %s", gap.Component, *policy.Replacement, packageList(references)))
+				case !assetSelectedForTarget(references[0].asset, target.Target):
+					diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q replacement asset %q is unavailable for target %q", gap.Component, *policy.Replacement, target.Target))
+				}
 			}
 		}
 		if gap.Asset != nil && (policy.Action == model.NativeGapActionReplace || policy.Action == model.NativeGapActionExclude || policy.Action == model.NativeGapActionSourceOnly) {
@@ -156,6 +191,20 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		}
 	}
 	return excluded, diagnostics
+}
+
+func policyExists(policies map[string]model.NativeGapPolicy, component string) bool {
+	_, ok := policies[component]
+	return ok
+}
+
+func packageList(references []assetReference) string {
+	packages := make([]string, len(references))
+	for index, reference := range references {
+		packages[index] = fmt.Sprintf("%q", reference.packageID)
+	}
+	sort.Strings(packages)
+	return strings.Join(packages, ", ")
 }
 
 func assetSelectedForTarget(asset model.SourceAsset, target model.TargetID) bool {
@@ -248,23 +297,109 @@ func cloneContent(content model.AssetContent) model.AssetContent {
 }
 
 func cloneFileContent(content model.FileContent) model.FileContent {
-	return model.FileContent{
+	clone := model.FileContent{
 		Bytes:      append([]byte(nil), content.Bytes...),
 		Executable: content.Executable,
-		Origin:     append([]model.SourceLocation(nil), content.Origin...),
 	}
+	if content.Origin != nil {
+		clone.Origin = make([]model.SourceLocation, len(content.Origin))
+		for index, origin := range content.Origin {
+			clone.Origin[index] = cloneSourceLocation(origin)
+		}
+	}
+	return clone
+}
+
+func cloneHookDescriptor(descriptor *model.HookDescriptor) *model.HookDescriptor {
+	if descriptor == nil {
+		return nil
+	}
+	clone := *descriptor
+	clone.Location = cloneSourceLocation(descriptor.Location)
+	if descriptor.Matcher != nil {
+		clone.Matcher = &model.HookMatcher{}
+		if descriptor.Matcher.Tools != nil {
+			clone.Matcher.Tools = append([]model.HookToolCategory(nil), descriptor.Matcher.Tools...)
+		}
+	}
+	clone.Handler.Program = cloneString(descriptor.Handler.Program)
+	clone.Handler.ShellCommand = cloneString(descriptor.Handler.ShellCommand)
+	if descriptor.Handler.Arguments != nil {
+		clone.Handler.Arguments = make([]model.HookArgument, len(descriptor.Handler.Arguments))
+		for index, argument := range descriptor.Handler.Arguments {
+			clone.Handler.Arguments[index] = model.HookArgument{
+				Literal:     cloneString(argument.Literal),
+				PackageFile: cloneRelativePath(argument.PackageFile),
+			}
+		}
+	}
+	return &clone
+}
+
+func cloneCapabilityUses(uses []model.CapabilityUse) []model.CapabilityUse {
+	if uses == nil {
+		return nil
+	}
+	clone := make([]model.CapabilityUse, len(uses))
+	for index, use := range uses {
+		clone[index] = model.CapabilityUse{Key: use.Key, Location: cloneSourceLocation(use.Location)}
+	}
+	return clone
+}
+
+func cloneSourceLocation(location model.SourceLocation) model.SourceLocation {
+	return model.SourceLocation{
+		Path:   location.Path,
+		Line:   cloneInt(location.Line),
+		Column: cloneInt(location.Column),
+	}
+}
+
+func cloneString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func cloneRelativePath(value *model.RelativePath) *model.RelativePath {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func cloneInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 func cloneMap(values map[string]any) map[string]any {
 	clone := make(map[string]any, len(values))
 	for key, value := range values {
-		if nested, ok := value.(map[string]any); ok {
-			clone[key] = cloneMap(nested)
-			continue
-		}
-		clone[key] = value
+		clone[key] = cloneJSONValue(value)
 	}
 	return clone
+}
+
+func cloneJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return cloneMap(typed)
+	case []any:
+		clone := make([]any, len(typed))
+		for index, item := range typed {
+			clone[index] = cloneJSONValue(item)
+		}
+		return clone
+	default:
+		return value
+	}
 }
 
 func applyFrontmatterPatch(base, patch map[string]any) {
@@ -283,7 +418,7 @@ func applyFrontmatterPatch(base, patch map[string]any) {
 			base[key] = cloneMap(patchMap)
 			continue
 		}
-		base[key] = value
+		base[key] = cloneJSONValue(value)
 	}
 }
 

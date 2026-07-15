@@ -55,7 +55,7 @@ Each canonical hook directory contains exactly one strict `hook.json` using the 
 
 Unknown or duplicate fields fail. Every other file below the hook directory, excluding `.agentbundler` sidecars, is owned payload. Payload walks are sorted, contained, and symlink-free. File modes become `FileContent.executable`; package-file arguments must resolve to imported files in that same hook.
 
-Target sidecars use the shared overlay contract. File additions carry bytes plus explicit executable intent rather than bytes alone. Target sidecars may patch content and acknowledgments but may not replace the portable hook descriptor with vendor-private schema.
+Target sidecars use the shared overlay contract. A JSON file patch is either a string shorthand for non-executable UTF-8 bytes or a strict object containing exactly one of `text` or `base64` plus optional `executable`; its origin is the JSON sidecar. A filesystem patch replaces the complete JSON `FileContent` at the same path, observes executable mode, and uses the tree file as origin. Target sidecars may patch content and acknowledgments but may not replace the portable hook descriptor with vendor-private schema.
 
 ## Subdomain Classification
 

@@ -152,14 +152,20 @@ Paths are relative to the skill directory:
 {
   "files": {
     "references.md": "Pi-specific reference text\n",
-    "examples/query.sql": { "base64": "U0VMRUNUICogRlJPTSB0ZWFtOwo=" }
+    "scripts/check.sh": { "text": "#!/bin/sh\nexit 0\n", "executable": true },
+    "examples/query.sql": {
+      "base64": "U0VMRUNUICogRlJPTSB0ZWFtOwo=",
+      "executable": false
+    }
   },
   "deletedFiles": ["references/legacy.md"]
 }
 ```
 
 A path cannot appear in both `files` and `deletedFiles`. Deleting a missing file
-is a no-op. Use base64 for raw bytes.
+is a no-op. A string is shorthand for non-executable UTF-8 content. Use exactly
+one of `text` or `base64` in the object form, with optional `executable`. Unknown
+fields and invalid combinations fail.
 
 For a tree-backed replacement:
 
@@ -169,7 +175,9 @@ For a tree-backed replacement:
     └── references.md
 ```
 
-The tree-backed `references.md` wins over the JSON value at the same path.
+The tree-backed `references.md` wins over the JSON value at the same path. This
+replaces bytes, executable intent, and source origin together; filesystem mode
+sets executable intent for a tree-backed file.
 
 ## Target-wide preamble
 

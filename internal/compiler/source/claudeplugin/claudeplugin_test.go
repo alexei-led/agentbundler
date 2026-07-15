@@ -74,6 +74,55 @@ func TestInspectClaudePluginImportsOfficialDefaultHooksPayloadsAndComponents(t *
 	}
 }
 
+func TestInspectClaudePluginImportsExecutableAwareOverlayFilesWithTreePrecedence(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+	writeFixture(t, workspace, "source/plugin/skills/alpha/SKILL.md", "Alpha.\n")
+	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/pi.json", `{"files":{"scripts/run.sh":{"text":"JSON","executable":true},"data.bin":{"base64":"AQI=","executable":true}}}`)
+	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/pi/files/scripts/run.sh", "tree")
+	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/pi/files/scripts/exec.sh", "exec")
+	if err := os.Chmod(filepath.Join(workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/pi/files/scripts/exec.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+	overlay := inventory.Packages[0].Assets[0].Overlays[0]
+	if got := claudeFilePatch(overlay.Files, "scripts/run.sh").Content; string(got.Bytes) != "tree" || got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/plugin/.agentbundler/assets/skill/alpha/targets/pi/files/scripts/run.sh"}}) {
+		t.Fatalf("tree replacement = %#v", got)
+	}
+	if got := claudeFilePatch(overlay.Files, "scripts/exec.sh").Content; !got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/plugin/.agentbundler/assets/skill/alpha/targets/pi/files/scripts/exec.sh"}}) {
+		t.Fatalf("executable tree replacement = %#v", got)
+	}
+	if got := claudeFilePatch(overlay.Files, "data.bin").Content; !reflect.DeepEqual(got.Bytes, []byte{1, 2}) || !got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/plugin/.agentbundler/assets/skill/alpha/targets/pi.json"}}) {
+		t.Fatalf("JSON replacement = %#v", got)
+	}
+}
+
+func TestInspectClaudePluginRejectsInvalidExecutableAwareOverlayFileValues(t *testing.T) {
+	for _, value := range []string{
+		`{"text":"one","base64":"dHdv"}`,
+		`{"text":"one","unknown":true}`,
+		`{"text":"one","executable":null}`,
+		`{"text":null}`,
+		`{"executable":true}`,
+	} {
+		t.Run(value, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+			writeFixture(t, workspace, "source/plugin/skills/alpha/SKILL.md", "Alpha.\n")
+			writeFixture(t, workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/pi.json", `{"files":{"scripts/run.sh":`+value+`}}`)
+
+			inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+			if !hasErrors(diagnostics) || len(inventory.Packages) != 0 || !containsDiagnostic(diagnostics, "target sidecar") {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+		})
+	}
+}
+
 func TestInspectClaudePluginRejectsMalformedPluginAndMarketplace(t *testing.T) {
 	cases := []struct{ name, plugin, marketplace string }{
 		{"unknown plugin field", `{"name":"demo","extra":true}`, ""},
@@ -389,4 +438,13 @@ func containsInput(inventory model.SourceInventory, path model.RelativePath) boo
 		}
 	}
 	return false
+}
+
+func claudeFilePatch(files []model.FilePatch, path model.RelativePath) model.FilePatch {
+	for _, file := range files {
+		if file.Path == path {
+			return file
+		}
+	}
+	return model.FilePatch{}
 }

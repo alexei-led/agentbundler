@@ -2,9 +2,7 @@
 package bundle
 
 import (
-	"bytes"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -257,7 +255,16 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 			content.Frontmatter = frontmatter
 			content.Body = body
 		} else if kind == model.AssetKindNativeResource {
-			content.Files[model.RelativePath(filepath.Base(mainFile))] = model.FileContent{Bytes: append([]byte(nil), data...)}
+			info, err := i.lstat(filepath.Join(i.root, filepath.FromSlash(mainFile)))
+			if err != nil {
+				i.addDiagnostic(mainPath, "inspect native resource: %v", err)
+				return model.SourceAsset{}, nil, false
+			}
+			content.Files[model.RelativePath(filepath.Base(mainFile))] = model.FileContent{
+				Bytes:      append([]byte(nil), data...),
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: mainPath}},
+			}
 		} else {
 			content.Body = string(data)
 		}
@@ -356,7 +363,11 @@ func (i *inspector) readSupportFiles(assetDir string, content *model.AssetConten
 		if entry.IsDir() {
 			return nil
 		}
-		if !entry.Type().IsRegular() {
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect support file %q: %w", rel, err)
+		}
+		if !info.Mode().IsRegular() {
 			return fmt.Errorf("support path %q is not a regular file", rel)
 		}
 		if rel == "SKILL.md" {
@@ -365,7 +376,11 @@ func (i *inspector) readSupportFiles(assetDir string, content *model.AssetConten
 		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, rel)))
 		data, ok := i.readRegular(path)
 		if ok {
-			content.Files[model.RelativePath(rel)] = model.FileContent{Bytes: data}
+			content.Files[model.RelativePath(rel)] = model.FileContent{
+				Bytes:      data,
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: path}},
+			}
 		}
 		return nil
 	})
@@ -595,7 +610,7 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 	}
 
 	overlay := model.TargetOverlay{Target: target}
-	files := make(map[model.RelativePath][]byte)
+	files := make(map[model.RelativePath]model.FileContent)
 	if jsonExists {
 		var sidecar overlaySidecar
 		if err := decodeStrictJSON(data, &sidecar); err != nil {
@@ -613,13 +628,18 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 			}
 			overlay.BodyPatch = &patch
 		}
-		for path, raw := range sidecar.Files {
+		filePaths := make([]string, 0, len(sidecar.Files))
+		for path := range sidecar.Files {
+			filePaths = append(filePaths, path)
+		}
+		sort.Strings(filePaths)
+		for _, path := range filePaths {
 			rel, err := model.NewRelativePath(path)
 			if err != nil {
 				i.addDiagnostic(jsonPath, "overlay file %q: %v", path, err)
 				continue
 			}
-			value, err := decodeFileValue(raw)
+			value, err := model.DecodeOverlayFileContentJSON(sidecar.Files[path], model.SourceLocation{Path: jsonPath})
 			if err != nil {
 				i.addDiagnostic(jsonPath, "overlay file %q: %v", path, err)
 				continue
@@ -652,8 +672,8 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 	if !i.readOverlayFiles(filesDir, assetDir, target, files) {
 		return model.TargetOverlay{}, false
 	}
-	for path, data := range files {
-		overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Content: model.FileContent{Bytes: data}})
+	for path, content := range files {
+		overlay.Files = append(overlay.Files, model.FilePatch{Path: path, Content: content})
 	}
 	sort.Slice(overlay.Files, func(a, b int) bool { return overlay.Files[a].Path < overlay.Files[b].Path })
 	sort.Slice(overlay.DeletedFiles, func(a, b int) bool { return overlay.DeletedFiles[a] < overlay.DeletedFiles[b] })
@@ -663,7 +683,7 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 	return overlay, true
 }
 
-func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.TargetID, files map[model.RelativePath][]byte) bool {
+func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.TargetID, files map[model.RelativePath]model.FileContent) bool {
 	info, err := i.lstat(filesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -695,7 +715,11 @@ func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.Tar
 		if entry.IsDir() {
 			return nil
 		}
-		if !entry.Type().IsRegular() {
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect overlay file %q: %w", rel, err)
+		}
+		if !info.Mode().IsRegular() {
 			return fmt.Errorf("overlay file %q is not regular", rel)
 		}
 		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target), "files", rel)))
@@ -704,7 +728,11 @@ func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.Tar
 			valid = false
 			return nil
 		}
-		files[model.RelativePath(rel)] = data
+		files[model.RelativePath(rel)] = model.FileContent{
+			Bytes:      data,
+			Executable: info.Mode().Perm()&0o111 != 0,
+			Origin:     []model.SourceLocation{{Path: path}},
+		}
 		return nil
 	})
 	if err != nil {
@@ -864,30 +892,6 @@ func decodeBodyPatch(raw json.RawMessage) (model.BodyPatch, error) {
 		}
 	}
 	return patch, nil
-}
-
-func decodeFileValue(raw json.RawMessage) ([]byte, error) {
-	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-		return nil, fmt.Errorf("must be a UTF-8 string or {base64: String}")
-	}
-	var stringValue string
-	if err := json.Unmarshal(raw, &stringValue); err == nil {
-		return []byte(stringValue), nil
-	}
-	var encoded struct {
-		Base64 *string `json:"base64"`
-	}
-	if err := decodeStrictJSON(raw, &encoded); err != nil {
-		return nil, fmt.Errorf("must be a UTF-8 string or {base64: String}: %w", err)
-	}
-	if encoded.Base64 == nil {
-		return nil, fmt.Errorf("base64 object requires base64")
-	}
-	value, err := base64.StdEncoding.DecodeString(*encoded.Base64)
-	if err != nil {
-		return nil, fmt.Errorf("base64: %w", err)
-	}
-	return value, nil
 }
 
 func decodeAcknowledgment(value acknowledgmentSidecar) (model.Acknowledgment, error) {

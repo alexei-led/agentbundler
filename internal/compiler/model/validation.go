@@ -340,12 +340,7 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 			targets[target] = struct{}{}
 		}
 	}
-	for _, capability := range asset.CapabilityUses {
-		if err := validateIdentifier(string(capability.Key), "capability key"); err != nil {
-			diagnostics = appendInvalid(diagnostics, "capability use: "+err.Error())
-		}
-		diagnostics = append(diagnostics, validateSourceLocation(capability.Location)...)
-	}
+	diagnostics = append(diagnostics, validateCapabilityUses(asset.Identity, asset.CapabilityUses)...)
 	overlays := make(map[TargetID]struct{}, len(asset.Overlays))
 	for _, overlay := range asset.Overlays {
 		if !validTargetID(overlay.Target) {
@@ -409,10 +404,21 @@ func validateNormalizedAsset(asset NormalizedAsset) []Diagnostic {
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Content)...)
 	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Content, asset.CapabilityUses)...)
-	for _, capability := range asset.CapabilityUses {
+	diagnostics = append(diagnostics, validateCapabilityUses(asset.Identity, asset.CapabilityUses)...)
+	return diagnostics
+}
+
+func validateCapabilityUses(identity AssetID, uses []CapabilityUse) []Diagnostic {
+	var diagnostics []Diagnostic
+	seen := make(map[CapabilityKey]struct{}, len(uses))
+	for _, capability := range uses {
 		if err := validateIdentifier(string(capability.Key), "capability key"); err != nil {
 			diagnostics = appendInvalid(diagnostics, "capability use: "+err.Error())
 		}
+		if _, ok := seen[capability.Key]; ok {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("asset %q capability use %q is duplicated", identity, capability.Key))
+		}
+		seen[capability.Key] = struct{}{}
 		diagnostics = append(diagnostics, validateSourceLocation(capability.Location)...)
 	}
 	return diagnostics
