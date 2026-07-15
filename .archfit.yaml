@@ -9,8 +9,10 @@ coupling:
 languages:
   go:
     enabled: true
+  # The Pi hook runtime is a contained TypeScript island below
+  # internal/target/pi/runtime and remains part of the target module.
   typescript:
-    enabled: false
+    enabled: true
   python:
     enabled: false
   rust:

@@ -6,78 +6,46 @@
 
 ## Purpose
 
-This module owns the shared lossless skill rendering algorithm. Without it, four vendor adapters would duplicate path validation, deterministic file ordering, and frontmatter serialization.
+This module owns target-neutral mechanical rendering for the common project-profile skill/resource subset.
 
 ## Functional Responsibilities
 
-- Render normalized skill and portable resource assets below caller-provided native project roots.
-- Preserve frontmatter, body, support files, and package resources.
-- Reject unsupported kinds, capability uses, invalid identities, collisions, and
-  multi-package project output.
+- Render one normalized project package below caller-provided skill/resource roots.
+- Preserve frontmatter, body, support-file bytes, origins, and executable intent.
+- Reject unsupported assets, capability uses, invalid identities, collisions, and multiple project packages.
 
 ## Subdomain Classification
 
-**Supporting.** The algorithm changes only when the portable skill contract changes. Volatility is moderate.
-
-## Encapsulated Knowledge
-
-- Native skill and sibling resource path construction and collision detection.
-- Deterministic JSON-flow YAML frontmatter encoding.
+**Supporting.** The common portable skill algorithm is moderately stable.
 
 ## Public Contract
 
-`render(TargetID, skillRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]` accepts
-one skills-only project package. `renderProject(TargetID, skillRoot, resourceRoot,
-[NormalizedPackage])` additionally accepts `resource/<name>` assets. Both emit
-`<skillRoot>/<name>/SKILL.md` and skill support files; project rendering emits
-resources at `<resourceRoot>/<name>/`. Installable package aggregation belongs to
-`internal/target/packageoutput`.
+<!-- contract: NormalizedPackage, PlannedFile, TargetPlan, Diagnostic — restated from internal/compiler/model/module.md -->
+
+```text
+render(TargetID, skillRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
+render-project(TargetID, skillRoot, resourceRoot, [NormalizedPackage]) -> TargetPlan + [Diagnostic]
+```
+
+The output includes `<skillRoot>/<name>/SKILL.md`, skill support files, and optionally `<resourceRoot>/<name>/...`. Every support `FileContent.executable` and origin becomes the corresponding `PlannedFile` metadata unchanged.
+
+Installable packages, hooks/payloads, catalogs, and Pi aggregation belong to `internal/target/packageoutput` and vendor leaves.
 
 ## Integrations
 
-- **Counterpart**: `internal/target` adapter leaves
-  - **Direction**: leaves select the vendor skill root and invoke this renderer.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/target` / 1 / 1.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: the render contract above.
-
-## Change Vectors
-
-- Adopt a portable YAML frontmatter model.
-- Add a common skill capability after native evidence exists.
+- **Counterpart**: vendor target leaves
+  - **Direction**: callers select project roots and invoke this common subset.
+- **Counterpart**: `internal/compiler/model`
+  - **Direction**: consumes model-owned normalized files and returns plans.
 
 ## Constraints and Invariants
 
-- No filesystem, process, network, clock, or environment access.
+- No vendor event, manifest, catalog, command-root, or validator knowledge.
 - No silent semantic loss or partial output on diagnostics.
+- No filesystem, process, network, clock, environment, publication, or installation behavior.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: deterministic skill tree.
-  - **Scenario**: render frontmatter, body, and support files.
-  - **Expected behavior**: native paths and bytes are stable.
-
-### Integration Contract Tests
-
-- **Test name**: vendor root selection.
-  - **Scenario**: each leaf supplies its root.
-  - **Expected behavior**: planned files are below that root.
-
-### Boundary Tests
-
-- **Test name**: unsupported subset rejection.
-  - **Scenario**: render agent, unknown capability, or multiple packages.
-  - **Expected behavior**: diagnostics and no plan files.
-
-### Behavior Tests
-
-- **Test name**: support files preserved.
-  - **Scenario**: render a skill with binary support files.
-  - **Expected behavior**: bytes are unchanged.
-- **Test name**: package resources are siblings of skills.
-  - **Scenario**: render a portable resource beside a project skill root.
-  - **Expected behavior**: resource paths preserve skill-relative references.
+- Frontmatter, body, binary support bytes, origins, and executable intent render deterministically.
+- Caller roots contain every path.
+- Unsupported assets/capabilities, collisions, and multiple packages return no partial plan.

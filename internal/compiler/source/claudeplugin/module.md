@@ -6,163 +6,72 @@
 
 ## Purpose
 
-This module adopts one existing Claude plugin without moving its files. Without it, repositories such as `fractal-modularity` would need to migrate a valid native package before they could generate derived targets.
+This module adopts one existing Claude Code plugin without moving or rewriting author-owned files. It translates verified Claude hook declarations into target-neutral typed hooks while preserving shell compatibility explicitly.
 
 ## Functional Responsibilities
 
-- Parse one local `.claude-plugin/plugin.json` root.
-- Accept marketplace metadata only when it identifies that same local plugin root.
-- Import known portable Claude components: skills, agents, and declared hooks.
-- Inventory Claude-only components as native gaps.
-- Preserve the native source tree as author-owned and untouched.
+- Parse one local `.claude-plugin/plugin.json` root and matching local marketplace entry.
+- Import skills, agents, hooks, payload files, and recognized portable resources.
+- Inventory unrecognized Claude-only components as native gaps.
+- Preserve source bytes, executable intent, locations, target allow-lists, and ownership.
 
-### Canonical Layout and Mapping
+### Native Layout and Mapping
 
 ```text
 agentbundle.json
 .claude-plugin/plugin.json
+.claude-plugin/marketplace.json
 skills/<name>/SKILL.md
 agents/<name>.md
-hooks/<name>.json
-.agentbundler/assets/<kind>/<name>/asset.json
-.agentbundler/assets/<kind>/<name>/targets/<target>.json
-.agentbundler/assets/<kind>/<name>/targets/<target>/files/...
+hooks/hooks.json
+<payload files referenced by hooks>
+.agentbundler/assets/<kind>/<name>/...
 ```
 
-`agentbundle.json` uses the shared version-1 JSON `SourceManifest` schema and `claudePlugin.pluginRoot` identifies the directory containing `.claude-plugin/plugin.json`. The plugin manifest must be a UTF-8 JSON object with string `name`, optional string `description`, optional string `version`, and optional `hooks` object. Each `hooks` member maps an event name to an array of `{ "matcher": String?, "command": String, "timeout": Integer? }`; hook names are the event name plus stable ordinal. Marketplace metadata is accepted only at `.claude-plugin/marketplace.json` with a `plugins` array containing exactly one entry whose `source` resolves to the same plugin root; its other fields become package metadata. Unknown fields are errors.
+Claude's default plugin hook file is `hooks/hooks.json`; `.claude-plugin/plugin.json#hooks` may instead contain an inline hook object or select another contained plugin-relative path. The importer does not treat arbitrary undeclared `hooks/<name>.json` files as native hooks.
 
-`skills/<name>/SKILL.md` maps to `skill/<name>`, `agents/<name>.md` maps to `agent/<name>`, and each declared hook maps to `hook/<event>-<ordinal>`. Every other declared or discovered component becomes a `NativeGap` with its relative path, mapped asset when applicable, and optional target `claude`. Asset sidecars use `.agentbundler/assets/<kind>/<name>/asset.json` exactly `{ "capabilities": [String] }`; target sidecars use `<target>.json` with the shared overlay fields and `files/` tree precedence. `.agentbundler/` is never imported as a native asset.
+Known Claude command hooks map event, matcher, timeout, async flag, explicit decision semantics, and command to `HookDescriptor`. A statically unambiguous plugin-root payload reference may become an exec command with package-file arguments and imported payload. Arbitrary command strings remain explicit `shell` mode; the importer never pretends to parse shell syntax into safe argv. HTTP, prompt, agent, MCP-tool, and unmodeled condition handlers remain native gaps until their portable semantics are approved.
+
+The native contract was verified against <https://code.claude.com/docs/en/plugins-reference> and <https://code.claude.com/docs/en/hooks>, accessed 2026-07-15. Target output details are pinned in `docs/vendor-package-contracts.md`.
 
 ## Subdomain Classification
 
-**Supporting.** This importer makes adoption low-friction but does not define portable semantics. Claude's format may change, so implementation volatility is moderate.
+**Supporting.** Claude adoption is a topology boundary whose vendor schema changes independently.
 
 ## Encapsulated Knowledge
 
-- Claude plugin and marketplace path rules.
-- The one-local-plugin-root limit.
-- The mapping from known Claude components to normalized assets.
-- The inventory rules for unrecognized or nonportable Claude features.
+- Claude plugin, hook, and marketplace discovery rules.
+- Claude event/matcher/command parsing at the adoption boundary.
+- The distinction between provable package-file references and arbitrary shell.
 
 ## Public Contract
 
-<!-- contract: RelativePath, PackageID, AssetID, ByteSequence, SourceLocation, InputFile, PackageMetadata, SourceKind, TargetID, AssetKind, CapabilityKey, CapabilityState, Severity, AssetContent, BodyMode, SectionPatch, BodyPatch, FilePatch, TargetOverlay, NativeGap, Acknowledgment, CapabilityUse, CapabilityRule, NativeGapAction, NativeGapPolicy, TargetComposition, BundleSourceConfig, ClaudePluginSourceConfig, SkillsRepositorySourceConfig, SourceManifest, SourceAsset, SourcePackage, SourceInventory, NormalizedAsset, NormalizedPackage, Diagnostic, PlannedFile, NativeCheck, TargetPlan, BuildPlan — restated from internal/compiler/model/module.md -->
-```text
-RelativePath = normalized non-empty path below its declared root
-PackageID = stable package identity
-AssetID = stable asset identity in the form kind/name
-ByteSequence = immutable UTF-8 or binary file content
-SourceLocation = { path: RelativePath, line: Int?, column: Int? }
-InputFile = { path: RelativePath, sha256: String }
-PackageMetadata = Map<String, JsonValue>
-
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | native-resource
-CapabilityKey = canonical non-empty identifier
-CapabilityState = native | equivalent | advisory | unsupported
-Severity = error | warning | information
-
-AssetContent = { frontmatter: Map<String, JsonValue>, body: String, files: Map<RelativePath, ByteSequence> }
-BodyMode = replace | sections
-SectionPatch = { headingPath: [String], body: String }
-BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
-FilePatch = { path: RelativePath, bytes: ByteSequence }
-TargetOverlay = { target: TargetID, frontmatterPatch: Map<String, JsonValue>?, bodyPatch: BodyPatch?, files: [FilePatch], deletedFiles: [RelativePath], acknowledgments: [Acknowledgment] }
-NativeGap = { component: String, asset: AssetID?, location: SourceLocation, target: TargetID? }
-Acknowledgment = { asset: AssetID, target: TargetID, key: CapabilityKey, reason: String }
-CapabilityUse = { key: CapabilityKey, location: SourceLocation }
-CapabilityRule = { key: CapabilityKey, state: CapabilityState }
-NativeGapAction = replace | exclude | source-only
-NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
-TargetComposition = { target: TargetID, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
-BundleSourceConfig = { packages: [RelativePath] }
-ClaudePluginSourceConfig = { pluginRoot: RelativePath }
-SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, base: AssetContent, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
-SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
-
-Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String }
-PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
-NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
-BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
-```
+<!-- contract: SourceManifest, SourceInventory, SourceAsset, FileContent, HookDescriptor, CapabilityUse, NativeGap, Diagnostic — restated from internal/compiler/model/module.md -->
 
 ```text
 inspect-claudeplugin(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-The importer accepts only `kind: claude-plugin`. It decodes UTF-8 JSON with duplicate-key and unknown-field rejection for the manifest and sidecars, parses optional JSON-subset Markdown frontmatter, and sorts all discovered paths. It never crosses symlinks, edits Claude source, or imports generated output. When Claude is selected, the Claude adapter rebuilds a deterministic native package under the configured generated-output root. Derived-target overlays and native-gap policies live in `.agentbundler/` beside, not inside, the Claude-native tree.
+Every recognized hook produces exact semantic capabilities in addition to `asset.hook`. Unsupported handler kinds or unprovable semantics become explicit gaps or diagnostics; no hook is discarded.
 
 ## Integrations
 
 - **Counterpart**: `internal/compiler/source`
-  - **Direction**: the parent selects this importer for Claude plugin manifests.
-  - **Strength**: contract.
-  - **LCA / Rank / Distance**: `internal/compiler/source` / 1 / 1.
-  - **Volatility**: moderate.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: the normative `inspect-claudeplugin` operation above.
+  - **Direction**: selected only for `kind: claude-plugin`.
 - **Counterpart**: `internal/compiler/model`
-  - **Direction**: this module constructs a target-neutral inventory and native gaps.
-  - **Strength**: model.
-  - **LCA / Rank / Distance**: `internal/compiler` / 2 / 2.
-  - **Volatility**: high.
-  - **Balanced?**: yes.
-  - **Shared knowledge**: only the restated model subset above.
-
-## Change Vectors
-
-- Claude changes plugin manifest or component conventions.
-- A Claude component receives a defined portable mapping.
-- Existing Claude marketplace adoption needs a richer but still explicit root rule.
+  - **Direction**: constructs target-neutral inventories, hooks, file content, capabilities, and gaps.
 
 ## Constraints and Invariants
 
-- The importer supports one local plugin root, not a multi-plugin marketplace.
-- A missing `agentbundle.json` may produce guidance but cannot trigger auto-adoption.
-- Unknown Claude-native content is never silently discarded during derived compilation.
-- Claude may be selected like any other target; its generated package is adapter-rendered under output and never written back to source.
+- One contained local plugin root only; marketplace source must resolve to it.
+- Unknown fields, duplicate keys, malformed UTF-8, source symlinks, and path escapes fail.
+- Native source remains untouched. Generated Claude output is rebuilt only under configured output.
+- Shell stays shell. Vendor root variables never enter normalized model values.
+- A payload is imported only when its reference is statically provable and contained; no whole-tree copying is used to hide ambiguity.
+- Existing hook-free adopted plugins remain compatible.
 
 ## Test Specification
 
-### Unit Tests
-
-- **Test name**: one plugin root only.
-  - **Scenario**: marketplace metadata names several plugin roots.
-  - **Expected behavior**: import rejects the unsupported multi-root declaration.
-- **Test name**: marketplace root must match plugin root.
-  - **Scenario**: marketplace metadata points outside the declared source root.
-  - **Expected behavior**: import fails with a containment diagnostic.
-
-### Integration Contract Tests
-
-- **Test name**: native source remains untouched.
-  - **Scenario**: import and build Claude plus derived targets from a Claude plugin fixture.
-  - **Expected behavior**: all plans point under generated output; no source-tree file is planned for write.
-- **Test name**: Claude-only component becomes gap.
-  - **Scenario**: plugin contains an unrecognized native component.
-  - **Expected behavior**: inventory includes a `NativeGap` with source location.
-
-### Boundary Tests
-
-- **Test name**: absent plugin manifest fails.
-  - **Scenario**: declare Claude plugin source without `.claude-plugin/plugin.json`.
-  - **Expected behavior**: no inventory is emitted.
-- **Test name**: source symlink fails.
-  - **Scenario**: plugin component path traverses through a symlink.
-  - **Expected behavior**: import rejects it.
-
-### Behavior Tests
-
-- **Test name**: fractal-modularity adoption fixture.
-  - **Scenario**: import a fixture with Claude plugin metadata, skills, and hooks.
-  - **Expected behavior**: recognized components are normalized and canonical Claude files remain author-owned.
-- **Test name**: starter manifest guidance.
-  - **Scenario**: run source discovery in a Claude plugin repository without a manifest.
-  - **Expected behavior**: diagnostic prints a complete explicit Claude-plugin starter manifest.
+- Official default and manifest-selected hook layouts import.
+- Legacy shell, simple script, complex shell, invalid schema, missing payload, source mode, and no-source-write cases are covered.
+- Round-trip capability tests prove arbitrary shell is never labeled exec.
