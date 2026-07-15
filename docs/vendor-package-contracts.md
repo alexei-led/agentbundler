@@ -17,7 +17,7 @@ Catalog paths are generated artifacts only. Agent Bundler does not register, pub
 
 ## Claude Code
 
-- Native layout: `.claude-plugin/plugin.json` is the manifest; `skills/`, `agents/`, `hooks/`, and payload files remain at the plugin root. The default plugin hook file is `hooks/hooks.json`, or `plugin.json#hooks` may provide an inline object or another contained plugin-relative path.
+- Native layout: `.claude-plugin/plugin.json` is the manifest; `skills/`, `agents/`, `hooks/`, and payload files remain at the plugin root. The default plugin hook file is `hooks/hooks.json`, or `plugin.json#hooks` may provide an inline object or one or more contained `./`-prefixed plugin-relative paths.
 - Package paths: exec-form command hooks use `command` plus `args`; package-file arguments use `${CLAUDE_PLUGIN_ROOT}`. Shell-form `command` remains explicit shell behavior.
 - Portable events with direct native events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, `PreCompact`, and `PostCompact`.
 - Match and decisions: tool-event matchers can select native tool names. `PreToolUse` can explicitly deny a tool call and can return updated input. Async command hooks are usable only where the portable hook is passive; an async hook cannot preserve a blocking or rewrite decision.

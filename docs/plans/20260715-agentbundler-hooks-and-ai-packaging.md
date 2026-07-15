@@ -546,11 +546,11 @@ Manual checks:
 - Compare fixtures with the official OpenAI/Claude package layouts recorded in `docs/vendor-package-contracts.md`.
 - Confirm arbitrary shell remains explicit shell mode and is never presented as safe exec mode.
 
-- [ ] Correct Claude plugin hook discovery to the official manifest/default hook file contract.
-- [ ] Map supported Claude events, matchers, timeout, async, and command forms into typed descriptors with exact capabilities.
-- [ ] Import only statically provable package-file references and preserve other commands as explicit shell compatibility.
-- [ ] Add round-trip and portability-diagnostic tests for official, legacy, simple-script, complex-shell, malformed, and source-ownership cases.
-- [ ] Run importer, compiler, and architecture checks before Task 6.
+- [x] Correct Claude plugin hook discovery to the official manifest/default hook file contract.
+- [x] Map supported Claude events, matchers, timeout, async, and command forms into typed descriptors with exact capabilities.
+- [x] Import only statically provable package-file references and preserve other commands as explicit shell compatibility.
+- [x] Add round-trip and portability-diagnostic tests for official, legacy, simple-script, complex-shell, malformed, and source-ownership cases.
+- [x] Run importer, compiler, and architecture checks before Task 6.
 
 ### Task 6: Preserve hook/file semantics through overlays and composition
 
