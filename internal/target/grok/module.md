@@ -43,9 +43,9 @@ hooks/hooks.json
 <hook payload files>
 ```
 
-The tree is generated and tested for Grok; it is not a byte-copy of Claude output. Package-file command arguments use `GROK_PLUGIN_ROOT`, not an ambient source path.
+The tree is generated and tested for Grok; it is not a byte-copy of Claude output. Package-file command arguments use `GROK_PLUGIN_ROOT`, not an ambient source path. This installable plugin and hook layout is format revision 4.
 
-Documented portable events are session start/end, prompt submit, pre/post tool, post-tool failure, stop, notification, pre-compact, and post-compact. Matchers are regexes over mapped tool names. `PreToolUse` is the only blocking event and supports explicit deny; Grok documents no input-rewrite decision. Timeout/crash/malformed-output failures are fail open, so `hook.failure.closed` is unsupported.
+Documented portable events are session start/end, prompt submit, pre/post tool, post-tool failure, stop, notification, pre-compact, and post-compact. Matchers are regexes over mapped tool names. `PreToolUse` is the only blocking event and supports explicit deny; Grok documents no input-rewrite decision. Timeout/crash/malformed-output failures are fail open, so `hook.failure.closed` is unsupported. Grok does not document asynchronous command handlers, so `hook.async` is unsupported. Claude-compatible agents render as Markdown, but Claude-only `sandbox_mode` is rejected.
 
 The adapter declares `grok plugin validate <plugin-root>` as a `NativeCheck` for every generated package/catalog scope. Rendering does not execute it.
 

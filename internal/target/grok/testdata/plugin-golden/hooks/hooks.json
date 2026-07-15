@@ -1,0 +1,1 @@
+{"hooks":{"PostToolUse":[{"matcher":"Write","hooks":[{"type":"command","command":"cd \"${GROK_PLUGIN_ROOT}\" \u0026\u0026 printf done","timeout":7.25}]}],"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash","args":["-eu","${GROK_PLUGIN_ROOT}/hooks/guard/scripts/guard.sh"],"timeout":5}]}]}}

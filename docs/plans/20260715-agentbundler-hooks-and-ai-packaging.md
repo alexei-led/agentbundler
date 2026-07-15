@@ -1104,12 +1104,12 @@ Manual checks:
 - Inspect the generated package with `grok plugin validate` and, in an isolated config, `grok plugin install --trust` only in opt-in smoke code.
 - Confirm fail-closed requests are diagnosed because Grok documents non-explicit failures as fail-open.
 
-- [ ] Preserve `.grok/skills` project-profile behavior and add a distinct installable package-profile renderer.
-- [ ] Render Claude-compatible plugin paths with Grok-specific hook root, event, timeout, and explicit-deny semantics.
-- [ ] Declare exact capabilities, increment format revision, and reject unsupported agents/events/decisions rather than omitting them.
-- [ ] Add project regression, package golden, hook decision, failure-policy, collision, separate-package, and deterministic tests.
-- [ ] Emit official `grok plugin validate` native checks and add an isolated optional install/inspect smoke.
-- [ ] Run focused/full/architecture checks before Task 17.
+- [x] Preserve `.grok/skills` project-profile behavior and add a distinct installable package-profile renderer.
+- [x] Render Claude-compatible plugin paths with Grok-specific hook root, event, timeout, and explicit-deny semantics.
+- [x] Declare exact capabilities, increment format revision, and reject unsupported agents/events/decisions rather than omitting them.
+- [x] Add project regression, package golden, hook decision, failure-policy, collision, separate-package, and deterministic tests.
+- [x] Emit official `grok plugin validate` native checks and add an isolated optional install/inspect smoke.
+- [x] Run focused/full/architecture checks before Task 17.
 
 ### Task 17: Generate deterministic target marketplace catalogs
 
