@@ -1,0 +1,31 @@
+{
+  "id": "workflow-tools",
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Release skill and file audit hook",
+    "displayName": "Workflow tools",
+    "author": {
+      "name": "Agent Bundler"
+    },
+    "homepage": "https://github.com/alexei-led/agentbundler",
+    "repository": "https://github.com/alexei-led/agentbundler",
+    "license": "MIT",
+    "keywords": [
+      "audit",
+      "release"
+    ]
+  },
+  "assets": [
+    "src/skills/release",
+    {
+      "path": "src/hooks/file-audit",
+      "targets": [
+        "claude",
+        "pi",
+        "copilot",
+        "cursor",
+        "grok"
+      ]
+    }
+  ]
+}

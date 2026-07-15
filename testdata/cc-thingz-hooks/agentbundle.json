@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "kind": "bundle",
+  "root": "source",
+  "targets": [
+    "claude",
+    "codex",
+    "pi",
+    "copilot",
+    "cursor",
+    "grok"
+  ],
+  "output": "generated",
+  "distribution": {
+    "name": "cc-thingz-tools",
+    "owner": {
+      "name": "Agent Bundler"
+    },
+    "description": "Hermetic multi-target hook acceptance fixture",
+    "version": "1.0.0"
+  },
+  "composition": [
+    {
+      "target": "claude",
+      "profile": "package",
+      "packageMode": "separate"
+    },
+    {
+      "target": "codex",
+      "profile": "package",
+      "packageMode": "separate"
+    },
+    {
+      "target": "pi",
+      "profile": "package",
+      "packageMode": "aggregate",
+      "aggregate": {
+        "identity": "cc-thingz-pi",
+        "metadata": {
+          "version": "1.0.0",
+          "description": "Hermetic cc-thingz-shaped Pi package",
+          "keywords": [
+            "agentbundler",
+            "hooks"
+          ]
+        }
+      }
+    },
+    {
+      "target": "copilot",
+      "profile": "package",
+      "packageMode": "separate"
+    },
+    {
+      "target": "cursor",
+      "profile": "package",
+      "packageMode": "separate"
+    },
+    {
+      "target": "grok",
+      "profile": "package",
+      "packageMode": "separate"
+    }
+  ],
+  "bundle": {
+    "packages": [
+      "packages/core-tools.json",
+      "packages/workflow-tools.json"
+    ]
+  }
+}

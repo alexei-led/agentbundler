@@ -1,0 +1,10 @@
+{
+  "acknowledgments": [
+    {
+      "asset": "hook/command-guard",
+      "target": "cursor",
+      "key": "hook.command.exec",
+      "reason": "Cursor receives the canonical argv as an explicitly quoted command string."
+    }
+  ]
+}

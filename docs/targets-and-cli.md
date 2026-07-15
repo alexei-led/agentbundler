@@ -1,107 +1,67 @@
+<!-- markdownlint-disable MD013 -->
+
 # Targets and CLI reference
 
-**Agent Bundler** writes a complete target subtree under `output/<target>/`. The
-paths below are target-relative.
+**Agent Bundler** writes one complete target subtree under `output/<target>/`.
+Paths below are target-relative. Package output is deterministic and offline;
+installation and publication remain external operations.
 
-## Target layouts
+## Package output
 
-Project profiles keep the lightweight roots used by each agent. Package profiles
-produce installable target roots:
+Separate mode keeps one package at the flat target root. Two or more packages
+use package-ID roots and add a target-wide catalog when `distribution` is set.
+Pi hook packages use explicit aggregate mode instead.
 
-- **Claude Code:** project `.claude/skills/<name>/`; package
-  `.claude-plugin/plugin.json`, `skills/`, `agents/`, and `resources/`.
-- **Codex:** package `.codex-plugin/plugin.json`, `skills/`, standalone
-  `.codex/agents/*.toml`, and `resources/`.
-- **Pi:** project `.pi/skills/<name>/`; package `package.json`, `skills/`,
-  `resources/`, and—when agent assets are selected—`agents/`. **Agent Bundler**
-  registers package agents through `pi.subagents.agents`. Add `pi-subagents` to
-  package metadata `dependencies` when the package includes agents.
-- **GitHub Copilot:** project `.github/skills/<name>/` and declared portable
-  resources under `.github/resources/<name>/`; package `plugin.json`, `skills/`,
-  `agents/*.agent.md`, and `resources/`.
-- **Grok Build:** `.grok/skills/<name>/` and declared portable resources under
-  `.grok/resources/<name>/` in the project profile. Grok can also install a
-  Claude-compatible package root directly.
-- **Cursor:** package `.cursor-plugin/plugin.json`, `skills/`, `agents/*.md`,
-  and `resources/`.
+| Target      | Installable package paths                                                                                                  | Catalog path                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Claude Code | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                                      | `.claude-plugin/marketplace.json`  |
+| Codex       | `.codex-plugin/plugin.json`, `skills/`, `hooks/hooks.json`, hook payloads                                                  | `.agents/plugins/marketplace.json` |
+| Pi          | `package.json`, `skills/`, optional `agents/`, `hooks/hooks.v1.json`, `extensions/agentbundler-hooks.ts`, embedded runtime | none                               |
+| Copilot CLI | `plugin.json`, `skills/`, `agents/*.agent.md`, `hooks.json`, hook payloads                                                 | `.github/plugin/marketplace.json`  |
+| Cursor      | `.cursor-plugin/plugin.json`, `skills/`, `agents/*.md`, `hooks/hooks.json`, hook payloads                                  | `.cursor-plugin/marketplace.json`  |
+| Grok Build  | Claude-compatible `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                    | `.claude-plugin/marketplace.json`  |
 
-Every package profile also includes a generated `README.md` using its package
-metadata. Marketplace manifests remain repository integration metadata; **Agent
-Bundler** does not generate or publish marketplaces.
+Project profiles remain narrower: Claude uses `.claude/skills`, Codex uses
+`.agents/skills` plus `.codex/agents/*.toml`, Pi uses `.pi/skills`, Copilot uses
+`.github/skills`, Grok uses `.grok/{skills,resources}`, and Cursor keeps its
+project layout. The Grok package profile is distinct from `.grok/skills`.
 
-Every skill output contains `SKILL.md` plus composed regular support files. When
-frontmatter exists, the renderer writes it as compact JSON between `---` lines.
-Package resources are portable directory trees under `resources/<name>/`.
-**Agent Bundler** accepts ordinary YAML frontmatter and normalizes it to JSON for
-output; `agentbundle.json` itself remains strict JSON.
+The Pi aggregate package contains exactly one extension registration. Its thin
+adapter imports a dependency-free TypeScript runtime embedded in `agbun`; the
+generated package needs neither Bun, TypeScript, npm dependencies, nor the
+`agbun` executable at load time. `pi-subagents` is required in package metadata
+only when generated agents are present.
 
-The target directory is a layout contract, not proof of vendor feature parity.
-Copy or package the matching target subtree according to the target's current
-runtime documentation.
+## Portable hook cells
 
-## Distribution smoke tests
+Support is semantic. Similar vendor event names are not enough. An unsupported
+cell fails before output is written; an advisory cell requires a source
+acknowledgment.
 
-`agbun check` verifies source-to-output drift only. Before publishing a package,
-run vendor checks in the owning repository. Use disposable configuration or
-workspace directories for commands that install a plugin.
+| Cell             | Claude                     | Codex                           | Pi aggregate                      | Copilot CLI                     | Cursor                          | Grok              |
+| ---------------- | -------------------------- | ------------------------------- | --------------------------------- | ------------------------------- | ------------------------------- | ----------------- |
+| Command `exec`   | native                     | native                          | native                            | advisory: quoted command string | advisory: quoted command string | native            |
+| Explicit `shell` | native                     | native                          | native                            | native                          | native                          | native            |
+| Tool matcher     | native categories          | Bash/MCP subset                 | native categories                 | native categories               | documented native-name subset   | native categories |
+| Async            | passive hooks              | unsupported                     | passive hooks                     | notification only               | unsupported                     | unsupported       |
+| Block            | applicable blocking events | applicable blocking events      | pre-tool                          | pre-tool/stop                   | pre-tool/prompt-submit          | pre-tool only     |
+| Rewrite input    | pre-tool                   | pre-tool                        | pre-tool                          | pre-tool                        | pre-tool                        | unsupported       |
+| Fail closed      | unsupported general policy | unsupported                     | runtime-enforced                  | unsupported general policy      | pre-tool/prompt-submit only     | unsupported       |
+| Package agents   | native                     | unsupported; use project agents | equivalent through `pi-subagents` | native                          | native                          | native            |
 
-```sh
-# Claude-compatible package, including Grok Build.
-claude plugin validate dist/claude
-grok plugin validate dist/claude
+Event subsets also differ. Codex does not provide the required portable
+`session-end`, `notification`, or `post-tool-failure` equivalents. Copilot has no
+documented `post-compact`. Cursor has no equivalent `notification` or
+`post-compact`. Pi has no equivalent notification event. Claude and Grok expose
+the full initial event-name set, but only events with matching blocking,
+timeout, and failure behavior are accepted. Target validators return exact
+per-hook diagnostics for narrower cases.
 
-# GitHub Copilot package, through the repository-owned marketplace.
-copilot plugin marketplace add /path/to/repository
-copilot plugin install package-id@marketplace-id
+HTTP, prompt-handler, agent-handler, and MCP-tool-handler hooks are not part of
+the initial portable command-hook contract. Target-native resources also remain
+explicit gaps. Hooks execute trusted package code; validation is not a sandbox.
 
-# Cursor package. A prompt proves the package loaded without enabling writes.
-mkdir -p /tmp/cursor-package-smoke
-cursor-agent --plugin-dir dist/cursor \
-  --workspace /tmp/cursor-package-smoke --print --mode ask --trust \
-  'State the installed plugin name and one available skill.'
-```
-
-Codex discovers standalone agents from `.codex/agents/` or `~/.codex/agents/`,
-not from a plugin manifest. Pi packages with generated agents require the
-`pi-subagents` dependency declared in their package metadata. Keep those
-integration steps and any marketplace manifest outside compiler output.
-
-## Vendor documentation
-
-- [Claude Code plugins](https://code.claude.com/docs/en/plugins) and
-  [skills](https://code.claude.com/docs/en/skills)
-- [Codex skills](https://developers.openai.com/codex/skills)
-- [Pi skills](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/skills.md),
-  [packages](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md),
-  [extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md),
-  and [pi-subagents](https://github.com/nicobailon/pi-subagents)
-- [GitHub Copilot agent skills](https://docs.github.com/copilot/concepts/agents/about-agent-skills)
-- [Grok Build skills, plugins, and marketplaces](https://docs.x.ai/build/features/skills-plugins-marketplaces)
-- [Cursor rules](https://docs.cursor.com/en/context/rules) and
-  [Agent Skills release notes](https://cursor.com/changelog/2-4)
-- [Agent Skills specification](https://agentskills.io/specification)
-
-These runtimes change independently of **Agent Bundler**. Check their docs before
-adding vendor-specific frontmatter or packaging assumptions.
-
-## Help
-
-Ask the CLI before scripting against it. Help and version commands do not require
-a manifest:
-
-```sh
-agbun --version
-agbun --help
-agbun help build
-agbun help check
-agbun help targets
-```
-
-`-h` and `--help` also work at the top level and after `build` or `check`.
-`agbun version` is an alias for `agbun --version`. Help exits `0`; invalid command
-or help-topic errors point back to `agbun help`.
-
-## Commands
+## Build and check
 
 ```text
 agbun build [--root DIR] [--target TARGET]... [--package PACKAGE]... [--json]
@@ -115,82 +75,118 @@ Examples:
 agbun build
 agbun check
 # WARNING: build replaces the complete output directory, even for one target.
-# Keep output in a dedicated generated directory.
 agbun build --target pi
-agbun check --target codex --package team-skills
-agbun check --json
+agbun check --target codex --package core-tools
+agbun check --native
 ```
 
 `--root` points to the directory containing `agentbundle.json`. Without it,
 **Agent Bundler** searches the current directory and its parents. `--target` and
-`--package` may be repeated; selectors must be declared and unique. Installable
-package profiles render one package at the historical flat root, or multiple
-packages under deterministic self-contained package-ID roots.
-
-## Output ownership
+`--package` may be repeated; selectors must be declared and unique. Selecting a
+single package in separate mode uses the historical flat package root.
 
 `build` stages and replaces the complete configured output directory. `check`
-compares the expected plan without writing. Neither command uses the network.
+compares the plan without writing and exits `2` for missing, changed, extra,
+non-regular, or symlinked output. Neither command uses the network.
 
-`generated/.agentbundler/build.json` records the configuration digest, input and
-output hashes, acknowledgments, compiler version, and output file details. It is
-compiler metadata, not an input file. Released `agbun` binaries record their release
-tag; development builds record the module version when available, otherwise
-`agbun-dev`. Release CI executes the Linux/amd64 binary to verify that contract.
+`check --native` runs only target-declared, offline, non-mutating validators
+after drift passes:
+
+- Claude: `claude plugin validate --strict <root>`;
+- Grok: `grok plugin validate <root>`.
+
+A missing declared validator is a native-verification failure, not a skip. Codex,
+Pi, Copilot, and Cursor have no production native validator because their useful
+load/install checks are mutating, model-backed, or incomplete.
+
+## Installation and validation examples
+
+Build first. Then use the exact generated target root in an isolated integration
+or release job:
+
+```sh
+# Official non-mutating validators.
+claude plugin validate --strict generated/claude
+grok plugin validate generated/grok/core-tools
+
+# Pi aggregate package; isolate both project and user configuration.
+package_root=$(cd generated/pi && pwd -P)
+smoke_root=$(mktemp -d)
+trap 'rm -rf "$smoke_root"' EXIT
+mkdir -p "$smoke_root/workspace" "$smoke_root/home"
+(
+  cd "$smoke_root/workspace"
+  HOME="$smoke_root/home" \
+  PI_CODING_AGENT_DIR="$smoke_root/pi-agent" \
+  XDG_CONFIG_HOME="$smoke_root/config" \
+  XDG_CACHE_HOME="$smoke_root/cache" \
+  PI_OFFLINE=1 \
+  pi install "$package_root" -l --approve
+)
+
+# Repository test suite: mutating/load smokes are opt-in and isolate config.
+go test -tags=vendor_smoke ./internal/target/... ./internal/compiler/...
+```
+
+The opt-in smokes use temporary `HOME` and vendor config/cache roots, bounded
+subprocesses and output, exact missing-CLI skips, and post-run digests of normal
+config paths. Cursor's load smoke also requires `CURSOR_API_KEY`; without it the
+test names the unsupported offline boundary. No smoke publishes a package or
+uses the developer's normal vendor configuration.
+
+For the hermetic all-target acceptance case:
+
+```sh
+scripts/check-acceptance-fixture
+```
+
+It copies `testdata/cc-thingz-hooks` into two temporary roots, builds all six
+targets, runs read-only `check`, and compares every generated byte.
+
+## Help and version
+
+Help and version commands do not require a manifest:
+
+```sh
+agbun --version
+agbun version
+agbun --help
+agbun help build
+agbun help check
+agbun help targets
+```
+
+`-h` and `--help` work at the top level and after `build` or `check`. Help exits
+`0`; invalid command or help-topic errors point back to `agbun help`.
 
 ## Machine-readable results
 
-With a valid manifest, `--json` writes one result object to stdout. Diagnostics
-are normally written to stderr. The result contains:
+With a valid manifest, `--json` writes one object to stdout with `version`,
+`command`, `diagnostics`, `drift`, and `nativeVerificationFailed`. Diagnostics
+normally go to stderr. A diagnostic omits `location` when unavailable; a present
+location has `path`, `line`, and `column`.
 
-- `version`
-- `command`
-- `diagnostics`
-- `drift`
-- `nativeVerificationFailed`
+Exit statuses:
 
-A diagnostic omits `location` when no source location exists. When `location`
-is present, it includes `path`, `line`, and `column`; `line` and `column` are
-integers when known and `null` when the source position is unknown.
-
-Manifest-discovery failures occur before the result object is created and are
-reported as ordinary diagnostics.
-
-## Exit statuses
-
-- `0`: success; `check` found current output.
-- `1`: source, validation, capability, render, or write failure.
-- `2`: output drift: missing, changed, extra, non-regular, or symlinked entries.
+- `0`: success; `check` found current output;
+- `1`: source, validation, capability, render, or write failure;
+- `2`: output drift;
 - `3`: native verification failure.
 
-`--native` is valid only with `check`. Built-in target adapters currently
-declare no native checks, so it adds no checks today.
+`generated/.agentbundler/build.json` records configuration, input/output hashes,
+acknowledgments, adapter revisions, compiler version, and output file details.
+Released binaries report their injected tag; development builds report the Go
+module version when available, otherwise `agbun-dev`.
 
-## Current limitations
+## Vendor documentation
 
-Current target renderers intentionally support:
+- [Claude Code plugins and hooks](https://code.claude.com/docs/en/plugins-reference)
+- [Codex plugins and hooks](https://developers.openai.com/codex/plugins)
+- [Pi packages and extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/docs)
+- [Copilot CLI plugins and hooks](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+- [Cursor plugins and hooks](https://cursor.com/docs/plugins)
+- [Grok Build skills, plugins, and marketplaces](https://docs.x.ai/build/features/skills-plugins-marketplaces)
+- [Pinned contract notes](vendor-package-contracts.md)
 
-- one flat package or multiple self-contained package-ID roots in installable profiles;
-  with multiple packages, each package is rendered below its package ID;
-- `skill` assets and portable `resource` directory trees, including sibling
-  project resources for Copilot and Grok;
-- Claude Markdown agents, Codex standalone TOML agents, Pi subagent Markdown
-  agents, GitHub Copilot `.agent.md` agents, and Cursor Markdown agents in
-  package profiles;
-- regular support files;
-- YAML frontmatter with JSON-compatible values and Markdown bodies;
-- target overlays for frontmatter, heading blocks, files, and deletions.
-
-They do not currently render:
-
-- hook assets;
-- scripts as a separate portable asset type;
-- target-native resources;
-- arbitrary custom capability uses;
-- marketplace manifests, publishing, installation, or built-in vendor CLI
-  validation.
-
-Use a repository-owned marketplace manifest and CI smoke tests when distributing
-an output. `agbun check --native` runs only explicitly declared native checks;
-built-in target adapters do not declare vendor checks because vendor CLIs are
-optional local dependencies.
+These runtimes change independently. Re-check their primary docs before adding
+vendor-specific assumptions.

@@ -1,0 +1,16 @@
+{
+  "acknowledgments": [
+    {
+      "asset": "hook/command-guard",
+      "target": "copilot",
+      "key": "hook.command.exec",
+      "reason": "Copilot receives the canonical argv as an explicitly quoted command string."
+    },
+    {
+      "asset": "hook/command-guard",
+      "target": "copilot",
+      "key": "hook.event.pre-tool",
+      "reason": "This fixture observes the command only and does not treat Copilot pre-tool failures as an enforcement boundary."
+    }
+  ]
+}

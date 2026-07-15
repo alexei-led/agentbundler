@@ -1,0 +1,27 @@
+{
+  "event": "post-tool",
+  "matcher": {
+    "tools": [
+      "write"
+    ]
+  },
+  "handler": {
+    "mode": "exec",
+    "program": "bash",
+    "arguments": [
+      {
+        "literal": "-eu"
+      },
+      {
+        "packageFile": "audit.sh"
+      },
+      {
+        "packageFile": "support/events.txt"
+      }
+    ]
+  },
+  "timeoutMilliseconds": 3000,
+  "asynchronous": false,
+  "failurePolicy": "open",
+  "order": 20
+}

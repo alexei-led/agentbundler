@@ -1229,12 +1229,12 @@ Manual checks:
 - Confirm no test or production command changed normal Claude, Codex, Pi, Copilot, Cursor, or Grok configuration.
 - Confirm the consuming cc-thingz migration steps below remain external and are not falsely marked complete.
 
-- [ ] Add the hermetic cc-thingz-shaped fixture and all-six-target build/check/selectors/drift/determinism integration matrix.
-- [ ] Add safe opt-in vendor smoke infrastructure with temporary config roots, bounded subprocesses, exact CLI availability diagnostics, and cleanup assertions.
-- [ ] Add CI gates for Go, Pi runtime TypeScript, lint/vet, architecture, deterministic fixture output, and pinned safe validators.
-- [ ] Update README, configuration, target, architecture, and release documentation with exact authoring/output/install-validation examples and unsupported cells.
-- [ ] Verify release builds embed the tested runtime bytes, set `agbun` version correctly, and pass `version`/`--version` smoke checks.
-- [ ] Run every final validation command, resolve all failures, inspect GitNexus change impact, and record the scoped post-implementation architecture re-review target.
+- [x] Add the hermetic cc-thingz-shaped fixture and all-six-target build/check/selectors/drift/determinism integration matrix.
+- [x] Add safe opt-in vendor smoke infrastructure with temporary config roots, bounded subprocesses, exact CLI availability diagnostics, and cleanup assertions.
+- [x] Add CI gates for Go, Pi runtime TypeScript, lint/vet, architecture, deterministic fixture output, and pinned safe validators.
+- [x] Update README, configuration, target, architecture, and release documentation with exact authoring/output/install-validation examples and unsupported cells.
+- [x] Verify release builds embed the tested runtime bytes, set `agbun` version correctly, and pass `version`/`--version` smoke checks.
+- [x] Run every final validation command, resolve all failures, inspect GitNexus change impact, and record the scoped post-implementation architecture re-review target.
 
 ## Technical details
 

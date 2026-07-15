@@ -15,6 +15,14 @@ This note pins the native package and hook contracts used by Agent Bundler. Prim
 
 Catalog paths are generated artifacts only. Agent Bundler does not register, publish, submit, install, authenticate, fetch, or change vendor configuration.
 
+Repository vendor smokes are opt-in under the `vendor_smoke` build tag. A shared
+test-only harness requires exact CLI names, uses positive subprocess deadlines,
+bounds combined output to 32 KiB, supplies temporary HOME/config/cache roots,
+and verifies normal configuration digests after mutating tests. CI runs only the
+safe local-tree validators, pinned to Claude Code 2.1.210 and Grok Build 0.2.101;
+the Grok Linux binary is checksum-pinned. Codex, Pi, Copilot, and Cursor
+install/load smokes are never production native checks.
+
 ## Claude Code
 
 - Native layout: `.claude-plugin/plugin.json` is the manifest; `skills/`, `agents/`, `hooks/`, and payload files remain at the plugin root. The default plugin hook file is `hooks/hooks.json`, or `plugin.json#hooks` may provide an inline object or one or more contained `./`-prefixed plugin-relative paths.

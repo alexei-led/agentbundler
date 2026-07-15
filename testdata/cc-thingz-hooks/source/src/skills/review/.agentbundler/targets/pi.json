@@ -1,0 +1,11 @@
+{
+  "bodyPatch": {
+    "mode": "replace",
+    "text": "Read `references/checklist.md`, then report correctness, release risks, and Pi extension-loading risks.\n"
+  },
+  "files": {
+    "references/pi.md": {
+      "text": "Check that exactly one generated extension is registered.\n"
+    }
+  }
+}

@@ -4,40 +4,44 @@ package codex
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alexei-led/agentbundler/internal/testutil/vendorsmoke"
 )
 
 func TestCodexLocalMarketplaceInstallAndList(t *testing.T) {
-	codex, err := exec.LookPath("codex")
-	if err != nil {
-		t.Skip("codex CLI is not installed")
-	}
+	codex := vendorsmoke.RequireExecutable(t, "codex")
+	realHome := vendorsmoke.UserHome(t)
+	vendorsmoke.ProtectPaths(t, filepath.Join(realHome, ".codex"))
+
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
-	if err := os.MkdirAll(home, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	codexHome := filepath.Join(root, "codex")
 	marketplace := filepath.Join(root, "marketplace")
 	plugin := filepath.Join(marketplace, "plugins", "demo")
-	if err := os.MkdirAll(filepath.Join(marketplace, ".agents", "plugins"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(plugin, ".codex-plugin"), 0o755); err != nil {
-		t.Fatal(err)
+	for _, path := range []string{home, codexHome, filepath.Join(marketplace, ".agents", "plugins"), filepath.Join(plugin, ".codex-plugin")} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
 	writeSmokeFile(t, filepath.Join(marketplace, ".agents", "plugins", "marketplace.json"), `{"name":"local","owner":{"name":"agentbundler-test"},"plugins":[{"name":"demo","source":"./plugins/demo","description":"isolated smoke"}]}`)
 	writeSmokeFile(t, filepath.Join(plugin, ".codex-plugin", "plugin.json"), `{"name":"demo","version":"1.0.0","description":"isolated smoke"}`)
+	environment := vendorsmoke.Environment(map[string]string{
+		"HOME": home, "CODEX_HOME": codexHome,
+		"XDG_CONFIG_HOME": filepath.Join(root, "config"), "XDG_CACHE_HOME": filepath.Join(root, "cache"),
+		"HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
+	})
 
-	runCodexSmoke(t, codex, home, "plugin", "marketplace", "add", marketplace)
-	runCodexSmoke(t, codex, home, "plugin", "add", "demo@local")
-	output := runCodexSmoke(t, codex, home, "plugin", "list")
+	runCodexSmoke(t, codex, environment, "plugin", "marketplace", "add", marketplace)
+	runCodexSmoke(t, codex, environment, "plugin", "add", "demo@local")
+	output := runCodexSmoke(t, codex, environment, "plugin", "list")
 	if !strings.Contains(output, "demo@local") || !strings.Contains(output, "installed, enabled") {
 		t.Fatalf("codex plugin list output = %q", output)
 	}
-	if _, err := os.Stat(filepath.Join(home, "plugins", "cache", "local", "demo", "1.0.0", ".codex-plugin", "plugin.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(codexHome, "plugins", "cache", "local", "demo", "1.0.0", ".codex-plugin", "plugin.json")); err != nil {
 		t.Fatalf("isolated installed plugin: %v", err)
 	}
 }
@@ -49,13 +53,10 @@ func writeSmokeFile(t *testing.T, path, content string) {
 	}
 }
 
-func runCodexSmoke(t *testing.T, codex, home string, arguments ...string) string {
+func runCodexSmoke(t *testing.T, codex string, environment []string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command(codex, arguments...)
-	command.Env = append(os.Environ(), "CODEX_HOME="+home, "HOME="+home)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("codex %s: %v\n%s", strings.Join(arguments, " "), err, output)
-	}
-	return string(output)
+	return vendorsmoke.Run(t, vendorsmoke.Command{
+		Name: "codex " + strings.Join(arguments, " "), Path: codex, Args: arguments,
+		Env: environment, Timeout: 30 * time.Second,
+	})
 }
