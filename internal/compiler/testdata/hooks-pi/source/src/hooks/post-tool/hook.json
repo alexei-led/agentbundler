@@ -1,0 +1,21 @@
+{
+  "event": "post-tool",
+  "matcher": {
+    "tools": [
+      "command"
+    ]
+  },
+  "handler": {
+    "mode": "exec",
+    "program": "node",
+    "arguments": [
+      {
+        "packageFile": "record.mjs"
+      }
+    ]
+  },
+  "timeoutMilliseconds": 1000,
+  "asynchronous": true,
+  "failurePolicy": "open",
+  "order": 30
+}

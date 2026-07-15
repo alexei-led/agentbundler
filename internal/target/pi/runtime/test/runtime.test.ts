@@ -61,6 +61,74 @@ describe("schema v1", () => {
   });
 });
 
+describe("generated aggregate fixture", () => {
+  test("proves pre-tool decisions, passive dispatch, cancellation, and schema mismatch", async () => {
+    const fixture = await Bun.file(new URL("../testdata/hooks-pi.v1.json", import.meta.url)).json();
+    const decoded = decodeConfig(fixture);
+    expect(decoded.hooks.map((value) => value.identity)).toEqual([
+      "hook/deny", "hook/rewrite", "hook/post-tool", "hook/timeout",
+    ]);
+
+    const denyPi = new FakePi();
+    createPiHookRuntime(denyPi, config(decoded.hooks[0]!), {
+      packageRoot: "/tmp/package",
+      runner: async () => ({ exitCode: 0, signal: null, stdout: '{"decision":"deny","reason":"blocked bash"}', stderr: "" }),
+    });
+    expect(await denyPi.emit("tool_call", { toolName: "bash", input: { command: "danger" } })).toEqual({ block: true, reason: "blocked bash" });
+
+    const rewritePi = new FakePi();
+    createPiHookRuntime(rewritePi, config(decoded.hooks[1]!), {
+      packageRoot: "/tmp/package",
+      runner: async () => ({ exitCode: 0, signal: null, stdout: '{"decision":"rewrite-input","input":{"command":"safe"}}', stderr: "" }),
+    });
+    const input = { command: "danger" };
+    expect(await rewritePi.emit("tool_call", { toolName: "bash", input })).toBeUndefined();
+    expect(input).toEqual({ command: "safe" });
+
+    let passiveInput: unknown;
+    let passiveDone!: () => void;
+    const passiveCompleted = new Promise<void>((resolve) => { passiveDone = resolve; });
+    const passivePi = new FakePi();
+    createPiHookRuntime(passivePi, config(decoded.hooks[2]!), {
+      packageRoot: "/tmp/package",
+      runner: async (_command, options) => {
+        passiveInput = options.input;
+        passiveDone();
+        return { exitCode: 0, signal: null, stdout: "", stderr: "" };
+      },
+    });
+    await passivePi.emit("tool_result", { toolName: "bash", isError: false, output: "ok" });
+    await passiveCompleted;
+    expect(passiveInput).toEqual({ event: "post-tool", hook: "hook/post-tool", piEvent: { toolName: "bash", isError: false, output: "ok" } });
+
+    let observedTimeout = 0;
+    const timeoutPi = new FakePi();
+    createPiHookRuntime(timeoutPi, config(decoded.hooks[3]!), {
+      packageRoot: "/tmp/package",
+      runner: async (_command, options) => {
+        observedTimeout = options.timeoutMilliseconds;
+        return { exitCode: 0, signal: null, stdout: "", stderr: "" };
+      },
+    });
+    await timeoutPi.emit("tool_call", { toolName: "bash", input: {} });
+    expect(observedTimeout).toBe(25);
+
+    const cancelled = new AbortController();
+    const cancellationPi = new FakePi();
+    createPiHookRuntime(cancellationPi, config(decoded.hooks[3]!), {
+      packageRoot: "/tmp/package",
+      runner: async (_command, options) => await new Promise((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+      }),
+    });
+    const pending = cancellationPi.emit("tool_call", { toolName: "bash", input: {} }, cancelled.signal);
+    cancelled.abort(new Error("fixture cancelled"));
+    expect(await pending).toBeUndefined();
+
+    expect(() => decodeConfig({ ...(fixture as Record<string, unknown>), version: 2 })).toThrow("unsupported hook schema version 2");
+  });
+});
+
 describe("Pi event mapping", () => {
   test("maps every supported lifecycle event and separates tool success from failure", async () => {
     const calls: Array<{ hook: string; input: unknown }> = [];

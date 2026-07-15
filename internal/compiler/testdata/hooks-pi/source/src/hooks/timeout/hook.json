@@ -1,0 +1,21 @@
+{
+  "event": "pre-tool",
+  "matcher": {
+    "tools": [
+      "command"
+    ]
+  },
+  "handler": {
+    "mode": "exec",
+    "program": "node",
+    "arguments": [
+      {
+        "packageFile": "wait.mjs"
+      }
+    ]
+  },
+  "timeoutMilliseconds": 25,
+  "asynchronous": false,
+  "failurePolicy": "open",
+  "order": 40
+}
