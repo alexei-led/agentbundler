@@ -1,6 +1,8 @@
 package pi
 
 import (
+	"encoding/json"
+	"os"
 	"reflect"
 	"testing"
 
@@ -53,6 +55,32 @@ func TestPackageRenderIncludesPiSubagent(t *testing.T) {
 		}
 	}
 	t.Fatalf("plan files = %#v, want Pi subagent", plan.Files)
+}
+
+func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
+	data, err := os.ReadFile("runtime/testdata/hooks.v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Version int                    `json:"version"`
+		Hooks   []model.HookDescriptor `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Version != 1 {
+		t.Fatalf("schema version = %d, want 1", fixture.Version)
+	}
+	if got, want := len(fixture.Hooks), 2; got != want {
+		t.Fatalf("hook count = %d, want %d", got, want)
+	}
+	if got, want := fixture.Hooks[1].Event, model.HookEventPreTool; got != want {
+		t.Fatalf("tool hook event = %q, want %q", got, want)
+	}
+	if fixture.Hooks[1].Handler.Arguments[1].PackageFile == nil || *fixture.Hooks[1].Handler.Arguments[1].PackageFile != "hooks/pre-tool.js" {
+		t.Fatalf("package-file argument = %#v", fixture.Hooks[1].Handler.Arguments[1])
+	}
 }
 
 func TestCapabilitiesExposePiSubagentEquivalent(t *testing.T) {

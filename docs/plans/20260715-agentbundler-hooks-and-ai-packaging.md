@@ -798,12 +798,12 @@ Manual checks:
 - Compare event use with installed Pi `docs/extensions.md`, including sequential `tool_call` preflight, `ctx.signal`, and idempotent `session_shutdown`.
 - Confirm the runtime scans no `~/.pi/agent/git` or npm directories; config is injected by the generated adapter.
 
-- [ ] Create the dependency-free TypeScript runtime package, pin the exact TypeScript dev dependency in `package.json` and `bun.lock`, add the `typecheck` script, and implement schema-v1 decoding with explicit unknown-version failure.
-- [ ] Implement Pi event mappings for session, prompt, tool call/result, turn/agent end, and compaction events supported by the portable model.
-- [ ] Implement matcher evaluation, exec/shell dispatch, package-file resolution, bounded stdout/stderr, timeout, cancellation, and safe process termination.
-- [ ] Translate pre-tool allow/deny/input-rewrite and passive-event results without mutating unvalidated tool input.
-- [ ] Add tests for every supported event, ordering, fail-open/fail-closed behavior, malformed config/output, path traversal, timeout, cancellation, output limits, and idempotent shutdown.
-- [ ] Run Bun, TypeScript, Go Pi, and architecture checks before Task 11.
+- [x] Create the dependency-free TypeScript runtime package, pin the exact TypeScript dev dependency in `package.json` and `bun.lock`, add the `typecheck` script, and implement schema-v1 decoding with explicit unknown-version failure.
+- [x] Implement Pi event mappings for session, prompt, tool call/result, turn/agent end, and compaction events supported by the portable model.
+- [x] Implement matcher evaluation, exec/shell dispatch, package-file resolution, bounded stdout/stderr, timeout, cancellation, and safe process termination.
+- [x] Translate pre-tool allow/deny/input-rewrite and passive-event results without mutating unvalidated tool input.
+- [x] Add tests for every supported event, ordering, fail-open/fail-closed behavior, malformed config/output, path traversal, timeout, cancellation, output limits, and idempotent shutdown.
+- [x] Run Bun, TypeScript, Go Pi, and architecture checks before Task 11.
 
 ### Task 11: Render one aggregate Pi package with the bundled runtime
 
