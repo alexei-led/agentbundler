@@ -1002,12 +1002,12 @@ Manual checks:
 - Verify target scope says Copilot CLI; installed user plugins are not promised for GitHub-hosted cloud coding agents.
 - Verify timeout/failure diagnostics do not present fail-open behavior as equivalent to requested fail-closed security hooks.
 
-- [ ] Render root `plugin.json`, native agents/skills paths, root `hooks.json`, payload files, and documented root references.
-- [ ] Map verified PascalCase/Claude-compatible events while preserving Copilot-specific timeout and failure semantics through capability states.
-- [ ] Increment the Copilot format revision and add exact unsupported/advisory diagnostics.
-- [ ] Add golden, hook-free regression, fail-policy, timeout, matcher, collision, and deterministic package tests.
-- [ ] Add an isolated optional direct-install/list smoke and prove no normal Copilot configuration is touched.
-- [ ] Run focused/full/architecture checks before Task 15.
+- [x] Render root `plugin.json`, native agents/skills paths, root `hooks.json`, payload files, and documented root references.
+- [x] Map verified PascalCase/Claude-compatible events while preserving Copilot-specific timeout and failure semantics through capability states.
+- [x] Increment the Copilot format revision and add exact unsupported/advisory diagnostics.
+- [x] Add golden, hook-free regression, fail-policy, timeout, matcher, collision, and deterministic package tests.
+- [x] Add an isolated optional direct-install/list smoke and prove no normal Copilot configuration is touched.
+- [x] Run focused/full/architecture checks before Task 15.
 
 ### Task 15: Implement Cursor-native hooks and plugin packages
 
