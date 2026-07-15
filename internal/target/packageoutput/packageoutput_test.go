@@ -285,7 +285,7 @@ func TestRenderWithCodecContract(t *testing.T) {
 	}
 
 	codec.AgentRoot = "agents"
-	pkg.Assets = append(pkg.Assets, model.NormalizedAsset{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Files: map[model.RelativePath][]byte{}}})
+	pkg.Assets = append(pkg.Assets, model.NormalizedAsset{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{}}})
 	codec.Capabilities = append(codec.Capabilities, model.CapabilityRule{Key: "asset.agent", State: model.CapabilityStateNative})
 	codec.Agent = func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md/invalid", nil }
 	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
@@ -484,9 +484,9 @@ func packageFixture(target model.TargetID) model.NormalizedPackage {
 			"dependencies": map[string]any{"pi-subagents": "0.34.0"},
 		},
 		Assets: []model.NormalizedAsset{
-			{Identity: "skill/demo", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "demo", "description": "Demo"}, Body: "Use demo.\n", Files: map[model.RelativePath][]byte{}}},
-			{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code", "inheritSkills": true}, Body: "Review.\n", Files: map[model.RelativePath][]byte{}}},
-			{Identity: "resource/templates", Kind: model.AssetKindResource, Content: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath][]byte{"design.md": []byte("# Design\n")}}},
+			{Identity: "skill/demo", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "demo", "description": "Demo"}, Body: "Use demo.\n", Files: map[model.RelativePath]model.FileContent{}}},
+			{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code", "inheritSkills": true}, Body: "Review.\n", Files: map[model.RelativePath]model.FileContent{}}},
+			{Identity: "resource/templates", Kind: model.AssetKindResource, Content: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"design.md": {Bytes: []byte("# Design\n")}}}},
 		},
 	}
 }

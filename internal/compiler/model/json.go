@@ -17,6 +17,53 @@ func DecodeSourceManifestJSON(data []byte) (SourceManifest, []Diagnostic) {
 	return manifest, ValidateSourceManifest(manifest)
 }
 
+// DecodeHookDescriptorJSON decodes the author-owned fields of one portable hook.
+// Identity and location are assigned by the source importer and are not accepted
+// from author JSON.
+func DecodeHookDescriptorJSON(data []byte, identity AssetID, location SourceLocation) (HookDescriptor, error) {
+	var raw struct {
+		Event               *HookEvent         `json:"event"`
+		Matcher             *HookMatcher       `json:"matcher"`
+		Handler             *HookCommand       `json:"handler"`
+		TimeoutMilliseconds *int               `json:"timeoutMilliseconds"`
+		Asynchronous        *bool              `json:"asynchronous"`
+		FailurePolicy       *HookFailurePolicy `json:"failurePolicy"`
+		Order               *int               `json:"order"`
+	}
+	if err := DecodeStrictJSONObject(data, &raw); err != nil {
+		return HookDescriptor{}, err
+	}
+	if raw.Event == nil {
+		return HookDescriptor{}, fmt.Errorf("event is required")
+	}
+	if raw.Handler == nil {
+		return HookDescriptor{}, fmt.Errorf("handler is required")
+	}
+	if raw.TimeoutMilliseconds == nil {
+		return HookDescriptor{}, fmt.Errorf("timeoutMilliseconds is required")
+	}
+	if raw.Asynchronous == nil {
+		return HookDescriptor{}, fmt.Errorf("asynchronous is required")
+	}
+	if raw.FailurePolicy == nil {
+		return HookDescriptor{}, fmt.Errorf("failurePolicy is required")
+	}
+	if raw.Order == nil {
+		return HookDescriptor{}, fmt.Errorf("order is required")
+	}
+	return HookDescriptor{
+		Identity:            identity,
+		Location:            location,
+		Event:               *raw.Event,
+		Matcher:             raw.Matcher,
+		Handler:             *raw.Handler,
+		TimeoutMilliseconds: *raw.TimeoutMilliseconds,
+		Asynchronous:        *raw.Asynchronous,
+		FailurePolicy:       *raw.FailurePolicy,
+		Order:               *raw.Order,
+	}, nil
+}
+
 // DecodeStrictJSON decodes one UTF-8 JSON value, rejecting duplicate object keys,
 // unknown struct fields, and trailing values.
 func DecodeStrictJSON(data []byte, destination any) error {

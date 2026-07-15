@@ -97,11 +97,18 @@ type InputFile struct {
 // PackageMetadata stores source package JSON metadata.
 type PackageMetadata map[string]any
 
+// FileContent is one source payload file with its mode and source evidence.
+type FileContent struct {
+	Bytes      []byte           `json:"bytes"`
+	Executable bool             `json:"executable"`
+	Origin     []SourceLocation `json:"origin"`
+}
+
 // AssetContent is an asset's frontmatter, body, and sidecar files.
 type AssetContent struct {
-	Frontmatter map[string]any          `json:"frontmatter"`
-	Body        string                  `json:"body"`
-	Files       map[RelativePath][]byte `json:"files"`
+	Frontmatter map[string]any               `json:"frontmatter"`
+	Body        string                       `json:"body"`
+	Files       map[RelativePath]FileContent `json:"files"`
 }
 
 // SectionPatch replaces the body under a heading path.
@@ -119,8 +126,90 @@ type BodyPatch struct {
 
 // FilePatch replaces one asset sidecar file.
 type FilePatch struct {
-	Path  RelativePath `json:"path"`
-	Bytes []byte       `json:"bytes"`
+	Path    RelativePath `json:"path"`
+	Content FileContent  `json:"content"`
+}
+
+// HookEvent is a portable lifecycle event.
+type HookEvent string
+
+const (
+	HookEventSessionStart    HookEvent = "session-start"
+	HookEventSessionEnd      HookEvent = "session-end"
+	HookEventPromptSubmit    HookEvent = "prompt-submit"
+	HookEventPreTool         HookEvent = "pre-tool"
+	HookEventPostTool        HookEvent = "post-tool"
+	HookEventPostToolFailure HookEvent = "post-tool-failure"
+	HookEventStop            HookEvent = "stop"
+	HookEventNotification    HookEvent = "notification"
+	HookEventPreCompact      HookEvent = "pre-compact"
+	HookEventPostCompact     HookEvent = "post-compact"
+)
+
+// HookToolCategory is a canonical portable tool category.
+type HookToolCategory string
+
+const (
+	HookToolCategoryCommand HookToolCategory = "command"
+	HookToolCategoryRead    HookToolCategory = "read"
+	HookToolCategoryWrite   HookToolCategory = "write"
+	HookToolCategoryEdit    HookToolCategory = "edit"
+	HookToolCategorySearch  HookToolCategory = "search"
+	HookToolCategoryWeb     HookToolCategory = "web"
+	HookToolCategoryTask    HookToolCategory = "task"
+	HookToolCategoryMCP     HookToolCategory = "mcp"
+	HookToolCategoryOther   HookToolCategory = "other"
+)
+
+// HookMatcher restricts a tool event to canonical tool categories.
+type HookMatcher struct {
+	Tools []HookToolCategory `json:"tools"`
+}
+
+// HookHandlerMode selects the active command representation.
+type HookHandlerMode string
+
+const (
+	HookHandlerModeExec  HookHandlerMode = "exec"
+	HookHandlerModeShell HookHandlerMode = "shell"
+)
+
+// HookArgument is exactly one literal value or package-file reference.
+type HookArgument struct {
+	Literal     *string       `json:"literal,omitempty"`
+	PackageFile *RelativePath `json:"packageFile,omitempty"`
+}
+
+// HookCommand describes an exec or explicit shell handler.
+type HookCommand struct {
+	Mode         HookHandlerMode `json:"mode"`
+	Program      *string         `json:"program,omitempty"`
+	Arguments    []HookArgument  `json:"arguments"`
+	ShellCommand *string         `json:"shellCommand,omitempty"`
+}
+
+// HookFailurePolicy controls handler failure behavior.
+type HookFailurePolicy string
+
+const (
+	HookFailurePolicyOpen   HookFailurePolicy = "open"
+	HookFailurePolicyClosed HookFailurePolicy = "closed"
+)
+
+// MaxHookTimeoutMilliseconds is the portable hook timeout ceiling.
+const MaxHookTimeoutMilliseconds = 600_000
+
+// HookDescriptor is one typed portable command hook.
+type HookDescriptor struct {
+	Identity            AssetID           `json:"identity"`
+	Location            SourceLocation    `json:"location"`
+	Event               HookEvent         `json:"event"`
+	Matcher             *HookMatcher      `json:"matcher,omitempty"`
+	Handler             HookCommand       `json:"handler"`
+	TimeoutMilliseconds int               `json:"timeoutMilliseconds"`
+	Asynchronous        bool              `json:"asynchronous"`
+	FailurePolicy       HookFailurePolicy `json:"failurePolicy"`
+	Order               int               `json:"order"`
 }
 
 // TargetOverlay describes target-specific asset changes.
@@ -221,6 +310,7 @@ type SourceAsset struct {
 	Kind           AssetKind       `json:"kind"`
 	Targets        []TargetID      `json:"targets,omitempty"`
 	Base           AssetContent    `json:"base"`
+	Hook           *HookDescriptor `json:"hook,omitempty"`
 	CapabilityUses []CapabilityUse `json:"capabilityUses"`
 	Overlays       []TargetOverlay `json:"overlays"`
 }
@@ -244,6 +334,7 @@ type NormalizedAsset struct {
 	Identity       AssetID         `json:"identity"`
 	Kind           AssetKind       `json:"kind"`
 	Content        AssetContent    `json:"content"`
+	Hook           *HookDescriptor `json:"hook,omitempty"`
 	CapabilityUses []CapabilityUse `json:"capabilityUses"`
 }
 

@@ -288,6 +288,7 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Base)...)
+	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Base, asset.CapabilityUses)...)
 	if len(asset.Targets) > 0 {
 		targets := make(map[TargetID]struct{}, len(asset.Targets))
 		for _, target := range asset.Targets {
@@ -328,12 +329,14 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 			if err := validateRelativePath(string(file.Path)); err != nil {
 				diagnostics = appendInvalid(diagnostics, "overlay file path: "+err.Error())
 			}
+			diagnostics = append(diagnostics, validateFileContent(file.Content)...)
 			if _, ok := files[file.Path]; ok {
 				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("overlay file path %q is duplicated", file.Path))
 			}
 			files[file.Path] = struct{}{}
 		}
 		deleted := make(map[RelativePath]struct{}, len(overlay.DeletedFiles))
+		packageFiles := hookPackageFiles(asset.Hook)
 		for _, deletedPath := range overlay.DeletedFiles {
 			if err := validateRelativePath(string(deletedPath)); err != nil {
 				diagnostics = appendInvalid(diagnostics, "overlay deleted file path: "+err.Error())
@@ -343,6 +346,9 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 			}
 			if _, ok := files[deletedPath]; ok {
 				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("overlay file path %q is both replaced and deleted", deletedPath))
+			}
+			if _, ok := packageFiles[deletedPath]; ok {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("overlay deletes hook package file %q", deletedPath))
 			}
 			deleted[deletedPath] = struct{}{}
 		}
@@ -363,6 +369,7 @@ func validateNormalizedAsset(asset NormalizedAsset) []Diagnostic {
 	var diagnostics []Diagnostic
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Content)...)
+	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Content, asset.CapabilityUses)...)
 	for _, capability := range asset.CapabilityUses {
 		if err := validateIdentifier(string(capability.Key), "capability key"); err != nil {
 			diagnostics = appendInvalid(diagnostics, "capability use: "+err.Error())
@@ -401,8 +408,158 @@ func validateAssetContent(content AssetContent) []Diagnostic {
 		if err := validateRelativePath(filePath); err != nil {
 			diagnostics = appendInvalid(diagnostics, "asset file path: "+err.Error())
 		}
+		diagnostics = append(diagnostics, validateFileContent(content.Files[RelativePath(filePath)])...)
 	}
 	return diagnostics
+}
+
+func validateFileContent(content FileContent) []Diagnostic {
+	var diagnostics []Diagnostic
+	for _, origin := range content.Origin {
+		diagnostics = append(diagnostics, validateSourceLocation(origin)...)
+	}
+	return diagnostics
+}
+
+func validateHookAsset(identity AssetID, kind AssetKind, hook *HookDescriptor, content AssetContent, capabilities []CapabilityUse) []Diagnostic {
+	if kind != AssetKindHook {
+		if hook != nil {
+			return appendInvalid(nil, fmt.Sprintf("non-hook asset %q has a hook descriptor", identity))
+		}
+		return nil
+	}
+	if hook == nil {
+		return appendInvalid(nil, fmt.Sprintf("hook asset %q requires a hook descriptor", identity))
+	}
+
+	var diagnostics []Diagnostic
+	if hook.Identity != identity {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook descriptor identity %q does not match asset %q", hook.Identity, identity))
+	}
+	diagnostics = append(diagnostics, validateSourceLocation(hook.Location)...)
+	if !validHookEvent(hook.Event) {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q event %q is invalid", identity, hook.Event))
+	}
+	if hook.Matcher != nil {
+		if !hookEventUsesTools(hook.Event) {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q event %q forbids a tool matcher", identity, hook.Event))
+		}
+		if len(hook.Matcher.Tools) == 0 {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q matcher tools must not be empty", identity))
+		}
+		tools := make(map[HookToolCategory]struct{}, len(hook.Matcher.Tools))
+		for _, tool := range hook.Matcher.Tools {
+			if !validHookToolCategory(tool) {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q tool category %q is invalid", identity, tool))
+			}
+			if _, ok := tools[tool]; ok {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q tool category %q is duplicated", identity, tool))
+			}
+			tools[tool] = struct{}{}
+		}
+	}
+	diagnostics = append(diagnostics, validateHookCommand(identity, hook.Handler, content.Files)...)
+	if hook.TimeoutMilliseconds < 1 || hook.TimeoutMilliseconds > MaxHookTimeoutMilliseconds {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q timeoutMilliseconds must be between 1 and %d", identity, MaxHookTimeoutMilliseconds))
+	}
+	if hook.Order < 0 {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q order must not be negative", identity))
+	}
+	if !validHookFailurePolicy(hook.FailurePolicy) {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q failure policy %q is invalid", identity, hook.FailurePolicy))
+	}
+	if hook.Asynchronous {
+		if !hookEventAllowsAsync(hook.Event) {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q event %q does not allow asynchronous execution", identity, hook.Event))
+		}
+		if hook.FailurePolicy == HookFailurePolicyClosed {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q asynchronous execution requires open failure policy", identity))
+		}
+		for _, capability := range capabilities {
+			if capability.Key == "hook.decision.block" || capability.Key == "hook.decision.rewrite-input" {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q asynchronous execution is incompatible with capability %q", identity, capability.Key))
+			}
+		}
+	}
+	return diagnostics
+}
+
+func validateHookCommand(identity AssetID, command HookCommand, files map[RelativePath]FileContent) []Diagnostic {
+	var diagnostics []Diagnostic
+	switch command.Mode {
+	case HookHandlerModeExec:
+		program := valueOrEmpty(command.Program)
+		if command.Program == nil || strings.TrimSpace(program) == "" || strings.TrimSpace(program) != program || strings.ContainsAny(program, "\x00/\\") {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q exec handler requires a non-empty program name", identity))
+		}
+		if command.ShellCommand != nil {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q exec handler forbids shellCommand", identity))
+		}
+	case HookHandlerModeShell:
+		shellCommand := valueOrEmpty(command.ShellCommand)
+		if command.ShellCommand == nil || strings.TrimSpace(shellCommand) == "" || strings.ContainsRune(shellCommand, '\x00') {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q shell handler requires shellCommand", identity))
+		}
+		if command.Program != nil {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q shell handler forbids program", identity))
+		}
+		if len(command.Arguments) != 0 {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q shell handler forbids arguments", identity))
+		}
+	default:
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q handler mode %q is invalid", identity, command.Mode))
+	}
+
+	arguments := make(map[string]struct{}, len(command.Arguments))
+	for index, argument := range command.Arguments {
+		kind := ""
+		value := ""
+		switch {
+		case argument.Literal != nil && argument.PackageFile == nil:
+			kind = "literal"
+			value = *argument.Literal
+			if strings.ContainsRune(value, '\x00') {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d literal contains NUL", identity, index))
+			}
+		case argument.Literal == nil && argument.PackageFile != nil:
+			kind = "packageFile"
+			value = string(*argument.PackageFile)
+			if err := validateRelativePath(value); err != nil {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d packageFile: %v", identity, index, err))
+			} else if _, ok := files[*argument.PackageFile]; !ok {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d packageFile %q does not exist in the hook payload", identity, index, value))
+			}
+		default:
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d must contain exactly one of literal or packageFile", identity, index))
+			continue
+		}
+		key := kind + "\x00" + value
+		if _, ok := arguments[key]; ok {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q argument %d duplicates %s %q", identity, index, kind, value))
+		}
+		arguments[key] = struct{}{}
+	}
+	return diagnostics
+}
+
+func hookPackageFiles(hook *HookDescriptor) map[RelativePath]struct{} {
+	paths := make(map[RelativePath]struct{})
+	if hook == nil {
+		return paths
+	}
+	for _, argument := range hook.Handler.Arguments {
+		if argument.PackageFile != nil {
+			paths[*argument.PackageFile] = struct{}{}
+		}
+	}
+	return paths
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func validateBodyPatch(patch BodyPatch) []Diagnostic {
@@ -637,4 +794,39 @@ func validCapabilityState(state CapabilityState) bool {
 
 func validNativeGapAction(action NativeGapAction) bool {
 	return action == NativeGapActionReplace || action == NativeGapActionExclude || action == NativeGapActionSourceOnly
+}
+
+func validHookEvent(event HookEvent) bool {
+	switch event {
+	case HookEventSessionStart, HookEventSessionEnd, HookEventPromptSubmit, HookEventPreTool, HookEventPostTool, HookEventPostToolFailure, HookEventStop, HookEventNotification, HookEventPreCompact, HookEventPostCompact:
+		return true
+	default:
+		return false
+	}
+}
+
+func hookEventUsesTools(event HookEvent) bool {
+	return event == HookEventPreTool || event == HookEventPostTool || event == HookEventPostToolFailure
+}
+
+func hookEventAllowsAsync(event HookEvent) bool {
+	switch event {
+	case HookEventSessionEnd, HookEventPostTool, HookEventPostToolFailure, HookEventNotification, HookEventPreCompact, HookEventPostCompact:
+		return true
+	default:
+		return false
+	}
+}
+
+func validHookToolCategory(category HookToolCategory) bool {
+	switch category {
+	case HookToolCategoryCommand, HookToolCategoryRead, HookToolCategoryWrite, HookToolCategoryEdit, HookToolCategorySearch, HookToolCategoryWeb, HookToolCategoryTask, HookToolCategoryMCP, HookToolCategoryOther:
+		return true
+	default:
+		return false
+	}
+}
+
+func validHookFailurePolicy(policy HookFailurePolicy) bool {
+	return policy == HookFailurePolicyOpen || policy == HookFailurePolicyClosed
 }

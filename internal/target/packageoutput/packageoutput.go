@@ -95,8 +95,8 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 	case model.AssetKindSkill:
 		return renderSkill(files, paths, root, asset, "skills/"+name)
 	case model.AssetKindResource:
-		for path, data := range asset.Content.Files {
-			if err := add(files, paths, rootedPath(root, "resources/"+name+"/"+string(path)), data); err != nil {
+		for path, content := range asset.Content.Files {
+			if err := add(files, paths, rootedPath(root, "resources/"+name+"/"+string(path)), content.Bytes); err != nil {
 				return err
 			}
 		}
@@ -126,8 +126,8 @@ func renderSkill(files *[]model.PlannedFile, paths map[model.RelativePath]struct
 	if err := add(files, paths, rootedPath(packageRoot, root+"/SKILL.md"), data); err != nil {
 		return err
 	}
-	for path, data := range asset.Content.Files {
-		if err := add(files, paths, rootedPath(packageRoot, root+"/"+string(path)), data); err != nil {
+	for path, content := range asset.Content.Files {
+		if err := add(files, paths, rootedPath(packageRoot, root+"/"+string(path)), content.Bytes); err != nil {
 			return err
 		}
 	}
