@@ -1,0 +1,24 @@
+{
+  "event": "pre-tool",
+  "matcher": {
+    "tools": [
+      "command"
+    ]
+  },
+  "handler": {
+    "mode": "exec",
+    "program": "python3",
+    "arguments": [
+      {
+        "packageFile": "protocol.py"
+      },
+      {
+        "literal": "rewrite"
+      }
+    ]
+  },
+  "timeoutMilliseconds": 2000,
+  "asynchronous": false,
+  "failurePolicy": "open",
+  "order": 30
+}

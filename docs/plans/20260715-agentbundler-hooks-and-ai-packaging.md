@@ -745,11 +745,11 @@ Manual checks:
 - Review the generated tree and captured stdin/decision output.
 - If the vendor CLI cannot fire a hook without a model/network call, retain official validation plus a protocol-level subprocess test and document that limitation rather than faking a pass.
 
-- [ ] Add a complete source-to-Claude fixture with interpreter-backed allow, deny, and input-rewrite hook cases.
-- [ ] Assert exact generated paths/bytes, executable intent, provenance origins, and byte equality across two absolute workspace roots.
-- [ ] Add a test-only subprocess protocol harness for stdin, stdout decisions, exit status, timeout, and output limits.
-- [ ] Add an opt-in installed-Claude validation/fire smoke when it can remain offline and isolated; otherwise document the exact unavailable boundary.
-- [ ] Run full Go, race, lint, vet, and architecture checks as the first implementation checkpoint.
+- [x] Add a complete source-to-Claude fixture with interpreter-backed allow, deny, and input-rewrite hook cases.
+- [x] Assert exact generated paths/bytes, executable intent, provenance origins, and byte equality across two absolute workspace roots.
+- [x] Add a test-only subprocess protocol harness for stdin, stdout decisions, exit status, timeout, and output limits.
+- [x] Add an opt-in installed-Claude validation/fire smoke when it can remain offline and isolated; otherwise document the exact unavailable boundary.
+- [x] Run full Go, race, lint, vet, and architecture checks as the first implementation checkpoint.
 
 ### Task 10: Extract and harden the standalone Pi hook runtime
 

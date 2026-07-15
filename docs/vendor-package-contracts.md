@@ -22,7 +22,8 @@ Catalog paths are generated artifacts only. Agent Bundler does not register, pub
 - Portable events with direct native events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, `PreCompact`, and `PostCompact`.
 - Match and decisions: tool-event matchers can select native tool names. `PreToolUse` can explicitly deny a tool call and can return updated input. Async command hooks are usable only where the portable hook is passive; an async hook cannot preserve a blocking or rewrite decision.
 - Limits: command `timeout` is seconds. A general command crash is not the same as portable fail-closed behavior; `hook.failure.closed` stays unsupported unless an exact event mapping proves it. HTTP, prompt, agent, and MCP-tool handlers are outside the initial command-hook contract.
-- Validation: `claude plugin validate --strict <root>` is official, offline for a local tree, and non-mutating. It is the only Claude command allowed in production native verification.
+- Validation: `claude plugin validate --strict <root>` is official, offline for a local tree, and non-mutating. It is the only Claude command allowed in production native verification. The `vendor_smoke` test runs it with temporary `HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_CONFIG_HOME` roots and blocked proxy endpoints.
+- Offline fire boundary: installed Claude Code 2.1.210 exposes plugin validation and session-time plugin loading, but no command that fires a hook directly. `--plugin-dir` loads hooks only as part of a Claude session, which requires a model request. Agent Bundler therefore does not claim an installed-CLI fire smoke; the hermetic subprocess protocol test covers stdin, decisions, exit status, timeout, and output limits without a network or model session.
 - Sources: [plugin reference](https://code.claude.com/docs/en/plugins-reference) and [hooks reference](https://code.claude.com/docs/en/hooks).
 
 ## OpenAI Codex
