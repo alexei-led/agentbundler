@@ -129,6 +129,9 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]output
 		}
 		return nil
 	case model.AssetKindAgent:
+		if codec.Agent == nil || codec.AgentRoot == "" {
+			return fmt.Errorf("target %q does not support agents in installable packages", codec.Target)
+		}
 		data, extension, err := codec.Agent(asset)
 		if err != nil {
 			if fieldError, ok := err.(*UnsupportedAgentFieldError); ok && fieldError.Asset == "" {
@@ -390,14 +393,19 @@ func validateDuplicateHookIDs(packages []model.NormalizedPackage) []model.Diagno
 }
 
 func validateCodec(codec Codec) []model.Diagnostic {
-	if codec.Manifest == nil || codec.Agent == nil || len(codec.Capabilities) == 0 {
-		return []model.Diagnostic{diagnostic("invalid-codec", "installable package codec requires manifest, agent, and capability handlers")}
+	if codec.Manifest == nil || len(codec.Capabilities) == 0 {
+		return []model.Diagnostic{diagnostic("invalid-codec", "installable package codec requires manifest and capability handlers")}
 	}
 	if _, err := model.NewRelativePath(codec.ManifestPath); err != nil {
 		return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("manifest path: %v", err))}
 	}
-	if _, err := model.NewRelativePath(codec.AgentRoot); err != nil {
-		return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("agent root: %v", err))}
+	if (codec.Agent == nil) != (codec.AgentRoot == "") {
+		return []model.Diagnostic{diagnostic("invalid-codec", "agent serializer and root must be configured together")}
+	}
+	if codec.AgentRoot != "" {
+		if _, err := model.NewRelativePath(codec.AgentRoot); err != nil {
+			return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("agent root: %v", err))}
+		}
 	}
 	if (codec.Hooks == nil) != (codec.HookPayloadRoot == "") {
 		return []model.Diagnostic{diagnostic("invalid-codec", "hook renderer and hook payload root must be configured together")}

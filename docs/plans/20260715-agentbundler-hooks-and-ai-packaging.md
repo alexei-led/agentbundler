@@ -953,12 +953,12 @@ Manual checks:
 - Compare paths and event/decision behavior against the pinned official Codex docs and `openai/plugins` fixtures.
 - Confirm automatic native checks do not mutate Codex configuration; local install/list remains opt-in test code.
 
-- [ ] Correct Codex plugin manifest component and plugin-agent paths, preserving project-profile behavior separately.
-- [ ] Map only verified portable events, matchers, command forms, blocking/input-rewrite semantics, timeout, and failure policy to root `hooks.json`.
-- [ ] Declare unsupported/advisory capability cells exactly and increment the Codex format revision.
-- [ ] Add golden, hook-free regression, collision, unsupported-event, shell, trust-boundary, and deterministic multi-package tests.
-- [ ] Add an isolated optional local marketplace/install/list smoke when supported, otherwise document the missing official validator boundary.
-- [ ] Run focused/full/architecture checks before Task 14.
+- [x] Correct Codex plugin manifest component and plugin-agent paths, preserving project-profile behavior separately.
+- [x] Map only verified portable events, matchers, command forms, blocking/input-rewrite semantics, timeout, and failure policy to root `hooks.json`.
+- [x] Declare unsupported/advisory capability cells exactly and increment the Codex format revision.
+- [x] Add golden, hook-free regression, collision, unsupported-event, shell, trust-boundary, and deterministic multi-package tests.
+- [x] Add an isolated optional local marketplace/install/list smoke when supported, otherwise document the missing official validator boundary.
+- [x] Run focused/full/architecture checks before Task 14.
 
 ### Task 14: Implement GitHub Copilot CLI-native hooks and packages
 

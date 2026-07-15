@@ -34,11 +34,11 @@ HookPayloadFile = immutable { path, packagePath, bytes, executable, origin }
 HookInput = immutable { descriptor, payloadRoot, payloadFiles }
 HookRenderInput = immutable { packageID, hooks ordered by order/identity/source }
 HookManifest = target-owned { path, bytes }
-PackageCodec = target-owned pure callbacks for package manifest, agent, and hook manifest serialization
+PackageCodec = target-owned pure callbacks for package manifest, optional agent, and hook manifest serialization
 render-with-codec(TargetRenderInput, PackageCodec) -> TargetPlan + [Diagnostic]
 ```
 
-The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. The codec owns the native manifest path and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables.
+The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. The codec owns the native manifest path and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables. Agent serialization and its output root are configured together only for package contracts that define an agent component.
 
 ## Integrations
 
