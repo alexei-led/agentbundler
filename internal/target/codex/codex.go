@@ -13,7 +13,7 @@ import (
 
 const (
 	Target         = model.TargetCodex
-	FormatRevision = 3
+	FormatRevision = 4
 )
 
 // Adapter renders Codex plugins and preserves the project-profile agent layout.

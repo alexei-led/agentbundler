@@ -10,6 +10,7 @@ import (
 	"github.com/alexei-led/agentbundler/internal/target/codex"
 	"github.com/alexei-led/agentbundler/internal/target/copilot"
 	"github.com/alexei-led/agentbundler/internal/target/cursor"
+	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 	"github.com/alexei-led/agentbundler/internal/target/pi"
 )
@@ -285,6 +286,36 @@ func TestRenderWithCodecContract(t *testing.T) {
 	_, diagnostics = packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "agent suffix") {
 		t.Fatalf("invalid agent suffix diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestRenderWithCodecRejectsCatalogPathCollision(t *testing.T) {
+	pkg := packageFixture(model.TargetClaude)
+	pkg.Assets = nil
+	pkg.Metadata = model.PackageMetadata{
+		"description": "Demo package", "version": "1.0.0", "author": "Platform Team",
+		"homepage": "https://example.com/demo", "repository": "https://github.com/example/demo",
+		"license": "MIT", "keywords": []string{"tools"},
+	}
+	input := separate([]model.NormalizedPackage{pkg})
+	input.Distribution = model.DistributionMetadata{
+		"name": "team-tools", "owner": "Platform Team", "description": "Team tools", "version": "1.0.0",
+	}
+	codec := packageoutput.Codec{
+		Target: model.TargetClaude, ManifestPath: "plugin.json",
+		Capabilities: []model.CapabilityRule{{Key: "asset.skill", State: model.CapabilityStateNative}},
+		Manifest:     func(model.NormalizedPackage) ([]byte, error) { return []byte("{}\n"), nil },
+		Catalog: func(marketplace.Catalog) (packageoutput.CatalogManifest, error) {
+			return packageoutput.CatalogManifest{Path: "plugin.json", Bytes: []byte("{}\n")}, nil
+		},
+	}
+
+	plan, diagnostics := packageoutput.RenderWithCodec(input, codec)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !containsAll(diagnostics[0].Message, "plugin.json", "package manifest", "marketplace manifest") {
+		t.Fatalf("RenderWithCodec() = (%#v, %#v), want catalog path collision", plan, diagnostics)
+	}
+	if len(plan.Files) != 0 {
+		t.Fatalf("collision produced a partial plan: %#v", plan)
 	}
 }
 

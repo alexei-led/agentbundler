@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 )
 
 // RenderWithCodec renders an explicit target request using a target-owned serialization codec.
@@ -41,6 +42,14 @@ func RenderWithCodec(input model.TargetRenderInput, codec Codec) (model.TargetPl
 			if diagnostics := codec.ValidatePackage(pkg); len(diagnostics) != 0 {
 				return empty(target), diagnostics
 			}
+		}
+	}
+	var catalog marketplace.Catalog
+	if input.Distribution != nil && codec.Catalog != nil {
+		var diagnostics []model.Diagnostic
+		catalog, diagnostics = marketplace.Build(input)
+		if len(diagnostics) != 0 {
+			return empty(target), diagnostics
 		}
 	}
 
@@ -91,6 +100,15 @@ func RenderWithCodec(input model.TargetRenderInput, codec Codec) (model.TargetPl
 			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 		}
 		if err := addGenerated(&plan.Files, paths, rootedPath(root, codec.ManifestPath), manifestBytes, nil, "generated package manifest"); err != nil {
+			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
+		}
+	}
+	if input.Distribution != nil && codec.Catalog != nil {
+		manifest, err := codec.Catalog(catalog)
+		if err != nil {
+			return empty(target), []model.Diagnostic{diagnostic("invalid-marketplace-manifest", err.Error())}
+		}
+		if err := addGenerated(&plan.Files, paths, manifest.Path, manifest.Bytes, nil, "generated marketplace manifest"); err != nil {
 			return empty(target), []model.Diagnostic{diagnostic("invalid-package-output", err.Error())}
 		}
 	}

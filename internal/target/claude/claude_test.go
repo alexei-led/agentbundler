@@ -33,8 +33,8 @@ func TestRenderRejectsNonSkillAssets(t *testing.T) {
 }
 
 func TestClaudeCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 3 {
-		t.Fatalf("FormatRevision = %d, want 3", FormatRevision)
+	if FormatRevision != 4 {
+		t.Fatalf("FormatRevision = %d, want 4", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent":                  model.CapabilityStateNative,

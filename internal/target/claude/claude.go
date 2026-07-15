@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetClaude
-	FormatRevision = 3
+	FormatRevision = 4
 )
 
 // Adapter renders Claude project skills and installable plugins.
@@ -28,7 +28,7 @@ func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, 
 		if len(diagnostics) != 0 {
 			return plan, diagnostics
 		}
-		plan.NativeChecks = nativeChecks(plan.Packages)
+		plan.NativeChecks = nativeChecks(plan.Packages, input.Distribution != nil)
 		return plan, nil
 	}
 	return skills.Render(adapter.Target(), ".claude/skills", input.Packages)
@@ -49,7 +49,14 @@ func packagesHaveProfile(packages []model.NormalizedPackage, profile model.Targe
 	return true
 }
 
-func nativeChecks(packages []model.PackageID) []model.NativeCheck {
+func nativeChecks(packages []model.PackageID, catalog bool) []model.NativeCheck {
+	if catalog {
+		return []model.NativeCheck{{
+			Program:   "claude",
+			Arguments: []string{"plugin", "validate", "--strict", "."},
+			Location:  model.SourceLocation{Path: "internal/target/claude/codec.go"},
+		}}
+	}
 	checks := make([]model.NativeCheck, 0, len(packages))
 	for _, identity := range packages {
 		root := "."

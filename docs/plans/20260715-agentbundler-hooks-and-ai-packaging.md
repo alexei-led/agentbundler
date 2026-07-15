@@ -1163,11 +1163,11 @@ Manual checks:
 - Compare every catalog path and required field with `docs/vendor-package-contracts.md`.
 - Confirm generated relative `source` entries resolve inside the target output root.
 
-- [ ] Add the shared deterministic catalog-entry builder and strict common distribution metadata validation.
-- [ ] Render Claude `.claude-plugin/marketplace.json`, Codex `.agents/plugins/marketplace.json`, Copilot `.github/plugin/marketplace.json`, Cursor `.cursor-plugin/marketplace.json`, and Grok-compatible catalog output.
-- [ ] Handle flat single-package source `.` and multi-package package-ID roots explicitly; reject path/identity collisions.
-- [ ] Add target golden tests for required fields, ordering, missing metadata, single/multi-package roots, explicit Pi-only aggregate rejection, and reproducibility.
-- [ ] Update configuration/module docs and run all target, compiler, architecture, and official available validators before Task 18.
+- [x] Add the shared deterministic catalog-entry builder and strict common distribution metadata validation.
+- [x] Render Claude `.claude-plugin/marketplace.json`, Codex `.agents/plugins/marketplace.json`, Copilot `.github/plugin/marketplace.json`, Cursor `.cursor-plugin/marketplace.json`, and Grok-compatible catalog output.
+- [x] Handle flat single-package source `.` and multi-package package-ID roots explicitly; reject path/identity collisions.
+- [x] Add target golden tests for required fields, ordering, missing metadata, single/multi-package roots, explicit Pi-only aggregate rejection, and reproducibility.
+- [x] Update configuration/module docs and run all target, compiler, architecture, and official available validators before Task 18.
 
 ### Task 18: Add the cc-thingz-shaped acceptance fixture, release gates, and final documentation
 

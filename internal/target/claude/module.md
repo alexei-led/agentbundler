@@ -43,6 +43,10 @@ hooks/hooks.json
 <payload files>
 ```
 
+When distribution metadata is present, the target root also contains one
+`.claude-plugin/marketplace.json`. Its entries use `./` for one flat package or
+`./<package-id>` for multi-package roots and are ordered by package ID.
+
 Package-file command arguments render with `${CLAUDE_PLUGIN_ROOT}` and contained payload paths. The target format revision increments from the hook-free revision when these native bytes or catalog output are enabled.
 
 Verified initial semantic cells:
@@ -54,7 +58,7 @@ Verified initial semantic cells:
 
 A similarly named event is not enough: unsupported matcher, mutation, async, timeout, or failure semantics fail through exact capability diagnostics.
 
-The adapter declares `claude plugin validate --strict <plugin-root>` as a `NativeCheck` for each generated installable root. It does not invoke the process.
+The adapter declares `claude plugin validate --strict <plugin-root>` as a `NativeCheck` for each generated installable root. When a catalog is present, one strict check at `.` validates the marketplace and all local plugin roots together. Rendering does not invoke the process.
 
 Primary sources: <https://code.claude.com/docs/en/plugins-reference> and <https://code.claude.com/docs/en/hooks>, accessed 2026-07-15. See `docs/vendor-package-contracts.md`.
 

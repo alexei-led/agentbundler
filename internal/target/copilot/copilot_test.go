@@ -23,8 +23,8 @@ func TestRenderUsesCopilotNativeSkillRoot(t *testing.T) {
 }
 
 func TestCopilotCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 5 {
-		t.Fatalf("FormatRevision = %d, want 5", FormatRevision)
+	if FormatRevision != 6 {
+		t.Fatalf("FormatRevision = %d, want 6", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,

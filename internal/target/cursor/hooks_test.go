@@ -13,8 +13,8 @@ import (
 )
 
 func TestCursorCapabilitiesAndFormatRevision(t *testing.T) {
-	if formatRevision != 4 {
-		t.Fatalf("formatRevision = %d, want 4", formatRevision)
+	if formatRevision != 5 {
+		t.Fatalf("formatRevision = %d, want 5", formatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,
