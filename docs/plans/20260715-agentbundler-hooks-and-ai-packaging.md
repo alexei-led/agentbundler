@@ -495,11 +495,11 @@ Manual checks:
 - Inspect a fixture plan and confirm payload paths are asset-relative, not workspace-absolute.
 - On POSIX, confirm an executable fixture retains intent; confirm interpreter-backed scripts also work when not executable.
 
-- [ ] Implement canonical `src/hooks/<id>/hook.json` import and descriptor-only exact JSON compatibility.
-- [ ] Import payload files with bytes, executable intent, sorted traversal, input hashes, source locations, containment, and symlink rejection.
-- [ ] Convert descriptor semantics into exact capability uses rather than only `asset.hook`.
-- [ ] Add success and failure fixtures for exec, shell compatibility, payload references, mode handling, unknown fields, duplicate keys, missing files, traversal, and symlinks.
-- [ ] Run source-focused and architecture checks before Task 5.
+- [x] Implement canonical `src/hooks/<id>/hook.json` import and descriptor-only exact JSON compatibility.
+- [x] Import payload files with bytes, executable intent, sorted traversal, input hashes, source locations, containment, and symlink rejection.
+- [x] Convert descriptor semantics into exact capability uses rather than only `asset.hook`.
+- [x] Add success and failure fixtures for exec, shell compatibility, payload references, mode handling, unknown fields, duplicate keys, missing files, traversal, and symlinks.
+- [x] Run source-focused and architecture checks before Task 5.
 
 ### Task 5: Normalize adopted Claude plugin hooks without unsafe command parsing
 

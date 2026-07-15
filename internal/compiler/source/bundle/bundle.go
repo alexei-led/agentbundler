@@ -228,7 +228,7 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 }
 
 func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsset, *model.NativeGap, bool) {
-	kind, name, mainFile, assetDir, markdown, err := classifyAsset(string(assetPath))
+	kind, name, mainFile, assetDir, markdown, hookDirectory, err := classifyAsset(string(assetPath))
 	if err != nil {
 		i.addDiagnostic(assetPath, "%v", err)
 		return model.SourceAsset{}, nil, false
@@ -264,16 +264,23 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		if kind == model.AssetKindSkill {
 			i.readSupportFiles(assetDir, &content)
 		}
+		if hookDirectory {
+			i.readHookPayloads(assetDir, &content)
+		}
 	}
 
+	capabilities := i.readCapabilities(assetDir)
 	var hook *model.HookDescriptor
 	if kind == model.AssetKindHook {
-		descriptor, err := model.DecodeHookDescriptorJSON([]byte(content.Body), identity, model.SourceLocation{Path: model.RelativePath(mainFile)})
+		descriptorPath := model.RelativePath(mainFile)
+		descriptor, err := model.DecodeHookDescriptorJSON([]byte(content.Body), identity, model.SourceLocation{Path: descriptorPath})
 		if err != nil {
-			i.addDiagnostic(model.RelativePath(mainFile), "hook descriptor: %v", err)
+			i.addDiagnostic(descriptorPath, "hook descriptor: %v", err)
 			return model.SourceAsset{}, nil, false
 		}
+		i.validateHookPayloadReferences(descriptor, content.Files)
 		hook = &descriptor
+		capabilities = mergeCapabilityUses(hookCapabilityUses(descriptor), capabilities)
 	}
 
 	asset := model.SourceAsset{
@@ -281,7 +288,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		Kind:           kind,
 		Base:           content,
 		Hook:           hook,
-		CapabilityUses: i.readCapabilities(assetDir),
+		CapabilityUses: capabilities,
 		Overlays:       i.readOverlays(assetDir, identity),
 	}
 	if kind != model.AssetKindNativeResource {
@@ -297,27 +304,29 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 	}, true
 }
 
-func classifyAsset(assetPath string) (model.AssetKind, string, string, string, bool, error) {
+func classifyAsset(assetPath string) (model.AssetKind, string, string, string, bool, bool, error) {
 	parts := strings.Split(assetPath, "/")
 	if len(parts) >= 2 && parts[0] == "src" {
 		parts = parts[1:]
 	}
 	switch {
 	case len(parts) == 2 && parts[0] == "skills":
-		return model.AssetKindSkill, parts[1], assetPath + "/SKILL.md", assetPath, true, nil
+		return model.AssetKindSkill, parts[1], assetPath + "/SKILL.md", assetPath, true, false, nil
 	case len(parts) == 2 && parts[0] == "agents" && strings.HasSuffix(parts[1], ".md") && strings.TrimSuffix(parts[1], ".md") != "":
-		return model.AssetKindAgent, strings.TrimSuffix(parts[1], ".md"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), true, nil
+		return model.AssetKindAgent, strings.TrimSuffix(parts[1], ".md"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), true, false, nil
 	case len(parts) == 2 && parts[0] == "resources" && parts[1] != "":
-		return model.AssetKindResource, parts[1], "", assetPath, false, nil
+		return model.AssetKindResource, parts[1], "", assetPath, false, false, nil
 	case len(parts) == 2 && parts[0] == "hooks" && strings.HasSuffix(parts[1], ".json") && strings.TrimSuffix(parts[1], ".json") != "":
-		return model.AssetKindHook, strings.TrimSuffix(parts[1], ".json"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, nil
+		return model.AssetKindHook, strings.TrimSuffix(parts[1], ".json"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, false, nil
+	case len(parts) == 2 && parts[0] == "hooks" && parts[1] != "":
+		return model.AssetKindHook, parts[1], assetPath + "/hook.json", assetPath, false, true, nil
 	case len(parts) == 3 && parts[0] == "plugins" && parts[1] != "" && parts[2] != "":
 		if _, err := parseTarget(parts[1]); err != nil {
-			return "", "", "", "", false, err
+			return "", "", "", "", false, false, err
 		}
-		return model.AssetKindNativeResource, parts[2], assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, nil
+		return model.AssetKindNativeResource, parts[2], assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, false, nil
 	default:
-		return "", "", "", "", false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
+		return "", "", "", "", false, false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
 	}
 }
 
@@ -363,6 +372,121 @@ func (i *inspector) readSupportFiles(assetDir string, content *model.AssetConten
 	if err != nil {
 		i.addDiagnostic(model.RelativePath(assetDir), "%v", err)
 	}
+}
+
+func (i *inspector) readHookPayloads(assetDir string, content *model.AssetContent) {
+	root := filepath.Join(i.root, filepath.FromSlash(assetDir))
+	err := i.walkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, fullPath)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+				return fmt.Errorf("hook path must be a non-symlink directory")
+			}
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".agentbundler" {
+			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+				return fmt.Errorf("sidecar path must be a non-symlink directory")
+			}
+			return filepath.SkipDir
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("hook payload %q is a symlink", rel)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect hook payload %q: %w", rel, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("hook payload %q is not a regular file", rel)
+		}
+		if rel == "hook.json" {
+			return nil
+		}
+		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, rel)))
+		data, ok := i.readRegular(path)
+		if ok {
+			content.Files[model.RelativePath(rel)] = model.FileContent{
+				Bytes:      data,
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: path}},
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		i.addDiagnostic(model.RelativePath(assetDir), "%v", err)
+	}
+}
+
+func (i *inspector) validateHookPayloadReferences(descriptor model.HookDescriptor, files map[model.RelativePath]model.FileContent) {
+	for index, argument := range descriptor.Handler.Arguments {
+		if argument.PackageFile == nil {
+			continue
+		}
+		path, err := model.NewRelativePath(string(*argument.PackageFile))
+		if err != nil {
+			i.addDiagnostic(descriptor.Location.Path, "hook descriptor argument %d packageFile: %v", index, err)
+			continue
+		}
+		if _, exists := files[path]; !exists {
+			i.addDiagnostic(descriptor.Location.Path, "hook descriptor argument %d packageFile %q does not exist in the hook payload", index, path)
+		}
+	}
+}
+
+func hookCapabilityUses(descriptor model.HookDescriptor) []model.CapabilityUse {
+	location := descriptor.Location
+	keys := []model.CapabilityKey{
+		"asset.hook",
+		model.CapabilityKey("hook.command." + string(descriptor.Handler.Mode)),
+		model.CapabilityKey("hook.event." + string(descriptor.Event)),
+	}
+	if descriptor.Matcher != nil {
+		keys = append(keys, "hook.matcher.tool-category")
+	}
+	if descriptor.Asynchronous {
+		keys = append(keys, "hook.async")
+	}
+	if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
+		keys = append(keys, "hook.failure.closed")
+	}
+	uses := make([]model.CapabilityUse, len(keys))
+	for index, key := range keys {
+		uses[index] = model.CapabilityUse{Key: key, Location: location}
+	}
+	return uses
+}
+
+func mergeCapabilityUses(groups ...[]model.CapabilityUse) []model.CapabilityUse {
+	byKey := make(map[model.CapabilityKey]model.CapabilityUse)
+	for _, group := range groups {
+		for _, use := range group {
+			if _, exists := byKey[use.Key]; !exists {
+				byKey[use.Key] = use
+			}
+		}
+	}
+	keys := make([]model.CapabilityKey, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(left, right int) bool { return keys[left] < keys[right] })
+	uses := make([]model.CapabilityUse, 0, len(keys))
+	for _, key := range keys {
+		uses = append(uses, byKey[key])
+	}
+	return uses
 }
 
 func (i *inspector) readCapabilities(assetDir string) []model.CapabilityUse {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -76,6 +77,169 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	}
 	if !inputsAreSortedAndHashed(inventory) {
 		t.Fatalf("inputs are not sorted and hashed: %#v", inventory.Inputs)
+	}
+}
+
+func TestInspectBundleImportsCanonicalHookDirectoryAndLegacyShell(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/hooks/check","src/hooks/notify.json"]}`)
+	writeFixture(t, workspace, "bundle/src/hooks/check/hook.json", `{"event":"pre-tool","matcher":{"tools":["command"]},"handler":{"mode":"exec","program":"bash","arguments":[{"literal":"-eu"},{"packageFile":"scripts/check.sh"}]},"timeoutMilliseconds":10000,"asynchronous":false,"failurePolicy":"closed","order":20}`)
+	writeFixtureMode(t, workspace, "bundle/src/hooks/check/scripts/check.sh", "#!/bin/sh\nexit 0\n", 0o755)
+	writeFixtureMode(t, workspace, "bundle/src/hooks/check/data/rules.json", "{}\n", 0o644)
+	writeFixture(t, workspace, "bundle/src/hooks/check/.agentbundler/asset.json", `{"capabilities":["hook.decision.block"]}`)
+	writeFixture(t, workspace, "bundle/src/hooks/notify.json", `{"event":"notification","handler":{"mode":"shell","shellCommand":"printf done"},"timeoutMilliseconds":1000,"asynchronous":true,"failurePolicy":"open","order":30}`)
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	if got, want := assetIDs(inventory.Packages[0]), []model.AssetID{"hook/check", "hook/notify"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("asset IDs = %#v, want %#v", got, want)
+	}
+
+	canonical := inventory.Packages[0].Assets[0]
+	if canonical.Hook == nil || canonical.Hook.Location.Path != "src/hooks/check/hook.json" || canonical.Hook.Handler.Mode != model.HookHandlerModeExec {
+		t.Fatalf("canonical hook = %#v", canonical.Hook)
+	}
+	if _, exists := canonical.Base.Files["hook.json"]; exists {
+		t.Fatal("hook.json was imported as payload")
+	}
+	if _, exists := canonical.Base.Files[".agentbundler/asset.json"]; exists {
+		t.Fatal("asset sidecar was imported as payload")
+	}
+	if got, want := string(canonical.Base.Files["scripts/check.sh"].Bytes), "#!/bin/sh\nexit 0\n"; got != want {
+		t.Fatalf("script bytes = %q, want %q", got, want)
+	}
+	if runtime.GOOS != "windows" && !canonical.Base.Files["scripts/check.sh"].Executable {
+		t.Fatal("executable payload lost executable intent")
+	}
+	if canonical.Base.Files["data/rules.json"].Executable {
+		t.Fatal("non-executable payload gained executable intent")
+	}
+	if got, want := canonical.Base.Files["scripts/check.sh"].Origin, []model.SourceLocation{{Path: "src/hooks/check/scripts/check.sh"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("script origin = %#v, want %#v", got, want)
+	}
+	if got, want := capabilityKeys(canonical.CapabilityUses), []model.CapabilityKey{
+		"asset.hook",
+		"hook.command.exec",
+		"hook.decision.block",
+		"hook.event.pre-tool",
+		"hook.failure.closed",
+		"hook.matcher.tool-category",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("canonical capabilities = %#v, want %#v", got, want)
+	}
+	for _, use := range canonical.CapabilityUses {
+		if use.Key != "hook.decision.block" && use.Location.Path != "src/hooks/check/hook.json" {
+			t.Fatalf("semantic capability %q location = %#v", use.Key, use.Location)
+		}
+	}
+
+	legacy := inventory.Packages[0].Assets[1]
+	if legacy.Hook == nil || legacy.Hook.Location.Path != "src/hooks/notify.json" || legacy.Hook.Handler.Mode != model.HookHandlerModeShell {
+		t.Fatalf("legacy hook = %#v", legacy.Hook)
+	}
+	if len(legacy.Base.Files) != 0 {
+		t.Fatalf("legacy payload files = %#v", legacy.Base.Files)
+	}
+	if got, want := capabilityKeys(legacy.CapabilityUses), []model.CapabilityKey{
+		"asset.hook",
+		"hook.async",
+		"hook.command.shell",
+		"hook.event.notification",
+	}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy capabilities = %#v, want %#v", got, want)
+	}
+
+	for _, path := range []model.RelativePath{
+		"packages/base.json",
+		"src/hooks/check/.agentbundler/asset.json",
+		"src/hooks/check/data/rules.json",
+		"src/hooks/check/hook.json",
+		"src/hooks/check/scripts/check.sh",
+		"src/hooks/notify.json",
+	} {
+		if !containsInput(inventory, path) {
+			t.Fatalf("input %q was not hashed: %#v", path, inventory.Inputs)
+		}
+	}
+	if !inputsAreSortedAndHashed(inventory) {
+		t.Fatalf("inputs are not sorted and hashed: %#v", inventory.Inputs)
+	}
+}
+
+func TestInspectBundleRejectsInvalidCanonicalHooks(t *testing.T) {
+	validPrefix := `{"event":"pre-tool","handler":{"mode":"exec","program":"bash","arguments":[{"packageFile":"scripts/check.sh"}]},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"closed","order":1`
+	tests := []struct {
+		name       string
+		descriptor string
+		want       string
+	}{
+		{name: "unknown field", descriptor: validPrefix + `,"unexpected":true}`, want: "unknown field"},
+		{name: "duplicate key", descriptor: validPrefix + `,"order":2}`, want: `duplicate JSON key "order"`},
+		{name: "missing payload", descriptor: validPrefix + `}`, want: `packageFile "scripts/check.sh" does not exist`},
+		{name: "traversal payload", descriptor: `{"event":"pre-tool","handler":{"mode":"exec","program":"bash","arguments":[{"packageFile":"../outside.sh"}]},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"closed","order":1}`, want: "escaping segment"},
+		{name: "missing descriptor", want: "required file does not exist"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/hooks/check"]}`)
+			if test.descriptor != "" {
+				writeFixture(t, workspace, "bundle/src/hooks/check/hook.json", test.descriptor)
+			} else if err := os.MkdirAll(filepath.Join(workspace, "bundle/src/hooks/check"), 0o755); err != nil {
+				t.Fatalf("MkdirAll(): %v", err)
+			}
+
+			inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+			if !hasError(diagnostics) || !reflect.DeepEqual(inventory, model.SourceInventory{}) {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+			if !diagnosticsContain(diagnostics, test.want, "src/hooks/check/hook.json") {
+				t.Fatalf("diagnostics = %#v, want message containing %q at hook.json", diagnostics, test.want)
+			}
+		})
+	}
+}
+
+func TestInspectBundleRejectsCanonicalHookPayloadSymlink(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/hooks/check"]}`)
+	writeFixture(t, workspace, "bundle/src/hooks/check/hook.json", `{"event":"session-start","handler":{"mode":"exec","program":"true","arguments":[]},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"open","order":1}`)
+	writeFixture(t, workspace, "outside", "secret")
+	if err := os.Symlink(filepath.Join(workspace, "outside"), filepath.Join(workspace, "bundle/src/hooks/check/linked.sh")); err != nil {
+		t.Skipf("os.Symlink() unavailable: %v", err)
+	}
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if !hasError(diagnostics) || !reflect.DeepEqual(inventory, model.SourceInventory{}) {
+		t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+	}
+	if !diagnosticsContain(diagnostics, `hook payload "linked.sh" is a symlink`, "src/hooks/check") {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestInspectBundleCanonicalHookTraversalIsDeterministic(t *testing.T) {
+	inspect := func(t *testing.T, paths []string) model.SourceInventory {
+		t.Helper()
+		workspace := t.TempDir()
+		writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/hooks/check"]}`)
+		writeFixture(t, workspace, "bundle/src/hooks/check/hook.json", `{"event":"session-start","handler":{"mode":"exec","program":"true","arguments":[]},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"open","order":1}`)
+		for _, path := range paths {
+			writeFixture(t, workspace, "bundle/src/hooks/check/"+path, path)
+		}
+		inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+		if len(diagnostics) != 0 {
+			t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+		}
+		return inventory
+	}
+
+	first := inspect(t, []string{"z.txt", "nested/m.txt", "a.txt"})
+	second := inspect(t, []string{"a.txt", "nested/m.txt", "z.txt"})
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("inventories differ by creation order:\nfirst = %#v\nsecond = %#v", first, second)
 	}
 }
 
@@ -164,12 +328,20 @@ func bundleManifest(packages ...string) model.SourceManifest {
 
 func writeFixture(t *testing.T, root, path, content string) {
 	t.Helper()
+	writeFixtureMode(t, root, path, content, 0o644)
+}
+
+func writeFixtureMode(t *testing.T, root, path, content string, mode os.FileMode) {
+	t.Helper()
 	fullPath := filepath.Join(root, filepath.FromSlash(path))
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", fullPath, err)
 	}
-	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(fullPath, []byte(content), mode); err != nil {
 		t.Fatalf("WriteFile(%q): %v", fullPath, err)
+	}
+	if err := os.Chmod(fullPath, mode); err != nil {
+		t.Fatalf("Chmod(%q): %v", fullPath, err)
 	}
 }
 
@@ -195,6 +367,23 @@ func filePatchBytes(files []model.FilePatch) map[model.RelativePath]string {
 		values[file.Path] = string(file.Content.Bytes)
 	}
 	return values
+}
+
+func capabilityKeys(uses []model.CapabilityUse) []model.CapabilityKey {
+	keys := make([]model.CapabilityKey, len(uses))
+	for index, use := range uses {
+		keys[index] = use.Key
+	}
+	return keys
+}
+
+func diagnosticsContain(diagnostics []model.Diagnostic, message string, path model.RelativePath) bool {
+	for _, diagnostic := range diagnostics {
+		if strings.Contains(diagnostic.Message, message) && diagnostic.Location != nil && diagnostic.Location.Path == path {
+			return true
+		}
+	}
+	return false
 }
 
 func containsInput(inventory model.SourceInventory, path model.RelativePath) bool {
