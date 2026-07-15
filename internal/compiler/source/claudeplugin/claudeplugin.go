@@ -905,11 +905,18 @@ func portableClaudeMatcher(event model.HookEvent, matcher *string) (*model.HookM
 		"Task":         model.HookToolCategoryTask,
 		"Agent":        model.HookToolCategoryTask,
 	}
+	completeCategoryNames := map[model.HookToolCategory][]string{
+		model.HookToolCategoryEdit:   {"Edit", "NotebookEdit"},
+		model.HookToolCategorySearch: {"Glob", "Grep"},
+		model.HookToolCategoryWeb:    {"WebFetch", "WebSearch"},
+		model.HookToolCategoryTask:   {"Task", "Agent"},
+	}
 	values := strings.FieldsFunc(*matcher, func(character rune) bool { return character == '|' || character == ',' })
 	if len(values) == 0 {
 		return nil, fmt.Errorf("%q is not an exact known native tool name or list", *matcher)
 	}
-	seen := make(map[model.HookToolCategory]bool)
+	seenCategories := make(map[model.HookToolCategory]bool)
+	seenNames := make(map[string]bool)
 	tools := make([]model.HookToolCategory, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -917,9 +924,17 @@ func portableClaudeMatcher(event model.HookEvent, matcher *string) (*model.HookM
 		if !ok {
 			return nil, fmt.Errorf("%q is not an exact known native tool name or list", *matcher)
 		}
-		if !seen[category] {
-			seen[category] = true
+		seenNames[value] = true
+		if !seenCategories[category] {
+			seenCategories[category] = true
 			tools = append(tools, category)
+		}
+	}
+	for _, category := range tools {
+		for _, name := range completeCategoryNames[category] {
+			if !seenNames[name] {
+				return nil, fmt.Errorf("%q does not contain the complete native expansion for portable category %q (%s)", *matcher, category, strings.Join(completeCategoryNames[category], "|"))
+			}
 		}
 	}
 	return &model.HookMatcher{Tools: tools}, nil
