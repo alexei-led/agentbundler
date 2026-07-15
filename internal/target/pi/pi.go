@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetPi
-	FormatRevision = 3
+	FormatRevision = 4
 )
 
 // Adapter renders Pi's lossless native skill subset.
@@ -23,6 +23,9 @@ func Capabilities() []model.CapabilityRule {
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
 func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	if input.PackageMode == model.TargetPackageModeAggregate {
+		return renderAggregate(input)
+	}
 	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
 		return packageoutput.RenderWithCodec(input, PackageCodec())
 	}

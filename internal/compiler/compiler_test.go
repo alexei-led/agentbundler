@@ -100,7 +100,7 @@ func TestCompileRejectsSymlinkedOutputAncestor(t *testing.T) {
 	}
 }
 
-func TestCompileRejectsCapabilityUnsupportedBySelectedTarget(t *testing.T) {
+func TestCompileRejectsHookCapabilityInPiProjectProfile(t *testing.T) {
 	workspace := t.TempDir()
 	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
 	writeCompilerFixture(t, workspace, "source/.agentbundler/assets/skill/demo/asset.json", `{"capabilities":["asset.hook"]}`)
@@ -110,7 +110,7 @@ func TestCompileRejectsCapabilityUnsupportedBySelectedTarget(t *testing.T) {
 		Manifest:      skillsManifest(model.TargetPi),
 		Mode:          BuildModeBuild,
 	})
-	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "invalid-composition" {
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "unsupported-capability" {
 		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
 	}
 }
