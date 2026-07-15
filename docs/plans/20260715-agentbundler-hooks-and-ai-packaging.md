@@ -696,12 +696,12 @@ Manual checks:
 - Compare generated event names, matcher regexes, timeout units, async fields, exit/decision semantics, and root variables with the pinned Claude docs.
 - Confirm security hooks configured fail-closed are not rendered fail-open.
 
-- [ ] Declare exact Claude semantic capability states and increment the Claude format revision.
-- [ ] Render `.claude-plugin/plugin.json`, `hooks/hooks.json`, payload paths, package-root command arguments, and deterministic hook order.
-- [ ] Preserve adopted explicit shell commands for Claude while preferring exec/interpreter form for canonical hooks.
-- [ ] Emit safe official strict-validator checks for each generated Claude plugin/catalog scope.
-- [ ] Add golden, hook-free regression, unsupported-cell, collision, async, timeout, matcher, and command-root tests.
-- [ ] Run the focused tests and validate a generated fixture with the installed Claude CLI before Task 9.
+- [x] Declare exact Claude semantic capability states and increment the Claude format revision.
+- [x] Render `.claude-plugin/plugin.json`, `hooks/hooks.json`, payload paths, package-root command arguments, and deterministic hook order.
+- [x] Preserve adopted explicit shell commands for Claude while preferring exec/interpreter form for canonical hooks.
+- [x] Emit safe official strict-validator checks for each generated Claude plugin/catalog scope.
+- [x] Add golden, hook-free regression, unsupported-cell, collision, async, timeout, matcher, and command-root tests.
+- [x] Run the focused tests and validate a generated fixture with the installed Claude CLI before Task 9.
 
 ### Task 9: Prove Claude end-to-end behavior and checkpoint the foundation
 
