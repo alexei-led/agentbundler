@@ -97,6 +97,9 @@ type InputFile struct {
 // PackageMetadata stores source package JSON metadata.
 type PackageMetadata map[string]any
 
+// DistributionMetadata stores target-wide distribution JSON metadata.
+type DistributionMetadata map[string]any
+
 // FileContent is one source payload file with its mode and source evidence.
 type FileContent struct {
 	Bytes      []byte           `json:"bytes"`
@@ -265,10 +268,26 @@ const (
 	TargetProfilePackage TargetProfile = "package"
 )
 
+// TargetPackageMode selects separate package roots or one explicit aggregate package.
+type TargetPackageMode string
+
+const (
+	TargetPackageModeSeparate  TargetPackageMode = "separate"
+	TargetPackageModeAggregate TargetPackageMode = "aggregate"
+)
+
+// AggregatePackage declares the identity and metadata for one aggregate package.
+type AggregatePackage struct {
+	Identity PackageID       `json:"identity"`
+	Metadata PackageMetadata `json:"metadata"`
+}
+
 // TargetComposition contains target-specific composition policy.
 type TargetComposition struct {
 	Target        TargetID          `json:"target"`
 	Profile       TargetProfile     `json:"profile,omitempty"`
+	PackageMode   TargetPackageMode `json:"packageMode,omitempty"`
+	Aggregate     *AggregatePackage `json:"aggregate,omitempty"`
 	SkillPreamble *string           `json:"skillPreamble,omitempty"`
 	Capabilities  []CapabilityRule  `json:"capabilities"`
 	NativeGaps    []NativeGapPolicy `json:"nativeGaps"`
@@ -298,6 +317,7 @@ type SourceManifest struct {
 	Root             RelativePath                  `json:"root"`
 	Targets          []TargetID                    `json:"targets"`
 	Output           RelativePath                  `json:"output"`
+	Distribution     DistributionMetadata          `json:"distribution,omitempty"`
 	Composition      []TargetComposition           `json:"composition"`
 	Bundle           *BundleSourceConfig           `json:"bundle,omitempty"`
 	ClaudePlugin     *ClaudePluginSourceConfig     `json:"claudePlugin,omitempty"`
@@ -346,6 +366,14 @@ type NormalizedPackage struct {
 	Profile         TargetProfile     `json:"profile,omitempty"`
 	Assets          []NormalizedAsset `json:"assets"`
 	Acknowledgments []Acknowledgment  `json:"acknowledgments"`
+}
+
+// TargetRenderInput contains all target-neutral inputs for one adapter render.
+type TargetRenderInput struct {
+	Packages     []NormalizedPackage  `json:"packages"`
+	Distribution DistributionMetadata `json:"distribution"`
+	PackageMode  TargetPackageMode    `json:"packageMode"`
+	Aggregate    *AggregatePackage    `json:"aggregate,omitempty"`
 }
 
 // Diagnostic reports a model validation problem.

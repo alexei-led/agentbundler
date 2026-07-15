@@ -22,14 +22,14 @@ func Capabilities() []model.CapabilityRule {
 	return append([]model.CapabilityRule(nil), capabilityRules...)
 }
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
-func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	if packagesHaveProfile(packages, model.TargetProfilePackage) {
-		return packageoutput.RenderWithCodec(packages, PackageCodec())
+func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
+		return packageoutput.RenderWithCodec(input, PackageCodec())
 	}
-	return skills.Render(adapter.Target(), ".pi/skills", packages)
+	return skills.Render(adapter.Target(), ".pi/skills", input.Packages)
 }
-func Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return New().Render(packages)
+func Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	return New().Render(input)
 }
 
 func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {

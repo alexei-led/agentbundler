@@ -66,6 +66,9 @@ func ValidateSourceManifest(manifest SourceManifest) []Diagnostic {
 	if err := validateRelativePath(string(manifest.Output)); err != nil {
 		diagnostics = appendInvalid(diagnostics, "manifest output: "+err.Error())
 	}
+	if err := validateJSONValue(manifest.Distribution); err != nil {
+		diagnostics = appendInvalid(diagnostics, "manifest distribution: "+err.Error())
+	}
 	if len(manifest.Targets) == 0 {
 		diagnostics = appendInvalid(diagnostics, "manifest targets must not be empty")
 	}
@@ -166,6 +169,29 @@ func ValidateTargetComposition(input TargetComposition) []Diagnostic {
 	if !validTargetID(input.Target) {
 		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q is invalid", input.Target))
 	}
+	switch input.PackageMode {
+	case "", TargetPackageModeSeparate:
+		if input.Aggregate != nil {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q forbids aggregate configuration in separate package mode", input.Target))
+		}
+	case TargetPackageModeAggregate:
+		if input.Target != TargetPi {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q does not support aggregate package mode", input.Target))
+		}
+		if input.Profile != TargetProfilePackage {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q aggregate package mode requires package profile", input.Target))
+		}
+		if input.Aggregate == nil {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q aggregate package mode requires aggregate configuration", input.Target))
+		} else {
+			diagnostics = append(diagnostics, validateAggregatePackage(*input.Aggregate)...)
+		}
+	default:
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("composition target %q has invalid package mode %q", input.Target, input.PackageMode))
+		if input.Aggregate != nil {
+			diagnostics = append(diagnostics, validateAggregatePackage(*input.Aggregate)...)
+		}
+	}
 	capabilities := make(map[CapabilityKey]struct{}, len(input.Capabilities))
 	for _, rule := range input.Capabilities {
 		if err := validateIdentifier(string(rule.Key), "capability key"); err != nil {
@@ -238,6 +264,19 @@ func ValidateBuildPlan(plan BuildPlan) []Diagnostic {
 	for _, file := range plan.CompilerFiles {
 		diagnostics = append(diagnostics, validatePlannedFile(file)...)
 		diagnostics = appendDestination(diagnostics, destinations, string(file.Path))
+	}
+	return diagnostics
+}
+
+func validateAggregatePackage(aggregate AggregatePackage) []Diagnostic {
+	var diagnostics []Diagnostic
+	if err := validateIdentifier(string(aggregate.Identity), "aggregate package ID"); err != nil {
+		diagnostics = appendInvalid(diagnostics, err.Error())
+	}
+	if aggregate.Metadata == nil {
+		diagnostics = appendInvalid(diagnostics, "aggregate package metadata must be explicitly provided")
+	} else if err := validateJSONValue(aggregate.Metadata); err != nil {
+		diagnostics = appendInvalid(diagnostics, "aggregate package metadata: "+err.Error())
 	}
 	return diagnostics
 }

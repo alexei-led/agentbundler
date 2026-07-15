@@ -20,28 +20,28 @@ func New() Adapter {
 	return Adapter{Target: model.TargetCursor, FormatRevision: formatRevision, Capabilities: append([]model.CapabilityRule(nil), capabilityRules...)}
 }
 
-func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+func Render(adapter Adapter, input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	if adapter.Target != model.TargetCursor || adapter.FormatRevision != formatRevision || !sameCapabilityRules(adapter.Capabilities, capabilityRules) {
 		return model.TargetPlan{Target: model.TargetCursor}, []model.Diagnostic{{Code: "invalid-adapter", Severity: model.SeverityError, Message: "adapter is not the Cursor format revision 3 capability profile"}}
 	}
-	if packagesHaveProfile(packages, model.TargetProfilePackage) {
-		return packageoutput.RenderWithCodec(packages, PackageCodec())
+	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
+		return packageoutput.RenderWithCodec(input, PackageCodec())
 	}
-	if len(packages) != 1 {
-		return plugin.Render(adapter.Target, ".cursor-plugin/plugin.json", packages, nil)
+	if len(input.Packages) != 1 {
+		return plugin.Render(adapter.Target, ".cursor-plugin/plugin.json", input.Packages, nil)
 	}
-	pkg := packages[0]
+	pkg := input.Packages[0]
 	manifest := map[string]any{"name": pkg.Identity, "skills": "./skills/"}
 	for _, key := range []string{"displayName", "description", "version", "homepage", "repository", "license", "publisher"} {
 		if value, ok := pkg.Metadata[key].(string); ok {
 			manifest[key] = value
 		}
 	}
-	return plugin.Render(adapter.Target, ".cursor-plugin/plugin.json", packages, manifest)
+	return plugin.Render(adapter.Target, ".cursor-plugin/plugin.json", input.Packages, manifest)
 }
 
-func (adapter Adapter) Render(packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return Render(adapter, packages)
+func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	return Render(adapter, input)
 }
 
 func packagesHaveProfile(packages []model.NormalizedPackage, profile model.TargetProfile) bool {

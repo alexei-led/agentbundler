@@ -88,7 +88,7 @@ func TestRenderDuplicatePackageRootsFailClosed(t *testing.T) {
 	first := packageFixture(model.TargetClaude)
 	second := packageFixture(model.TargetClaude)
 	_, diagnostics := Render(model.TargetClaude, []model.NormalizedPackage{first, second})
-	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "generated output path") {
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-model" || !contains(diagnostics[0].Message, "package \"demo\" is duplicated") {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
 }
@@ -266,20 +266,20 @@ func TestRenderWithCodecContract(t *testing.T) {
 		Manifest:     func(model.NormalizedPackage) ([]byte, error) { return []byte("{}\n"), nil },
 		Agent:        func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md", nil },
 	}
-	plan, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	plan, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 0 || plan.Target != codec.Target {
 		t.Fatalf("RenderWithCodec() = (%#v, %#v)", plan, diagnostics)
 	}
 
 	codec.ManifestPath = "../plugin.json"
-	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	_, diagnostics = packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-codec" || !contains(diagnostics[0].Message, "manifest path") {
 		t.Fatalf("invalid manifest path diagnostics = %#v", diagnostics)
 	}
 
 	codec.ManifestPath = "plugin.json"
 	codec.AgentRoot = "../agents"
-	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	_, diagnostics = packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-codec" || !contains(diagnostics[0].Message, "agent root") {
 		t.Fatalf("invalid agent root diagnostics = %#v", diagnostics)
 	}
@@ -288,7 +288,7 @@ func TestRenderWithCodecContract(t *testing.T) {
 	pkg.Assets = append(pkg.Assets, model.NormalizedAsset{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{}}})
 	codec.Capabilities = append(codec.Capabilities, model.CapabilityRule{Key: "asset.agent", State: model.CapabilityStateNative})
 	codec.Agent = func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md/invalid", nil }
-	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	_, diagnostics = packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !contains(diagnostics[0].Message, "agent suffix") {
 		t.Fatalf("invalid agent suffix diagnostics = %#v", diagnostics)
 	}
@@ -306,19 +306,19 @@ func TestRenderWithCodecCapabilityAcknowledgments(t *testing.T) {
 		Manifest:     func(model.NormalizedPackage) ([]byte, error) { return []byte("{}\n"), nil },
 		Agent:        func(model.NormalizedAsset) ([]byte, string, error) { return []byte("agent"), ".md", nil },
 	}
-	_, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	_, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "missing-capability-acknowledgment" {
 		t.Fatalf("missing acknowledgment diagnostics = %#v", diagnostics)
 	}
 
 	pkg.Acknowledgments = []model.Acknowledgment{{Asset: "skill/demo", Target: model.TargetClaude, Key: "asset.agent", Reason: "wrong capability"}}
-	_, diagnostics = packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	_, diagnostics = packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-capability-acknowledgment" {
 		t.Fatalf("inexact acknowledgment diagnostics = %#v", diagnostics)
 	}
 
 	pkg.Acknowledgments[0].Key = "asset.skill"
-	plan, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{pkg}, codec)
+	plan, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), codec)
 	if len(diagnostics) != 0 || len(plan.Files) == 0 {
 		t.Fatalf("acknowledged advisory render = (%#v, %#v)", plan, diagnostics)
 	}
@@ -410,7 +410,7 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			plan, diagnostics := packageoutput.RenderWithCodec([]model.NormalizedPackage{packageFixture(test.target)}, test.codec)
+			plan, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{packageFixture(test.target)}), test.codec)
 			if len(diagnostics) != 0 {
 				t.Fatalf("RenderWithCodec() diagnostics = %#v", diagnostics)
 			}
@@ -448,18 +448,23 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 	}
 }
 
+func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
+	return model.TargetRenderInput{Packages: packages, PackageMode: model.TargetPackageModeSeparate}
+}
+
 func Render(target model.TargetID, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+	input := separate(packages)
 	switch target {
 	case model.TargetClaude:
-		return claude.Render(packages)
+		return claude.Render(input)
 	case model.TargetCodex:
-		return codex.Render(packages)
+		return codex.Render(input)
 	case model.TargetPi:
-		return pi.Render(packages)
+		return pi.Render(input)
 	case model.TargetCopilot:
-		return copilot.Render(packages)
+		return copilot.Render(input)
 	case model.TargetCursor:
-		return cursor.New().Render(packages)
+		return cursor.New().Render(input)
 	default:
 		panic("unsupported test target")
 	}

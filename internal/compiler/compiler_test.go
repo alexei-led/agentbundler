@@ -115,6 +115,34 @@ func TestCompileRejectsCapabilityUnsupportedBySelectedTarget(t *testing.T) {
 	}
 }
 
+func TestTargetRenderInputUsesManifestDistributionAndExplicitPackageMode(t *testing.T) {
+	packages := []model.NormalizedPackage{
+		{Identity: "zeta", Target: model.TargetPi, Profile: model.TargetProfilePackage},
+		{Identity: "alpha", Target: model.TargetPi, Profile: model.TargetProfilePackage},
+	}
+	aggregate := &model.AggregatePackage{Identity: "team-tools", Metadata: model.PackageMetadata{"version": "1.0.0"}}
+	manifest := model.SourceManifest{Distribution: model.DistributionMetadata{"name": "Team tools"}}
+	policy := model.TargetComposition{
+		Target:      model.TargetPi,
+		Profile:     model.TargetProfilePackage,
+		PackageMode: model.TargetPackageModeAggregate,
+		Aggregate:   aggregate,
+	}
+
+	input := targetRenderInput(manifest, policy, packages)
+	if got := []model.PackageID{input.Packages[0].Identity, input.Packages[1].Identity}; !reflect.DeepEqual(got, []model.PackageID{"alpha", "zeta"}) {
+		t.Fatalf("package order = %#v", got)
+	}
+	if input.PackageMode != model.TargetPackageModeAggregate || input.Aggregate != aggregate || !reflect.DeepEqual(input.Distribution, manifest.Distribution) {
+		t.Fatalf("targetRenderInput() = %#v", input)
+	}
+
+	compatibility := targetRenderInput(model.SourceManifest{}, model.TargetComposition{}, packages)
+	if compatibility.PackageMode != model.TargetPackageModeSeparate || compatibility.Aggregate != nil {
+		t.Fatalf("compatibility targetRenderInput() = %#v", compatibility)
+	}
+}
+
 func TestCompileRejectsUndeclaredTargetBeforeFilesystemWork(t *testing.T) {
 	root := t.TempDir()
 	manifest := model.SourceManifest{

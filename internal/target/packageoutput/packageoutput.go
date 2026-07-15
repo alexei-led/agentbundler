@@ -10,19 +10,21 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-// RenderWithCodec aggregates package assets using a target-owned serialization codec.
-func RenderWithCodec(packages []model.NormalizedPackage, codec Codec) (model.TargetPlan, []model.Diagnostic) {
+// RenderWithCodec renders an explicit target request using a target-owned serialization codec.
+func RenderWithCodec(input model.TargetRenderInput, codec Codec) (model.TargetPlan, []model.Diagnostic) {
 	target := codec.Target
-	if len(packages) == 0 {
-		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", "installable target output requires at least one package")}
+	input.Packages = append([]model.NormalizedPackage(nil), input.Packages...)
+	model.SortTargetRenderInput(&input)
+	if diagnostics := model.ValidateTargetRenderInput(input); len(diagnostics) != 0 {
+		return empty(target), diagnostics
+	}
+	if input.PackageMode != model.TargetPackageModeSeparate {
+		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", fmt.Sprintf("target %q aggregate package rendering is not implemented", target))}
 	}
 	if diagnostics := validateCodec(codec); len(diagnostics) != 0 {
 		return empty(target), diagnostics
 	}
-	for _, pkg := range packages {
-		if diagnostics := model.ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
-			return empty(target), diagnostics
-		}
+	for _, pkg := range input.Packages {
 		if pkg.Target != target {
 			return empty(target), []model.Diagnostic{diagnostic("target-mismatch", fmt.Sprintf("package %q targets %q, not %q", pkg.Identity, pkg.Target, target))}
 		}
@@ -39,7 +41,7 @@ func RenderWithCodec(packages []model.NormalizedPackage, codec Codec) (model.Tar
 		}
 	}
 
-	orderedPackages := append([]model.NormalizedPackage(nil), packages...)
+	orderedPackages := append([]model.NormalizedPackage(nil), input.Packages...)
 	sort.Slice(orderedPackages, func(left, right int) bool { return orderedPackages[left].Identity < orderedPackages[right].Identity })
 	packageIDs := make([]model.PackageID, 0, len(orderedPackages))
 	for _, pkg := range orderedPackages {
@@ -48,7 +50,7 @@ func RenderWithCodec(packages []model.NormalizedPackage, codec Codec) (model.Tar
 	plan := model.TargetPlan{Target: target, Packages: packageIDs, Files: []model.PlannedFile{}, NativeChecks: []model.NativeCheck{}}
 	paths := make(map[model.RelativePath]struct{})
 	for _, pkg := range orderedPackages {
-		root := packageRoot(len(packages), pkg.Identity)
+		root := packageRoot(len(input.Packages), pkg.Identity)
 		for _, asset := range sortedAssets(pkg.Assets) {
 			if err := renderAsset(&plan.Files, paths, codec, root, asset); err != nil {
 				if fieldError, ok := err.(*UnsupportedAgentFieldError); ok {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderUsesCursorPluginLayout(t *testing.T) {
-	plan, diagnostics := New().Render(skillPackage())
+	plan, diagnostics := New().Render(separate(skillPackage()))
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -33,7 +33,7 @@ func TestRenderPackageProfileIncludesAgent(t *testing.T) {
 			Files:       map[model.RelativePath]model.FileContent{},
 		},
 	})
-	plan, diagnostics := New().Render([]model.NormalizedPackage{pkg})
+	plan, diagnostics := New().Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
@@ -50,10 +50,14 @@ func TestRenderProjectProfileRejectsAgent(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Assets[0].Identity = "agent/reviewer"
 	pkg.Assets[0].Kind = model.AssetKindAgent
-	_, diagnostics := New().Render([]model.NormalizedPackage{pkg})
+	_, diagnostics := New().Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
+}
+
+func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
+	return model.TargetRenderInput{Packages: packages, PackageMode: model.TargetPackageModeSeparate}
 }
 
 func skillPackage() []model.NormalizedPackage {

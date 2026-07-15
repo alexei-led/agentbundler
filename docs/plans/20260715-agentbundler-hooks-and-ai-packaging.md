@@ -442,11 +442,11 @@ Manual checks:
 - Confirm existing manifests without distribution fields still decode and render in separate mode.
 - Confirm aggregate mode cannot exist without explicit aggregate identity and metadata.
 
-- [ ] Add strict source/distribution JSON fields and model validation, choosing optional version-1 fields unless strict compatibility proves a version bump is required.
-- [ ] Add `TargetRenderInput` and migrate the adapter/registry/compiler boundary from bare package slices.
-- [ ] Implement deterministic package ordering and explicit validation for aggregate identity, metadata, and dependency conflicts.
-- [ ] Add backward-compatibility, unknown-field, duplicate-key, missing-aggregate, and deterministic-render-input tests.
-- [ ] Update configuration docs and run compiler/target/full checks before Task 4.
+- [x] Add strict source/distribution JSON fields and model validation, choosing optional version-1 fields unless strict compatibility proves a version bump is required.
+- [x] Add `TargetRenderInput` and migrate the adapter/registry/compiler boundary from bare package slices.
+- [x] Implement deterministic package ordering and explicit validation for aggregate identity, metadata, and dependency conflicts.
+- [x] Add backward-compatibility, unknown-field, duplicate-key, missing-aggregate, and deterministic-render-input tests.
+- [x] Update configuration docs and run compiler/target/full checks before Task 4.
 
 ### Task 4: Import canonical bundle hook directories and file modes
 

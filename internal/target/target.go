@@ -19,7 +19,7 @@ type Adapter struct {
 	FormatRevision int
 	Capabilities   []model.CapabilityRule
 
-	render func([]model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic)
+	render func(model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic)
 }
 
 type registry struct {
@@ -49,7 +49,7 @@ type leafAdapter interface {
 	Target() model.TargetID
 	FormatRevision() int
 	Capabilities() []model.CapabilityRule
-	Render([]model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic)
+	Render(model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic)
 }
 
 func fromLeaf(leaf leafAdapter) Adapter {
@@ -112,14 +112,20 @@ func Capabilities(adapter Adapter) []model.CapabilityRule {
 	return append([]model.CapabilityRule(nil), adapter.Capabilities...)
 }
 
-// Render renders packages through adapter after validating their target.
-func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+// Render renders one explicit target request through adapter after validation.
+func Render(adapter Adapter, input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	if adapter.render == nil {
 		return emptyPlan(adapter.Target), []model.Diagnostic{registryDiagnostic("invalid-adapter", fmt.Sprintf("adapter %q has no renderer", adapter.Target))}
 	}
 
+	input.Packages = append([]model.NormalizedPackage(nil), input.Packages...)
+	model.SortTargetRenderInput(&input)
+	if diagnostics := model.ValidateTargetRenderInput(input); len(diagnostics) != 0 {
+		return emptyPlan(adapter.Target), diagnostics
+	}
+
 	var diagnostics []model.Diagnostic
-	for _, pkg := range packages {
+	for _, pkg := range input.Packages {
 		if pkg.Target != adapter.Target {
 			diagnostics = append(diagnostics, registryDiagnostic(
 				"target-mismatch",
@@ -130,7 +136,7 @@ func Render(adapter Adapter, packages []model.NormalizedPackage) (model.TargetPl
 	if len(diagnostics) != 0 {
 		return emptyPlan(adapter.Target), diagnostics
 	}
-	return adapter.render(packages)
+	return adapter.render(input)
 }
 
 func cloneAdapter(adapter Adapter) Adapter {
