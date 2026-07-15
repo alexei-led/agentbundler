@@ -297,42 +297,18 @@ func cloneContent(content model.AssetContent) model.AssetContent {
 }
 
 func cloneFileContent(content model.FileContent) model.FileContent {
-	clone := model.FileContent{
+	return model.FileContent{
 		Bytes:      append([]byte(nil), content.Bytes...),
 		Executable: content.Executable,
+		Origin:     model.CloneSourceLocations(content.Origin),
 	}
-	if content.Origin != nil {
-		clone.Origin = make([]model.SourceLocation, len(content.Origin))
-		for index, origin := range content.Origin {
-			clone.Origin[index] = cloneSourceLocation(origin)
-		}
-	}
-	return clone
 }
 
 func cloneHookDescriptor(descriptor *model.HookDescriptor) *model.HookDescriptor {
 	if descriptor == nil {
 		return nil
 	}
-	clone := *descriptor
-	clone.Location = cloneSourceLocation(descriptor.Location)
-	if descriptor.Matcher != nil {
-		clone.Matcher = &model.HookMatcher{}
-		if descriptor.Matcher.Tools != nil {
-			clone.Matcher.Tools = append([]model.HookToolCategory(nil), descriptor.Matcher.Tools...)
-		}
-	}
-	clone.Handler.Program = cloneString(descriptor.Handler.Program)
-	clone.Handler.ShellCommand = cloneString(descriptor.Handler.ShellCommand)
-	if descriptor.Handler.Arguments != nil {
-		clone.Handler.Arguments = make([]model.HookArgument, len(descriptor.Handler.Arguments))
-		for index, argument := range descriptor.Handler.Arguments {
-			clone.Handler.Arguments[index] = model.HookArgument{
-				Literal:     cloneString(argument.Literal),
-				PackageFile: cloneRelativePath(argument.PackageFile),
-			}
-		}
-	}
+	clone := model.CloneHookDescriptor(*descriptor)
 	return &clone
 }
 
@@ -342,41 +318,9 @@ func cloneCapabilityUses(uses []model.CapabilityUse) []model.CapabilityUse {
 	}
 	clone := make([]model.CapabilityUse, len(uses))
 	for index, use := range uses {
-		clone[index] = model.CapabilityUse{Key: use.Key, Location: cloneSourceLocation(use.Location)}
+		clone[index] = model.CapabilityUse{Key: use.Key, Location: model.CloneSourceLocation(use.Location)}
 	}
 	return clone
-}
-
-func cloneSourceLocation(location model.SourceLocation) model.SourceLocation {
-	return model.SourceLocation{
-		Path:   location.Path,
-		Line:   cloneInt(location.Line),
-		Column: cloneInt(location.Column),
-	}
-}
-
-func cloneString(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	clone := *value
-	return &clone
-}
-
-func cloneRelativePath(value *model.RelativePath) *model.RelativePath {
-	if value == nil {
-		return nil
-	}
-	clone := *value
-	return &clone
-}
-
-func cloneInt(value *int) *int {
-	if value == nil {
-		return nil
-	}
-	clone := *value
-	return &clone
 }
 
 func cloneMap(values map[string]any) map[string]any {

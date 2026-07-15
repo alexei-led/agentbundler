@@ -646,11 +646,11 @@ Manual checks:
 - Inspect shared code for Claude/Codex/Cursor/Pi/Grok strings; there should be none.
 - Confirm `PlannedFile.Executable` is set only from explicit `FileContent` intent.
 
-- [ ] Add a narrow target hook-render callback and immutable hook input view to the shared codec contract.
-- [ ] Render hook payload files with stable package roots, origin propagation, executable intent, and duplicate-path diagnostics.
-- [ ] Keep native hook manifest bytes and event mapping entirely target-owned while sorting shared hook inputs deterministically.
-- [ ] Add focused tests for mixed packages, executable propagation, payload containment, collisions, duplicate hook IDs, and deterministic plans.
-- [ ] Run shared renderer, all target, artifact, and architecture checks before Task 8.
+- [x] Add a narrow target hook-render callback and immutable hook input view to the shared codec contract.
+- [x] Render hook payload files with stable package roots, origin propagation, executable intent, and duplicate-path diagnostics.
+- [x] Keep native hook manifest bytes and event mapping entirely target-owned while sorting shared hook inputs deterministically.
+- [x] Add focused tests for mixed packages, executable propagation, payload containment, collisions, duplicate hook IDs, and deterministic plans.
+- [x] Run shared renderer, all target, artifact, and architecture checks before Task 8.
 
 ### Task 8: Implement the Claude hook vertical slice
 
