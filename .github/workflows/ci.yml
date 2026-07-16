@@ -93,8 +93,6 @@ jobs:
           cache: false
       - name: Test Windows artifact behavior
         run: go test ./internal/artifact/...
-      - name: Test PowerShell hook quoting
-        run: go test ./internal/target/copilot -run '^TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting$'
   safe-validators:
     name: Pinned safe vendor validators
     runs-on: ubuntu-latest

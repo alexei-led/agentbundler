@@ -43,7 +43,7 @@ hooks.json
 <hook payload files>
 ```
 
-The manifest points to the root `hooks.json`. Package-file command arguments use `${PLUGIN_ROOT}` through a target-owned representation. Copilot command hooks are shell command fields (`bash`, `powershell`, or `command`). Explicit shell hooks keep the cross-platform `command` field; portable exec hooks emit separate Bash and PowerShell commands with shell-specific quoting for every literal and package-file argument.
+The manifest points to the root `hooks.json`. Package-file command arguments use `${PLUGIN_ROOT}` through a target-owned representation. Copilot command hooks are shell command fields (`bash`, `powershell`, or `command`). Explicit shell hooks keep the cross-platform `command` field; portable exec hooks emit only the Bash command, with Bash quoting for every literal and package-file argument. PowerShell is not emitted, so exec hooks do not run on Windows hosts.
 
 Verified portable events render with the documented PascalCase/VS Code-compatible names: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, and `PreCompact`. `PreToolUse` uses Claude-compatible matcher names. Copilot has native block and rewrite results, but Agent Bundler rejects those portable capabilities until a target-owned process-protocol translator exists. Hook entries execute in order. Notification is inherently async and cannot block. There is no documented `PostCompact` event.
 
@@ -74,5 +74,5 @@ Primary sources: <https://docs.github.com/en/copilot/reference/copilot-cli-refer
 - Golden project and package trees cover exact manifest, agent, hook, payload, and catalog paths.
 - Event/matcher/timeout/order/failure cases prove exact capability states.
 - Decision capability tests prove rejection before output until protocol translation exists.
-- Bash execution tests run on Unix and PowerShell execution tests run in Windows CI for quoted literals, spaces, and package-file arguments.
+- Bash execution tests run on Unix for quoted literals, spaces, and package-file arguments.
 - Unsupported post-compact, unsafe exec conversion, and failure-policy combinations yield no partial plan.

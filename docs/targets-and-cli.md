@@ -39,16 +39,16 @@ Support is semantic. Similar vendor event names are not enough. An unsupported
 cell fails before output is written; an advisory cell requires a source
 acknowledgment.
 
-| Cell             | Claude                     | Codex                           | Pi aggregate                      | Copilot CLI                     | Cursor                          | Grok              |
-| ---------------- | -------------------------- | ------------------------------- | --------------------------------- | ------------------------------- | ------------------------------- | ----------------- |
-| Command `exec`   | native                     | native                          | native                            | advisory: Bash/PowerShell forms | advisory: quoted command string | native            |
-| Explicit `shell` | native                     | native                          | native                            | native                          | native                          | native            |
-| Tool matcher     | native categories          | Bash/MCP subset                 | native categories                 | native categories               | documented native-name subset   | native categories |
-| Async            | passive hooks              | unsupported                     | passive hooks                     | notification only               | unsupported                     | unsupported       |
-| Block            | unsupported                | unsupported                     | pre-tool                          | unsupported                     | unsupported                     | unsupported       |
-| Rewrite input    | unsupported                | unsupported                     | pre-tool                          | unsupported                     | unsupported                     | unsupported       |
-| Fail closed      | unsupported general policy | unsupported                     | runtime-enforced                  | unsupported general policy      | pre-tool/prompt-submit only     | unsupported       |
-| Package agents   | native                     | unsupported; use project agents | equivalent through `pi-subagents` | native                          | native                          | native            |
+| Cell             | Claude                     | Codex                           | Pi aggregate                      | Copilot CLI                | Cursor                          | Grok              |
+| ---------------- | -------------------------- | ------------------------------- | --------------------------------- | -------------------------- | ------------------------------- | ----------------- |
+| Command `exec`   | native                     | native                          | native                            | advisory: Bash form only   | advisory: quoted command string | native            |
+| Explicit `shell` | native                     | native                          | native                            | native                     | native                          | native            |
+| Tool matcher     | native categories          | Bash/MCP subset                 | native categories                 | native categories          | documented native-name subset   | native categories |
+| Async            | passive hooks              | unsupported                     | passive hooks                     | notification only          | unsupported                     | unsupported       |
+| Block            | unsupported                | unsupported                     | pre-tool                          | unsupported                | unsupported                     | unsupported       |
+| Rewrite input    | unsupported                | unsupported                     | pre-tool                          | unsupported                | unsupported                     | unsupported       |
+| Fail closed      | unsupported general policy | unsupported                     | runtime-enforced                  | unsupported general policy | pre-tool/prompt-submit only     | unsupported       |
+| Package agents   | native                     | unsupported; use project agents | equivalent through `pi-subagents` | native                     | native                          | native            |
 
 Decision-bearing hooks need a canonical subprocess stdin/stdout protocol plus a
 target-owned translator for each vendor protocol. Only the generated Pi runtime
