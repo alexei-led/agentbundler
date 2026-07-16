@@ -288,7 +288,7 @@ func parseCommandHook(data []byte) (hookSpec, error) {
 	if raw.Type == nil {
 		return hookSpec{}, fmt.Errorf("type is required")
 	}
-	if raw.If != nil || raw.Status != nil || (raw.AsyncRewake != nil && *raw.AsyncRewake) || raw.Shell != nil {
+	if raw.If != nil || raw.Status != nil || (raw.Once != nil && *raw.Once) || (raw.AsyncRewake != nil && *raw.AsyncRewake) || raw.Shell != nil {
 		return hookSpec{NativeOnly: true}, nil
 	}
 	return commandHook(raw.Command, raw.Arguments, raw.Timeout, raw.Asynchronous)
@@ -528,11 +528,9 @@ func (i *claudeInspector) hooks(pluginRoot, pluginPath string, source json.RawMe
 		ordinal := ordinals[hook.Event]
 		ordinals[hook.Event]++
 		if hook.NativeOnly {
-			claude := model.TargetClaude
 			i.native = append(i.native, model.NativeGap{
 				Component: string(hook.Location.Path) + "#" + hook.Component,
 				Location:  hook.Location,
-				Target:    &claude,
 			})
 			continue
 		}

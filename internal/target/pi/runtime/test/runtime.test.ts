@@ -406,20 +406,27 @@ describe("shutdown", () => {
     }
   });
 
-  test("drains asynchronous session-end work before resolving", async () => {
+  test("waits for asynchronous session-end work before resolving", async () => {
     let active = 0;
     let starts = 0;
     let aborts = 0;
+    let started!: () => void;
+    let finish!: () => void;
+    const didStart = new Promise<void>((resolve) => { started = resolve; });
+    const canFinish = new Promise<void>((resolve) => { finish = resolve; });
     const runner: ProcessRunner = async (_command, options) => {
       starts++;
       active++;
+      started();
       try {
-        return await new Promise((_resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
+          canFinish.then(resolve, reject);
           options.signal?.addEventListener("abort", () => {
             aborts++;
             reject(new Error("aborted"));
           }, { once: true });
         });
+        return { exitCode: 0, signal: null, stdout: "", stderr: "" };
       } finally {
         active--;
       }
@@ -429,13 +436,45 @@ describe("shutdown", () => {
       packageRoot: "/tmp/package", runner,
     });
 
-    await pi.emit("session_shutdown", { reason: "quit" });
+    const pending = pi.emit("session_shutdown", { reason: "quit" });
+    await didStart;
     expect(starts).toBe(1);
-    expect(aborts).toBe(1);
+    expect(aborts).toBe(0);
+    expect(active).toBe(1);
+    finish();
+    await pending;
+    expect(aborts).toBe(0);
     expect(active).toBe(0);
     await runtime.shutdown();
     await pi.emit("session_shutdown", { reason: "again" });
     expect(starts).toBe(1);
     expect(active).toBe(0);
+  });
+
+  test("cancels asynchronous session-end work on explicit runtime shutdown", async () => {
+    let aborts = 0;
+    let started!: () => void;
+    const didStart = new Promise<void>((resolve) => { started = resolve; });
+    const runner: ProcessRunner = async (_command, options) => {
+      started();
+      return await new Promise((_resolve, reject) => {
+        options.signal?.addEventListener("abort", () => {
+          aborts++;
+          reject(new Error("aborted"));
+        }, { once: true });
+      });
+    };
+    const pi = new FakePi();
+    const runtime = createPiHookRuntime(pi, config(hook("end", "session-end", { asynchronous: true })), {
+      packageRoot: "/tmp/package", runner,
+    });
+
+    const pending = pi.emit("session_shutdown", { reason: "quit" });
+    await didStart;
+    const first = runtime.shutdown();
+    const second = runtime.shutdown();
+    expect(first).toBe(second);
+    await Promise.all([pending, first]);
+    expect(aborts).toBe(1);
   });
 });
