@@ -439,7 +439,7 @@ func (i *claudeInspector) marketplaceMetadata(path, pluginRoot string, metadata 
 		i.error(i.relativePath(path), "marketplace plugin source: "+err.Error())
 		return
 	}
-	resolved, err := resolveMarketplaceSource(filepath.Dir(path), sourcePath)
+	resolved, err := resolveMarketplaceSource(pluginRoot, sourcePath)
 	if err != nil || filepath.Clean(resolved) != filepath.Clean(pluginRoot) {
 		i.error(i.relativePath(path), "marketplace plugin source must resolve to the plugin root")
 		return

@@ -15,7 +15,7 @@ import (
 func TestInspectClaudePluginImportsOfficialDefaultHooksPayloadsAndComponents(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo","description":"Demo","version":"1.0.0"}`)
-	writeFixture(t, workspace, "source/plugin/.claude-plugin/marketplace.json", `{"owner":{"name":"team"},"plugins":[{"source":".."}]}`)
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/marketplace.json", `{"owner":{"name":"team"},"plugins":[{"source":"./"}]}`)
 	writeFixture(t, workspace, "source/plugin/hooks/hooks.json", `{"description":"Validate commands","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"bash","args":["${CLAUDE_PLUGIN_ROOT}/scripts/check.sh","--strict"],"timeout":5}]}]}}`)
 	writeFixture(t, workspace, "source/plugin/scripts/check.sh", "#!/bin/sh\n")
 	if err := os.Chmod(filepath.Join(workspace, "source/plugin/scripts/check.sh"), 0o755); err != nil {
@@ -182,8 +182,9 @@ func TestInspectClaudePluginRejectsInvalidExecutableAwareOverlayFileValues(t *te
 func TestInspectClaudePluginRejectsMalformedPluginAndMarketplace(t *testing.T) {
 	cases := []struct{ name, plugin, marketplace string }{
 		{"unknown plugin field", `{"name":"demo","extra":true}`, ""},
+		{"marketplace parent source", `{"name":"demo"}`, `{"plugins":[{"source":".."}]}`},
 		{"marketplace wrong source", `{"name":"demo"}`, `{"plugins":[{"source":"elsewhere"}]}`},
-		{"marketplace multiple plugins", `{"name":"demo"}`, `{"plugins":[{"source":".."},{"source":".."}]}`},
+		{"marketplace multiple plugins", `{"name":"demo"}`, `{"plugins":[{"source":"./"},{"source":"./"}]}`},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
