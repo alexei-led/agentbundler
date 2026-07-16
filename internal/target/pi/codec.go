@@ -155,6 +155,9 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 	descriptors := make([]model.HookDescriptor, 0, len(input.Hooks()))
 	for _, hook := range input.Hooks() {
 		descriptor := hook.Descriptor()
+		if descriptor.Handler.Mode == model.HookHandlerModeShell && descriptor.Handler.Arguments == nil {
+			descriptor.Handler.Arguments = []model.HookArgument{}
+		}
 		for index, argument := range descriptor.Handler.Arguments {
 			if argument.PackageFile == nil {
 				continue

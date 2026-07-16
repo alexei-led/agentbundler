@@ -53,6 +53,13 @@ describe("schema v1", () => {
     expect(decoded.hooks.map((value) => value.identity)).toEqual(["hook/session", "hook/pre-tool"]);
   });
 
+  test("decodes the shared shell fixture with an empty argument array", async () => {
+    const fixture = await Bun.file(new URL("../testdata/shell-hook.v1.json", import.meta.url)).json();
+    const decoded = decodeConfig(fixture);
+    expect(decoded.hooks).toHaveLength(1);
+    expect(decoded.hooks[0]?.handler).toEqual({ mode: "shell", arguments: [], shellCommand: "printf done" });
+  });
+
   test("matches Go byte ordering for non-ASCII hook identities", async () => {
     const fixture = await Bun.file(new URL("../testdata/hook-order.v1.json", import.meta.url)).json() as {
       config: unknown;

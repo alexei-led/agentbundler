@@ -14,7 +14,8 @@ import (
 
 func TestCursorLocalPluginLoadIsIsolated(t *testing.T) {
 	cursor := vendorsmoke.RequireExecutable(t, "cursor-agent")
-	if os.Getenv("CURSOR_API_KEY") == "" {
+	apiKey := os.Getenv("CURSOR_API_KEY")
+	if apiKey == "" {
 		t.Skip("vendor smoke unavailable: CURSOR_API_KEY is unset and Cursor has no offline local-plugin validator")
 	}
 	realHome := vendorsmoke.UserHome(t)
@@ -43,6 +44,7 @@ func TestCursorLocalPluginLoadIsIsolated(t *testing.T) {
 		Env: vendorsmoke.Environment(map[string]string{
 			"HOME": home, "XDG_CONFIG_HOME": filepath.Join(root, "config"),
 			"XDG_CACHE_HOME": filepath.Join(root, "cache"), "CURSOR_CONFIG_DIR": filepath.Join(root, "cursor-config"),
+			"CURSOR_API_KEY": apiKey,
 		}),
 		Timeout: 90 * time.Second,
 	})

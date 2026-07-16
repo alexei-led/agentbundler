@@ -63,7 +63,7 @@ func TestCompileClaudeHooksEndToEndIsDeterministic(t *testing.T) {
 
 	python, err := exec.LookPath("python3")
 	if err != nil {
-		t.Fatalf("python3 is required by the interpreter-backed fixture: %v", err)
+		t.Skipf("interpreter-backed fixture unavailable: python3 is not on PATH: %v", err)
 	}
 	request := []byte(`{"session_id":"fixture","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/example"}}`)
 	wantDecisions := map[string]string{
@@ -86,7 +86,7 @@ func TestClaudeHookSubprocessHarnessBoundsProtocolFailures(t *testing.T) {
 	root, _ := compileClaudeHookFixture(t)
 	python, err := exec.LookPath("python3")
 	if err != nil {
-		t.Fatalf("python3 is required by the interpreter-backed fixture: %v", err)
+		t.Skipf("interpreter-backed fixture unavailable: python3 is not on PATH: %v", err)
 	}
 	script := filepath.Join(root, "generated", "claude", "hooks", "allow", "protocol.py")
 

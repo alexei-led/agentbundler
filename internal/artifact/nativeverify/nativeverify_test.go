@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
@@ -73,6 +74,29 @@ func TestRunNativeChecksUsesIsolatedMinimalEnvironment(t *testing.T) {
 	}
 	if observed["PATH"] != parentPath {
 		t.Errorf("PATH = %q, want %q", observed["PATH"], parentPath)
+	}
+}
+
+func TestRunNativeChecksTimesOutSleepingValidator(t *testing.T) {
+	check := testCheck(helperArguments("sleep"))
+	const timeout = 100 * time.Millisecond
+
+	started := time.Now()
+	result := runNativeChecks([]model.NativeCheck{check}, t.TempDir(), timeout)
+	elapsed := time.Since(started)
+
+	if result.Success {
+		t.Error("runNativeChecks() success = true, want false")
+	}
+	if elapsed >= 2*time.Second {
+		t.Errorf("sleeping validator returned after %s, want bounded termination", elapsed)
+	}
+	if len(result.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %#v, want one timeout diagnostic", result.Diagnostics)
+	}
+	assertDiagnostic(t, result.Diagnostics, 0, timeoutCode, model.SeverityError, check.Location)
+	if !strings.Contains(result.Diagnostics[0].Message, "timed out after 100ms") {
+		t.Errorf("timeout diagnostic = %q", result.Diagnostics[0].Message)
 	}
 }
 
@@ -303,6 +327,9 @@ func TestNativeVerifyHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		_, _ = fmt.Fprint(os.Stdout, strings.Repeat("s", size))
+	case "sleep":
+		_, _ = fmt.Fprint(os.Stdout, "sleeping")
+		time.Sleep(time.Minute)
 	case "failure":
 		_, _ = fmt.Fprint(os.Stdout, "stdout-evidence")
 		_, _ = fmt.Fprint(os.Stderr, "stderr-evidence")

@@ -30,6 +30,38 @@ func TestRunBoundsTimeAndOutput(t *testing.T) {
 	}
 }
 
+func TestEnvironmentAllowsOnlyRuntimeVariablesAndExplicitValues(t *testing.T) {
+	t.Setenv("PATH", "/safe/bin")
+	t.Setenv("LANG", "C")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "ambient-secret")
+	t.Setenv("CURSOR_API_KEY", "ambient-cursor-key")
+
+	environment := Environment(map[string]string{
+		"HOME":           "/isolated/home",
+		"CURSOR_API_KEY": "explicit-cursor-key",
+	})
+	values := make(map[string]string, len(environment))
+	for index, entry := range environment {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			t.Fatalf("environment entry %q has no separator", entry)
+		}
+		values[key] = value
+		if index > 0 && environment[index-1] > entry {
+			t.Fatalf("environment is not sorted: %#v", environment)
+		}
+	}
+	if values["PATH"] != "/safe/bin" || values["LANG"] != "C" || values["HOME"] != "/isolated/home" {
+		t.Fatalf("runtime environment = %#v", values)
+	}
+	if values["CURSOR_API_KEY"] != "explicit-cursor-key" {
+		t.Errorf("explicit credential = %q", values["CURSOR_API_KEY"])
+	}
+	if _, exists := values["AWS_SECRET_ACCESS_KEY"]; exists {
+		t.Error("ambient AWS_SECRET_ACCESS_KEY leaked")
+	}
+}
+
 func TestSnapshotDetectsFileChanges(t *testing.T) {
 	path := t.TempDir() + "/settings.json"
 	if err := os.WriteFile(path, []byte("before"), 0o600); err != nil {
