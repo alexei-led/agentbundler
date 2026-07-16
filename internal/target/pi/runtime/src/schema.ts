@@ -112,8 +112,8 @@ function decodeHook(value: unknown, index: number): HookDescriptor {
   if (object.failurePolicy !== "open" && object.failurePolicy !== "closed") {
     throw new Error(`${field}.failurePolicy must be open or closed`);
   }
-  if (object.asynchronous && object.failurePolicy === "closed") {
-    throw new Error(`${field}.asynchronous hooks require open failure policy`);
+  if (object.failurePolicy === "closed" && event !== "pre-tool") {
+    throw new Error(`${field}.failurePolicy closed is enforceable only for pre-tool hooks, not ${event}`);
   }
   const order = integer(object.order, `${field}.order`);
   if (order < 0) throw new Error(`${field}.order must not be negative`);

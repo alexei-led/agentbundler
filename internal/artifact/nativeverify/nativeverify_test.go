@@ -65,15 +65,30 @@ func TestRunNativeChecksUsesIsolatedMinimalEnvironment(t *testing.T) {
 		}
 	}
 	root := filepath.Dir(observed["HOME"])
-	for name, base := range map[string]string{
+	isolatedRoots := map[string]string{
 		"HOME": "home", "TMPDIR": "tmp", "XDG_CACHE_HOME": "cache", "XDG_CONFIG_HOME": "config",
-	} {
+	}
+	if runtime.GOOS == "windows" {
+		isolatedRoots["APPDATA"] = "config"
+		isolatedRoots["LOCALAPPDATA"] = "cache"
+		isolatedRoots["TEMP"] = "tmp"
+		isolatedRoots["TMP"] = "tmp"
+		isolatedRoots["USERPROFILE"] = "home"
+	}
+	for name, base := range isolatedRoots {
 		if got, want := observed[name], filepath.Join(root, base); got != want {
 			t.Errorf("%s = %q, want %q", name, got, want)
 		}
 	}
 	if observed["PATH"] != parentPath {
 		t.Errorf("PATH = %q, want %q", observed["PATH"], parentPath)
+	}
+	if runtime.GOOS == "windows" {
+		for _, name := range []string{"COMSPEC", "PATHEXT", "SYSTEMROOT", "WINDIR"} {
+			if want, exists := os.LookupEnv(name); exists && observed[name] != want {
+				t.Errorf("%s = %q, want inherited value %q", name, observed[name], want)
+			}
+		}
 	}
 }
 
@@ -291,15 +306,16 @@ func TestNativeVerifyHelperProcess(t *testing.T) {
 		}
 	case "environment":
 		observed := make(map[string]string)
-		for _, name := range []string{
-			"AGBUN_NATIVEVERIFY_SECRET", "AWS_CONFIG_FILE", "CLAUDE_CONFIG_DIR", "NATIVEVERIFY_HELPER",
-			"HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
-		} {
+		for _, name := range observedEnvironmentNames() {
 			if value, exists := os.LookupEnv(name); exists {
 				observed[name] = value
 			}
 		}
-		for _, name := range []string{"HOME", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"} {
+		directoryNames := []string{"HOME", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"}
+		if runtime.GOOS == "windows" {
+			directoryNames = append(directoryNames, "APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "USERPROFILE")
+		}
+		for _, name := range directoryNames {
 			info, err := os.Stat(observed[name])
 			if err != nil || !info.IsDir() {
 				os.Exit(2)
@@ -348,6 +364,15 @@ func TestNativeVerifyHelperProcess(t *testing.T) {
 		select {}
 	default:
 		os.Exit(2)
+	}
+}
+
+func observedEnvironmentNames() []string {
+	return []string{
+		"AGBUN_NATIVEVERIFY_SECRET", "AWS_CONFIG_FILE", "CLAUDE_CONFIG_DIR", "NATIVEVERIFY_HELPER",
+		"HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
+		"APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "USERPROFILE",
+		"COMSPEC", "PATHEXT", "SYSTEMROOT", "WINDIR",
 	}
 }
 

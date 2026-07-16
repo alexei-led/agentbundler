@@ -43,15 +43,21 @@ func TestReplaceOutputWritesDeterministicPathsAndRemovesStaleFiles(t *testing.T)
 }
 
 func TestReplaceOutputAppliesExecutableIntent(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows rejects executable intent")
-	}
-
 	output := filepath.Join(t.TempDir(), "generated")
 	plan := model.BuildPlan{CompilerFiles: []model.PlannedFile{
 		{Path: "bin/run", Bytes: []byte("run"), Executable: true},
 		{Path: "data/readme", Bytes: []byte("read"), Executable: false},
 	}}
+	if runtime.GOOS == "windows" {
+		diagnostics := ReplaceOutput(plan, output)
+		if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticExecutable || diagnostics[0].Message != "executable file intent is unsupported on Windows" {
+			t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
+		}
+		if _, err := os.Stat(output); !os.IsNotExist(err) {
+			t.Fatalf("rejected output exists or could not be checked: %v", err)
+		}
+		return
+	}
 	if diagnostics := ReplaceOutput(plan, output); len(diagnostics) != 0 {
 		t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
 	}

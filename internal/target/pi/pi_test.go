@@ -181,8 +181,8 @@ func TestRuntimeHookOrderFixtureMatchesPortableModel(t *testing.T) {
 }
 
 func TestCapabilitiesExposeAggregatePiHooksAndSubagents(t *testing.T) {
-	if FormatRevision != 6 {
-		t.Fatalf("FormatRevision = %d, want 6", FormatRevision)
+	if FormatRevision != 7 {
+		t.Fatalf("FormatRevision = %d, want 7", FormatRevision)
 	}
 	rules := make(map[model.CapabilityKey]model.CapabilityState)
 	for _, rule := range Capabilities() {
