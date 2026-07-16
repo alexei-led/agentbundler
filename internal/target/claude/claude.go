@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetClaude
-	FormatRevision = 4
+	FormatRevision = 5
 )
 
 // Adapter renders Claude project skills and installable plugins.
