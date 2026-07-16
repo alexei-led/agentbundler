@@ -113,10 +113,6 @@ func TestDetectDriftClassifiesSymlinksWithoutTraversal(t *testing.T) {
 }
 
 func TestDetectDriftComparesExecutableIntent(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows executable files are rejected before comparison")
-	}
-
 	root := t.TempDir()
 	plan := model.BuildPlan{CompilerFiles: []model.PlannedFile{{
 		Path:       "tool",
@@ -126,6 +122,9 @@ func TestDetectDriftComparesExecutableIntent(t *testing.T) {
 	writeFile(t, root, "tool", []byte("#!/bin/sh\nexit 0\n"), 0o644)
 
 	assertDrift(t, detectDrift(t, plan, root), []Drift{{Kind: DriftChanged, Path: "tool"}})
+	if runtime.GOOS == "windows" {
+		return
+	}
 	if err := os.Chmod(filepath.Join(root, "tool"), 0o755); err != nil {
 		t.Fatal(err)
 	}

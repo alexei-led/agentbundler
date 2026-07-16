@@ -90,6 +90,13 @@ describe("schema v1", () => {
     (invalid.handler.arguments as unknown[]).push("bad");
     expect(() => decodeConfig(config(invalid))).toThrow("arguments must be empty");
   });
+
+  test("rejects closed session-start and post-tool hooks", () => {
+    for (const event of ["session-start", "post-tool"] as const) {
+      expect(() => decodeConfig(config(hook(`closed-${event}`, event, { failurePolicy: "closed" }))))
+        .toThrow(`failurePolicy closed is enforceable only for pre-tool hooks, not ${event}`);
+    }
+  });
 });
 
 describe("generated aggregate fixture", () => {
@@ -245,7 +252,7 @@ describe("decision translation and failure policy", () => {
     }
   });
 
-  test("fails open or closed on command failure and malformed passive decisions", async () => {
+  test("fails open or closed on pre-tool command failure and reports passive decisions", async () => {
     const failing: ProcessRunner = async () => ({ exitCode: 7, signal: null, stdout: "", stderr: "boom" });
     const openPi = new FakePi();
     createPiHookRuntime(openPi, config(hook("open", "pre-tool", { failurePolicy: "open" })), { packageRoot: "/tmp/package", runner: failing });
@@ -255,12 +262,15 @@ describe("decision translation and failure policy", () => {
     createPiHookRuntime(closedPi, config(hook("closed", "pre-tool", { failurePolicy: "closed" })), { packageRoot: "/tmp/package", runner: failing });
     expect(await closedPi.emit("tool_call", { toolName: "bash", input: {} })).toEqual({ block: true, reason: "hook exited with code 7: boom" });
 
+    const errors: Error[] = [];
     const passivePi = new FakePi();
-    createPiHookRuntime(passivePi, config(hook("passive", "session-start", { failurePolicy: "closed" })), {
+    createPiHookRuntime(passivePi, config(hook("passive", "session-start")), {
       packageRoot: "/tmp/package",
       runner: async () => ({ exitCode: 0, signal: null, stdout: '{"decision":"deny"}', stderr: "" }),
+      onError: (error) => errors.push(error),
     });
-    expect(passivePi.emit("session_start")).rejects.toThrow("only valid for pre-tool");
+    expect(await passivePi.emit("session_start")).toBeUndefined();
+    expect(errors.map((error) => error.message)).toEqual(["deny is only valid for pre-tool hooks"]);
   });
 });
 

@@ -195,6 +195,9 @@ func validateHookSemantics(pkg model.NormalizedPackage) []model.Diagnostic {
 		if asset.Hook.Event == model.HookEventNotification {
 			return []model.Diagnostic{piHookDiagnostic(asset, "event notification has no lossless Pi extension mapping")}
 		}
+		if asset.Hook.FailurePolicy == model.HookFailurePolicyClosed && asset.Hook.Event != model.HookEventPreTool {
+			return []model.Diagnostic{piHookDiagnostic(asset, fmt.Sprintf("hook.failure.closed is enforceable only for Pi pre-tool hooks, not %q", asset.Hook.Event))}
+		}
 		for _, use := range asset.CapabilityUses {
 			if (use.Key == "hook.decision.block" || use.Key == "hook.decision.rewrite-input") && asset.Hook.Event != model.HookEventPreTool {
 				return []model.Diagnostic{piHookDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Pi pre-tool hooks", use.Key))}

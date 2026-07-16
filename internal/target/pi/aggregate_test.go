@@ -99,7 +99,7 @@ func TestAggregateRuntimeBytesAreEmbeddedDeterministically(t *testing.T) {
 		hash.Write([]byte{0})
 		hash.Write(source.bytes)
 	}
-	if got, want := hex.EncodeToString(hash.Sum(nil)), "858327bfd45f53389502fd98bf4c69d9e829f13ff2ebe15a0b1326d438df0c4f"; got != want {
+	if got, want := hex.EncodeToString(hash.Sum(nil)), "633a6950ab711590ada9bcf3d8bb844b1432a9506cc2427bf47fb46a6c1fa1b4"; got != want {
 		t.Fatalf("embedded runtime hash = %q, want %q", got, want)
 	}
 
@@ -170,6 +170,35 @@ func TestAggregateRequiresPiSubagentsDependencyForAgents(t *testing.T) {
 	_, diagnostics := Render(input)
 	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-manifest" || !strings.Contains(diagnostics[0].Message, "require a non-empty pi-subagents dependency") {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestAggregateRejectsFailClosedOutsidePreTool(t *testing.T) {
+	for _, test := range []struct {
+		event      model.HookEvent
+		capability model.CapabilityKey
+	}{
+		{event: model.HookEventSessionStart, capability: "hook.event.session-start"},
+		{event: model.HookEventPostTool, capability: "hook.event.post-tool"},
+	} {
+		t.Run(string(test.event), func(t *testing.T) {
+			input := aggregateFixture()
+			asset := &input.Packages[0].Assets[1]
+			asset.Hook.Event = test.event
+			asset.Hook.FailurePolicy = model.HookFailurePolicyClosed
+			asset.CapabilityUses[2].Key = test.capability
+			asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{
+				Key:      "hook.failure.closed",
+				Location: asset.Hook.Location,
+			})
+
+			_, diagnostics := Render(input)
+			assertDiagnosticContains(t, diagnostics, "unsupported-hook-semantics",
+				"hook.failure.closed is enforceable only for Pi pre-tool hooks", string(test.event))
+			if diagnostics[0].Location == nil || diagnostics[0].Location.Path != asset.Hook.Location.Path {
+				t.Fatalf("diagnostic location = %#v, want %q", diagnostics[0].Location, asset.Hook.Location.Path)
+			}
+		})
 	}
 }
 

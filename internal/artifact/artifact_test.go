@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -109,6 +110,26 @@ func TestCompareReportsObservationFailureSeparatelyFromDrift(t *testing.T) {
 	diagnostics, drift := Compare(planWithFile("skill.md"), filepath.Join(t.TempDir(), "missing"))
 	if drift || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticDriftObservation {
 		t.Fatalf("Compare() = (%#v, %t)", diagnostics, drift)
+	}
+}
+
+func TestWriteAndCompareRejectExecutableIntentOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific executable-intent contract")
+	}
+	plan := model.BuildPlan{CompilerFiles: []model.PlannedFile{{Path: "tool", Bytes: []byte("tool"), Executable: true}}}
+	outputRoot := filepath.Join(t.TempDir(), "output")
+
+	writeDiagnostics := Write(plan, outputRoot)
+	compareDiagnostics, drift := Compare(plan, outputRoot)
+	if drift {
+		t.Fatal("Compare() reported drift instead of rejecting the plan")
+	}
+	if !reflect.DeepEqual(writeDiagnostics, compareDiagnostics) || len(writeDiagnostics) != 1 {
+		t.Fatalf("Write() diagnostics = %#v, Compare() diagnostics = %#v", writeDiagnostics, compareDiagnostics)
+	}
+	if diagnostic := writeDiagnostics[0]; diagnostic.Code != diagnosticExecutable || diagnostic.Message != "executable file intent is unsupported on Windows" {
+		t.Fatalf("executable-intent diagnostic = %#v", diagnostic)
 	}
 }
 
