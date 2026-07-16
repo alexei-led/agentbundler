@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	claudetarget "github.com/alexei-led/agentbundler/internal/target/claude"
 )
 
 func TestInspectClaudePluginImportsOfficialDefaultHooksPayloadsAndComponents(t *testing.T) {
@@ -72,6 +73,60 @@ func TestInspectClaudePluginImportsOfficialDefaultHooksPayloadsAndComponents(t *
 	}
 	if len(inventory.Inputs) != 9 || !containsInput(inventory, "source/plugin/hooks/hooks.json") || !containsInput(inventory, "source/plugin/scripts/check.sh") {
 		t.Fatalf("inputs = %#v", inventory.Inputs)
+	}
+}
+
+func TestInspectClaudePluginImportsGeneratedClaudePackage(t *testing.T) {
+	pkg := model.NormalizedPackage{
+		Identity: "generated",
+		Target:   model.TargetClaude,
+		Profile:  model.TargetProfilePackage,
+		Metadata: model.PackageMetadata{
+			"version": "1.2.3", "description": "Generated package", "author": "Agent Bundler",
+			"homepage": "https://example.com/generated", "repository": "https://github.com/example/generated",
+			"license": "MIT", "keywords": []any{"agents", "hooks"},
+		},
+		Assets: []model.NormalizedAsset{{
+			Identity: "skill/guide", Kind: model.AssetKindSkill,
+			Content:        model.AssetContent{Body: "Guide.\n", Files: map[model.RelativePath]model.FileContent{}},
+			CapabilityUses: []model.CapabilityUse{{Key: "asset.skill", Location: model.SourceLocation{Path: "source/skills/guide/SKILL.md"}}},
+		}},
+	}
+	plan, diagnostics := claudetarget.Render(model.TargetRenderInput{Packages: []model.NormalizedPackage{pkg}, PackageMode: model.TargetPackageModeSeparate})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	workspace := t.TempDir()
+	for _, file := range plan.Files {
+		writeFixture(t, workspace, "source/plugin/"+string(file.Path), string(file.Bytes))
+	}
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectClaudePlugin() diagnostics = %#v", diagnostics)
+	}
+	if len(inventory.Packages) != 1 || inventory.Packages[0].Identity != pkg.Identity {
+		t.Fatalf("packages = %#v", inventory.Packages)
+	}
+	if got := inventory.Packages[0].Metadata; got["version"] != "1.2.3" || got["description"] != "Generated package" {
+		t.Fatalf("metadata = %#v", got)
+	}
+}
+
+func TestParsePluginManifestAcceptsAllDocumentedFields(t *testing.T) {
+	data := []byte(`{
+		"$schema":"https://json.schemastore.org/claude-code-plugin-manifest.json",
+		"name":"demo","version":"1.0.0","description":"Demo","author":{"name":"Team"},
+		"homepage":"https://example.com","repository":"https://github.com/example/demo","license":"MIT","keywords":[],
+		"dependencies":{},"hooks":{},"commands":[],"agents":[],"skills":[],"outputStyles":[],"themes":[],"channels":{},
+		"mcpServers":{},"lspServers":{},"monitors":{},"settings":{},"userConfig":{}
+	}`)
+	manifest, err := parsePluginManifest(data)
+	if err != nil {
+		t.Fatalf("parsePluginManifest() error = %v", err)
+	}
+	if manifest.Name != "demo" || manifest.Version == nil || *manifest.Version != "1.0.0" {
+		t.Fatalf("manifest = %#v", manifest)
 	}
 }
 

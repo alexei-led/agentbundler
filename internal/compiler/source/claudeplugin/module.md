@@ -74,4 +74,4 @@ Every recognized hook produces exact semantic capabilities in addition to `asset
 
 - Official default and manifest-selected hook layouts import.
 - Legacy shell, simple script, complex shell, invalid schema, missing payload, source mode, and no-source-write cases are covered.
-- Round-trip capability tests prove arbitrary shell is never labeled exec and partial native matcher categories never widen.
+- Generated Claude package manifests round-trip through import; capability tests prove arbitrary shell is never labeled exec and partial native matcher categories never widen.

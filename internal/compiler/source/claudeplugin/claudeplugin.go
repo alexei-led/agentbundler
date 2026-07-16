@@ -139,10 +139,28 @@ type hookSpec struct {
 
 func parsePluginManifest(data []byte) (pluginManifest, error) {
 	var raw struct {
-		Name        *string         `json:"name"`
-		Description *string         `json:"description"`
-		Version     *string         `json:"version"`
-		Hooks       json.RawMessage `json:"hooks"`
+		Schema       json.RawMessage `json:"$schema"`
+		Name         *string         `json:"name"`
+		Version      *string         `json:"version"`
+		Description  *string         `json:"description"`
+		Author       json.RawMessage `json:"author"`
+		Homepage     json.RawMessage `json:"homepage"`
+		Repository   json.RawMessage `json:"repository"`
+		License      json.RawMessage `json:"license"`
+		Keywords     json.RawMessage `json:"keywords"`
+		Dependencies json.RawMessage `json:"dependencies"`
+		Hooks        json.RawMessage `json:"hooks"`
+		Commands     json.RawMessage `json:"commands"`
+		Agents       json.RawMessage `json:"agents"`
+		Skills       json.RawMessage `json:"skills"`
+		OutputStyles json.RawMessage `json:"outputStyles"`
+		Themes       json.RawMessage `json:"themes"`
+		Channels     json.RawMessage `json:"channels"`
+		MCPServers   json.RawMessage `json:"mcpServers"`
+		LSPServers   json.RawMessage `json:"lspServers"`
+		Monitors     json.RawMessage `json:"monitors"`
+		Settings     json.RawMessage `json:"settings"`
+		UserConfig   json.RawMessage `json:"userConfig"`
 	}
 	if err := decodeStrictJSONObject(data, &raw); err != nil {
 		return pluginManifest{}, err

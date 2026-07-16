@@ -1,6 +1,7 @@
 package nativeverify
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,6 +34,45 @@ func TestRunNativeChecksPassesArgumentsLiterally(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Errorf("shell marker exists or could not be checked: %v", err)
+	}
+}
+
+func TestRunNativeChecksUsesIsolatedMinimalEnvironment(t *testing.T) {
+	t.Setenv("AGBUN_NATIVEVERIFY_SECRET", "must-not-leak")
+	t.Setenv("AWS_CONFIG_FILE", "/real/aws/config")
+	t.Setenv("CLAUDE_CONFIG_DIR", "/real/claude/config")
+	t.Setenv("NATIVEVERIFY_HELPER", "ambient-helper-sentinel")
+	parentPath := os.Getenv("PATH")
+	observedPath := filepath.Join(t.TempDir(), "environment.json")
+
+	result := RunNativeChecks([]model.NativeCheck{testCheck(helperArguments("environment", observedPath))}, t.TempDir())
+
+	if !result.Success {
+		t.Fatalf("RunNativeChecks() success = false, diagnostics = %#v", result.Diagnostics)
+	}
+	data, err := os.ReadFile(observedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed map[string]string
+	if err := json.Unmarshal(data, &observed); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"AGBUN_NATIVEVERIFY_SECRET", "AWS_CONFIG_FILE", "CLAUDE_CONFIG_DIR", "NATIVEVERIFY_HELPER"} {
+		if value, exists := observed[name]; exists {
+			t.Errorf("ambient variable %s leaked with value %q", name, value)
+		}
+	}
+	root := filepath.Dir(observed["HOME"])
+	for name, base := range map[string]string{
+		"HOME": "home", "TMPDIR": "tmp", "XDG_CACHE_HOME": "cache", "XDG_CONFIG_HOME": "config",
+	} {
+		if got, want := observed[name], filepath.Join(root, base); got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+	if observed["PATH"] != parentPath {
+		t.Errorf("PATH = %q, want %q", observed["PATH"], parentPath)
 	}
 }
 
@@ -208,10 +248,10 @@ func TestRunNativeChecksRejectsInvalidDeclarations(t *testing.T) {
 }
 
 func TestNativeVerifyHelperProcess(t *testing.T) {
-	if os.Getenv("NATIVEVERIFY_HELPER") != "1" {
+	arguments := helperProcessArguments()
+	if len(arguments) == 0 {
 		return
 	}
-	arguments := helperProcessArguments(t)
 	switch arguments[0] {
 	case "literal":
 		if err := os.WriteFile(arguments[1], []byte(arguments[2]), 0o600); err != nil {
@@ -223,6 +263,26 @@ func TestNativeVerifyHelperProcess(t *testing.T) {
 			os.Exit(2)
 		}
 		if err := os.WriteFile(arguments[1], []byte(cwd), 0o600); err != nil {
+			os.Exit(2)
+		}
+	case "environment":
+		observed := make(map[string]string)
+		for _, name := range []string{
+			"AGBUN_NATIVEVERIFY_SECRET", "AWS_CONFIG_FILE", "CLAUDE_CONFIG_DIR", "NATIVEVERIFY_HELPER",
+			"HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME",
+		} {
+			if value, exists := os.LookupEnv(name); exists {
+				observed[name] = value
+			}
+		}
+		for _, name := range []string{"HOME", "TMPDIR", "XDG_CACHE_HOME", "XDG_CONFIG_HOME"} {
+			info, err := os.Stat(observed[name])
+			if err != nil || !info.IsDir() {
+				os.Exit(2)
+			}
+		}
+		data, err := json.Marshal(observed)
+		if err != nil || os.WriteFile(arguments[1], data, 0o600) != nil {
 			os.Exit(2)
 		}
 	case "marker":
@@ -275,20 +335,15 @@ func testCheck(arguments []string) model.NativeCheck {
 }
 
 func helperArguments(mode string, arguments ...string) []string {
-	return append([]string{"-test.run=^TestNativeVerifyHelperProcess$", "--", mode}, arguments...)
+	return append([]string{"-test.run=^TestNativeVerifyHelperProcess$", "--", "nativeverify-helper", mode}, arguments...)
 }
 
-func helperProcessArguments(t *testing.T) []string {
-	t.Helper()
+func helperProcessArguments() []string {
 	for index, argument := range os.Args {
-		if argument == "--" {
-			if index+1 < len(os.Args) {
-				return os.Args[index+1:]
-			}
-			break
+		if argument == "--" && index+2 < len(os.Args) && os.Args[index+1] == "nativeverify-helper" {
+			return os.Args[index+2:]
 		}
 	}
-	t.Fatal("helper process arguments are missing")
 	return nil
 }
 
