@@ -79,7 +79,7 @@ func TestRenderCopilotHookGolden(t *testing.T) {
 	if got, want := pre["bash"], `'bash' '-eu' "${PLUGIN_ROOT}"'/hooks/guard/scripts/guard.sh'`; got != want {
 		t.Fatalf("bash = %#v, want %#v", got, want)
 	}
-	if got, want := pre["powershell"], `& 'bash' '-eu' "$env:PLUGIN_ROOT/hooks/guard/scripts/guard.sh"`; got != want {
+	if got, want := pre["powershell"], `$PSNativeCommandArgumentPassing = 'Legacy'; & 'bash' '-eu' "$env:PLUGIN_ROOT/hooks/guard/scripts/guard.sh"`; got != want {
 		t.Fatalf("powershell = %#v, want %#v", got, want)
 	}
 	post := hooks["PostToolUse"].([]any)[0].(map[string]any)
@@ -111,7 +111,7 @@ func TestRenderCopilotShellQuotesHostilePackageFilePath(t *testing.T) {
 	if bashCommand != wantBash {
 		t.Fatalf("bash = %q, want %q", bashCommand, wantBash)
 	}
-	wantPowerShell := `& 'printf' '%s' "$env:PLUGIN_ROOT/hooks/guard/scripts/check-` + "`\"-`$AMBIENT-`$(touch INJECTED)-``touch BACKTICK``-'.sh\""
+	wantPowerShell := `$PSNativeCommandArgumentPassing = 'Legacy'; & 'printf' '%s' "$env:PLUGIN_ROOT/hooks/guard/scripts/check-` + "`\"-`$AMBIENT-`$(touch INJECTED)-``touch BACKTICK``-'.sh\""
 	if got := handler["powershell"]; got != wantPowerShell {
 		t.Fatalf("powershell = %q, want %q", got, wantPowerShell)
 	}
@@ -163,7 +163,7 @@ func TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting(t *testing.T) {
 	}
 
 	path := model.RelativePath("scripts/file with 'quote' and $dollar.txt")
-	literal := `single' and "double" with spaces`
+	literal := `single' and "double" with back\slash quote\" and trailing\`
 	hook := execHook("guard", model.HookEventStop, nil, 2_000, false, 0, helperName, []model.HookArgument{
 		{Literal: stringPointer("-test.run=^TestCopilotExecCommandHelper$")},
 		{Literal: stringPointer("--")},
@@ -179,36 +179,50 @@ func TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting(t *testing.T) {
 	}
 	handler := decodeObject(t, plannedFiles(plan)["hooks.json"].Bytes)["hooks"].(map[string]any)["Stop"].([]any)[0].(map[string]any)
 
-	pluginRoot := filepath.Join(t.TempDir(), "plugin root with spaces")
-	var process *exec.Cmd
-	if runtime.GOOS == "windows" {
-		powershell, err := exec.LookPath("powershell")
-		if err != nil {
-			t.Skipf("Windows PowerShell is unavailable: %v", err)
-		}
-		process = exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command", handler["powershell"].(string))
-	} else {
-		bash, err := exec.LookPath("bash")
-		if err != nil {
-			t.Skipf("bash is unavailable: %v", err)
-		}
-		process = exec.Command(bash, "-c", handler["bash"].(string))
+	for _, shell := range execShells() {
+		t.Run(shell.name, func(t *testing.T) {
+			binary, err := exec.LookPath(shell.name)
+			if err != nil {
+				t.Skipf("%s is unavailable: %v", shell.name, err)
+			}
+			pluginRoot := filepath.Join(t.TempDir(), "plugin root with spaces")
+			process := exec.Command(binary, append(shell.arguments, handler[shell.field].(string))...)
+			process.Env = append(os.Environ(), "AGENTBUNDLER_COPILOT_HELPER=1", "PLUGIN_ROOT="+pluginRoot, "PATH="+helperDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+			output, err := process.CombinedOutput()
+			if err != nil {
+				t.Fatalf("execute rendered command: %v: %s", err, output)
+			}
+			var arguments []string
+			if err := json.Unmarshal(output, &arguments); err != nil {
+				t.Fatalf("decode helper output %q: %v", output, err)
+			}
+			if len(arguments) != 2 || arguments[0] != literal {
+				t.Fatalf("rendered literal arguments = %#v, want literal %#v", arguments, literal)
+			}
+			wantPath := filepath.Join(pluginRoot, "hooks", "guard", filepath.FromSlash(string(path)))
+			if filepath.Clean(arguments[1]) != filepath.Clean(wantPath) {
+				t.Fatalf("rendered package-file argument = %q, want %q", arguments[1], wantPath)
+			}
+		})
 	}
-	process.Env = append(os.Environ(), "AGENTBUNDLER_COPILOT_HELPER=1", "PLUGIN_ROOT="+pluginRoot, "PATH="+helperDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
-	output, err := process.CombinedOutput()
-	if err != nil {
-		t.Fatalf("execute rendered command: %v: %s", err, output)
+}
+
+type execShell struct {
+	name      string
+	field     string
+	arguments []string
+}
+
+// execShells covers both Windows PowerShell 5.1 and PowerShell 7+, whose native
+// argument passing differs, because Copilot runs hooks in whichever shell the
+// CLI itself uses.
+func execShells() []execShell {
+	if runtime.GOOS != "windows" {
+		return []execShell{{name: "bash", field: "bash", arguments: []string{"-c"}}}
 	}
-	var arguments []string
-	if err := json.Unmarshal(output, &arguments); err != nil {
-		t.Fatalf("decode helper output %q: %v", output, err)
-	}
-	if len(arguments) != 2 || arguments[0] != literal {
-		t.Fatalf("rendered literal arguments = %#v", arguments)
-	}
-	wantPath := filepath.Join(pluginRoot, "hooks", "guard", filepath.FromSlash(string(path)))
-	if filepath.Clean(arguments[1]) != filepath.Clean(wantPath) {
-		t.Fatalf("rendered package-file argument = %q, want %q", arguments[1], wantPath)
+	return []execShell{
+		{name: "powershell", field: "powershell", arguments: []string{"-NoProfile", "-NonInteractive", "-Command"}},
+		{name: "pwsh", field: "powershell", arguments: []string{"-NoProfile", "-NonInteractive", "-Command"}},
 	}
 }
 
