@@ -103,6 +103,55 @@ func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
 	}
 }
 
+func TestShellHookFixtureMatchesGoModelAndGeneratedRuntimeBytes(t *testing.T) {
+	data, err := os.ReadFile("runtime/testdata/shell-hook.v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture hookConfigV1
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Version != 1 || len(fixture.Hooks) != 1 {
+		t.Fatalf("shell fixture = %#v, want one v1 hook", fixture)
+	}
+
+	asset := model.NormalizedAsset{
+		Identity: fixture.Hooks[0].Identity,
+		Kind:     model.AssetKindHook,
+		Content:  model.AssetContent{Files: map[model.RelativePath]model.FileContent{}},
+		Hook:     &fixture.Hooks[0],
+		CapabilityUses: []model.CapabilityUse{
+			{Key: "asset.hook", Location: fixture.Hooks[0].Location},
+			{Key: "hook.command.shell", Location: fixture.Hooks[0].Location},
+			{Key: "hook.event.session-start", Location: fixture.Hooks[0].Location},
+		},
+	}
+	pkg := model.NormalizedPackage{Identity: "fixture", Target: Target, Profile: model.TargetProfilePackage, Assets: []model.NormalizedAsset{asset}}
+	if diagnostics := model.ValidateNormalizedPackage(pkg); len(diagnostics) != 0 {
+		t.Fatalf("Go rejected shared shell fixture: %#v", diagnostics)
+	}
+
+	pkg.Assets[0].Hook.Handler.Arguments = nil
+	plan, diagnostics := Render(model.TargetRenderInput{
+		Packages:    []model.NormalizedPackage{pkg},
+		PackageMode: model.TargetPackageModeAggregate,
+		Aggregate:   &model.AggregatePackage{Identity: "shell-fixture", Metadata: model.PackageMetadata{"version": "1.0.0"}},
+	})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	for _, file := range plan.Files {
+		if file.Path == hookDescriptorPath {
+			if !reflect.DeepEqual(file.Bytes, data) {
+				t.Fatalf("generated shell descriptor does not match shared fixture\ngot:  %s\nwant: %s", file.Bytes, data)
+			}
+			return
+		}
+	}
+	t.Fatalf("generated files = %#v, want %q", plan.Files, hookDescriptorPath)
+}
+
 func TestRuntimeHookOrderFixtureMatchesPortableModel(t *testing.T) {
 	data, err := os.ReadFile("runtime/testdata/hook-order.v1.json")
 	if err != nil {

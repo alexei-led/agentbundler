@@ -2,6 +2,7 @@
 package nativeverify
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,14 +10,17 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-const MaxOutputBytesPerStream = 32 * 1024
-
 const (
+	MaxOutputBytesPerStream = 32 * 1024
+	validatorTimeout        = 30 * time.Second
+	validatorWaitDelay      = time.Second
+
 	invalidCheckCode                = "NATIVE_VERIFY_INVALID_CHECK"
 	isolationUnavailableCode        = "NATIVE_VERIFY_ISOLATION_UNAVAILABLE"
 	outputRootUnavailableCode       = "NATIVE_VERIFY_OUTPUT_ROOT_UNAVAILABLE"
@@ -24,6 +28,7 @@ const (
 	workingDirectoryUnavailableCode = "NATIVE_VERIFY_WORKING_DIRECTORY_UNAVAILABLE"
 	toolUnavailableCode             = "NATIVE_VERIFY_TOOL_UNAVAILABLE"
 	startFailedCode                 = "NATIVE_VERIFY_START_FAILED"
+	timeoutCode                     = "NATIVE_VERIFY_TIMEOUT"
 	failedCode                      = "NATIVE_VERIFY_FAILED"
 	outputTruncatedCode             = "NATIVE_VERIFY_OUTPUT_TRUNCATED"
 )
@@ -35,6 +40,10 @@ type Result struct {
 
 // RunNativeChecks runs each declared check sequentially beneath outputRoot.
 func RunNativeChecks(checks []model.NativeCheck, outputRoot string) Result {
+	return runNativeChecks(checks, outputRoot, validatorTimeout)
+}
+
+func runNativeChecks(checks []model.NativeCheck, outputRoot string, timeout time.Duration) Result {
 	if len(checks) == 0 {
 		return Result{Success: true}
 	}
@@ -130,27 +139,40 @@ func RunNativeChecks(checks []model.NativeCheck, outputRoot string) Result {
 
 		stdout := &boundedOutput{}
 		stderr := &boundedOutput{}
-		command := exec.Command(program, check.Arguments...)
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		command := exec.CommandContext(ctx, program, check.Arguments...)
+		command.WaitDelay = validatorWaitDelay
 		command.Dir = resolvedWorkingDirectory
 		command.Env = environment
 		command.Stdin = strings.NewReader("")
 		command.Stdout = stdout
 		command.Stderr = stderr
 		if err := command.Start(); err != nil {
-			result.add(diagnostic(
-				startFailedCode,
-				model.SeverityError,
-				check,
-				fmt.Sprintf("native verification command %q could not start: %v", check.Program, err),
-			))
+			timedOut := ctx.Err() == context.DeadlineExceeded
+			cancel()
+			if timedOut {
+				result.add(timeoutDiagnostic(check, timeout, stdout, stderr))
+			} else {
+				result.add(diagnostic(
+					startFailedCode,
+					model.SeverityError,
+					check,
+					fmt.Sprintf("native verification command %q could not start: %v", check.Program, err),
+				))
+			}
 			continue
 		}
-		if err := command.Wait(); err != nil {
+		waitErr := command.Wait()
+		timedOut := ctx.Err() == context.DeadlineExceeded
+		cancel()
+		if timedOut {
+			result.add(timeoutDiagnostic(check, timeout, stdout, stderr))
+		} else if waitErr != nil {
 			result.add(diagnostic(
 				failedCode,
 				model.SeverityError,
 				check,
-				fmt.Sprintf("native verification command %q failed: %v\nstdout:\n%s\nstderr:\n%s", check.Program, err, stdout.evidence(), stderr.evidence()),
+				fmt.Sprintf("native verification command %q failed: %v\nstdout:\n%s\nstderr:\n%s", check.Program, waitErr, stdout.evidence(), stderr.evidence()),
 			))
 		}
 		if stdout.truncated() || stderr.truncated() {
@@ -255,6 +277,15 @@ func diagnostic(code string, severity model.Severity, check model.NativeCheck, m
 		Location: &location,
 		Message:  message,
 	}
+}
+
+func timeoutDiagnostic(check model.NativeCheck, timeout time.Duration, stdout, stderr *boundedOutput) model.Diagnostic {
+	return diagnostic(
+		timeoutCode,
+		model.SeverityError,
+		check,
+		fmt.Sprintf("native verification command %q timed out after %s\nstdout:\n%s\nstderr:\n%s", check.Program, timeout, stdout.evidence(), stderr.evidence()),
+	)
 }
 
 func truncationMessage(stdout, stderr bool) string {

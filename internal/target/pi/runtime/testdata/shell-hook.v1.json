@@ -1,0 +1,1 @@
+{"version":1,"hooks":[{"identity":"hook/shell","location":{"path":"src/hooks/shell/hook.json","line":null,"column":null},"event":"session-start","handler":{"mode":"shell","arguments":[],"shellCommand":"printf done"},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"open","order":0}]}

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -72,12 +73,15 @@ func run(command Command) (string, error) {
 	return output.String(), nil
 }
 
-// Environment returns the current environment with exact key replacements.
+// Environment returns a minimal runtime environment plus explicit values.
 func Environment(replacements map[string]string) []string {
 	values := make(map[string]string)
-	for _, entry := range os.Environ() {
-		key, value, ok := strings.Cut(entry, "=")
-		if ok {
+	inherited := []string{"LANG", "LC_ALL", "LC_CTYPE", "PATH", "TERM", "TZ"}
+	if runtime.GOOS == "windows" {
+		inherited = append(inherited, "COMSPEC", "PATHEXT", "SYSTEMROOT", "WINDIR")
+	}
+	for _, key := range inherited {
+		if value, ok := os.LookupEnv(key); ok {
 			values[key] = value
 		}
 	}
