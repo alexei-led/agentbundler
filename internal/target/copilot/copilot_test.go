@@ -79,8 +79,8 @@ func TestRenderCopilotHookGolden(t *testing.T) {
 	if got, want := pre["bash"], `'bash' '-eu' "${PLUGIN_ROOT}"'/hooks/guard/scripts/guard.sh'`; got != want {
 		t.Fatalf("bash = %#v, want %#v", got, want)
 	}
-	if got, want := pre["powershell"], `$PSNativeCommandArgumentPassing = 'Legacy'; & 'bash' '-eu' "$env:PLUGIN_ROOT/hooks/guard/scripts/guard.sh"`; got != want {
-		t.Fatalf("powershell = %#v, want %#v", got, want)
+	if _, exists := pre["powershell"]; exists {
+		t.Fatalf("pre-tool hook declares a powershell command = %#v", pre)
 	}
 	post := hooks["PostToolUse"].([]any)[0].(map[string]any)
 	if post["timeoutSec"] != 7.25 || post["command"] != `printf done | cat` {
@@ -111,10 +111,6 @@ func TestRenderCopilotShellQuotesHostilePackageFilePath(t *testing.T) {
 	if bashCommand != wantBash {
 		t.Fatalf("bash = %q, want %q", bashCommand, wantBash)
 	}
-	wantPowerShell := `$PSNativeCommandArgumentPassing = 'Legacy'; & 'printf' '%s' "$env:PLUGIN_ROOT/hooks/guard/scripts/check-` + "`\"-`$AMBIENT-`$(touch INJECTED)-``touch BACKTICK``-'.sh\""
-	if got := handler["powershell"]; got != wantPowerShell {
-		t.Fatalf("powershell = %q, want %q", got, wantPowerShell)
-	}
 	if runtime.GOOS == "windows" {
 		return
 	}
@@ -140,7 +136,11 @@ func TestRenderCopilotShellQuotesHostilePackageFilePath(t *testing.T) {
 	}
 }
 
-func TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting(t *testing.T) {
+func TestRenderedCopilotExecCommandsRunWithBashQuoting(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skipf("bash is unavailable: %v", err)
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -150,9 +150,6 @@ func TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting(t *testing.T) {
 		t.Fatal(err)
 	}
 	helperName := "copilot-test-helper"
-	if runtime.GOOS == "windows" {
-		helperName += ".exe"
-	}
 	helper := filepath.Join(helperDirectory, helperName)
 	data, err := os.ReadFile(executable)
 	if err != nil {
@@ -179,50 +176,23 @@ func TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting(t *testing.T) {
 	}
 	handler := decodeObject(t, plannedFiles(plan)["hooks.json"].Bytes)["hooks"].(map[string]any)["Stop"].([]any)[0].(map[string]any)
 
-	for _, shell := range execShells() {
-		t.Run(shell.name, func(t *testing.T) {
-			binary, err := exec.LookPath(shell.name)
-			if err != nil {
-				t.Skipf("%s is unavailable: %v", shell.name, err)
-			}
-			pluginRoot := filepath.Join(t.TempDir(), "plugin root with spaces")
-			process := exec.Command(binary, append(shell.arguments, handler[shell.field].(string))...)
-			process.Env = append(os.Environ(), "AGENTBUNDLER_COPILOT_HELPER=1", "PLUGIN_ROOT="+pluginRoot, "PATH="+helperDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
-			output, err := process.CombinedOutput()
-			if err != nil {
-				t.Fatalf("execute rendered command: %v: %s", err, output)
-			}
-			var arguments []string
-			if err := json.Unmarshal(output, &arguments); err != nil {
-				t.Fatalf("decode helper output %q: %v", output, err)
-			}
-			if len(arguments) != 2 || arguments[0] != literal {
-				t.Fatalf("rendered literal arguments = %#v, want literal %#v", arguments, literal)
-			}
-			wantPath := filepath.Join(pluginRoot, "hooks", "guard", filepath.FromSlash(string(path)))
-			if filepath.Clean(arguments[1]) != filepath.Clean(wantPath) {
-				t.Fatalf("rendered package-file argument = %q, want %q", arguments[1], wantPath)
-			}
-		})
+	pluginRoot := filepath.Join(t.TempDir(), "plugin root with spaces")
+	process := exec.Command(bash, "-c", handler["bash"].(string))
+	process.Env = append(os.Environ(), "AGENTBUNDLER_COPILOT_HELPER=1", "PLUGIN_ROOT="+pluginRoot, "PATH="+helperDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := process.CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute rendered command: %v: %s", err, output)
 	}
-}
-
-type execShell struct {
-	name      string
-	field     string
-	arguments []string
-}
-
-// execShells covers both Windows PowerShell 5.1 and PowerShell 7+, whose native
-// argument passing differs, because Copilot runs hooks in whichever shell the
-// CLI itself uses.
-func execShells() []execShell {
-	if runtime.GOOS != "windows" {
-		return []execShell{{name: "bash", field: "bash", arguments: []string{"-c"}}}
+	var arguments []string
+	if err := json.Unmarshal(output, &arguments); err != nil {
+		t.Fatalf("decode helper output %q: %v", output, err)
 	}
-	return []execShell{
-		{name: "powershell", field: "powershell", arguments: []string{"-NoProfile", "-NonInteractive", "-Command"}},
-		{name: "pwsh", field: "powershell", arguments: []string{"-NoProfile", "-NonInteractive", "-Command"}},
+	if len(arguments) != 2 || arguments[0] != literal {
+		t.Fatalf("rendered literal arguments = %#v, want literal %#v", arguments, literal)
+	}
+	wantPath := filepath.Join(pluginRoot, "hooks", "guard", filepath.FromSlash(string(path)))
+	if filepath.Clean(arguments[1]) != filepath.Clean(wantPath) {
+		t.Fatalf("rendered package-file argument = %q, want %q", arguments[1], wantPath)
 	}
 }
 

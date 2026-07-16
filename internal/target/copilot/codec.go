@@ -13,11 +13,6 @@ import (
 const (
 	copilotHooksPath  = "hooks.json"
 	copilotPluginRoot = "${PLUGIN_ROOT}"
-	// Windows PowerShell 5.1 only implements Legacy native argument passing
-	// while PowerShell 7.3 defaults Windows hosts to Windows mode, so the two
-	// need opposite escaping. Pinning the preference makes one rendered command
-	// behave the same on every host Copilot may run it on.
-	powershellLegacyArguments = "$PSNativeCommandArgumentPassing = 'Legacy'; "
 )
 
 var capabilityRules = []model.CapabilityRule{
@@ -149,7 +144,6 @@ type nativeHookHandler struct {
 	Type       string `json:"type,omitempty"`
 	Command    string `json:"command,omitempty"`
 	Bash       string `json:"bash,omitempty"`
-	PowerShell string `json:"powershell,omitempty"`
 	Matcher    string `json:"matcher,omitempty"`
 	TimeoutSec any    `json:"timeoutSec"`
 }
@@ -166,12 +160,12 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
-		command, bash, powershell, err := copilotCommands(descriptor, hook)
+		command, bash, err := copilotCommands(descriptor, hook)
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookHandler{
-			Type: "command", Command: command, Bash: bash, PowerShell: powershell, Matcher: matcher,
+			Type: "command", Command: command, Bash: bash, Matcher: matcher,
 			TimeoutSec: copilotTimeout(descriptor.TimeoutMilliseconds),
 		})
 	}
@@ -182,91 +176,40 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 	return packageoutput.HookManifest{Path: copilotHooksPath, Bytes: append(data, '\n')}, nil
 }
 
-func copilotCommands(descriptor model.HookDescriptor, hook packageoutput.HookInput) (command, bash, powershell string, err error) {
+func copilotCommands(descriptor model.HookDescriptor, hook packageoutput.HookInput) (command, bash string, err error) {
 	switch descriptor.Handler.Mode {
 	case model.HookHandlerModeShell:
 		if descriptor.Handler.ShellCommand == nil {
-			return "", "", "", fmt.Errorf("hook %q shell handler has no command", descriptor.Identity)
+			return "", "", fmt.Errorf("hook %q shell handler has no command", descriptor.Identity)
 		}
-		return *descriptor.Handler.ShellCommand, "", "", nil
+		return *descriptor.Handler.ShellCommand, "", nil
 	case model.HookHandlerModeExec:
 		if descriptor.Handler.Program == nil {
-			return "", "", "", fmt.Errorf("hook %q exec handler has no program", descriptor.Identity)
+			return "", "", fmt.Errorf("hook %q exec handler has no program", descriptor.Identity)
 		}
 		bashParts := []string{shellQuote(*descriptor.Handler.Program)}
-		powershellParts := []string{powershellLiteral(*descriptor.Handler.Program)}
 		for _, argument := range descriptor.Handler.Arguments {
 			switch {
 			case argument.Literal != nil:
 				bashParts = append(bashParts, shellQuote(*argument.Literal))
-				powershellParts = append(powershellParts, powershellQuote(*argument.Literal))
 			case argument.PackageFile != nil:
 				packagePath, ok := packageFilePath(hook, *argument.PackageFile)
 				if !ok {
-					return "", "", "", fmt.Errorf("hook %q package file %q is missing from its rendered payload", descriptor.Identity, *argument.PackageFile)
+					return "", "", fmt.Errorf("hook %q package file %q is missing from its rendered payload", descriptor.Identity, *argument.PackageFile)
 				}
 				bashParts = append(bashParts, `"`+copilotPluginRoot+`"`+shellQuote("/"+string(packagePath)))
-				powershellParts = append(powershellParts, powershellPluginPath(packagePath))
 			default:
-				return "", "", "", fmt.Errorf("hook %q has an invalid command argument", descriptor.Identity)
+				return "", "", fmt.Errorf("hook %q has an invalid command argument", descriptor.Identity)
 			}
 		}
-		return "", strings.Join(bashParts, " "), powershellLegacyArguments + "& " + strings.Join(powershellParts, " "), nil
+		return "", strings.Join(bashParts, " "), nil
 	default:
-		return "", "", "", fmt.Errorf("hook %q handler mode %q is unsupported by Copilot CLI", descriptor.Identity, descriptor.Handler.Mode)
+		return "", "", fmt.Errorf("hook %q handler mode %q is unsupported by Copilot CLI", descriptor.Identity, descriptor.Handler.Mode)
 	}
 }
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
-}
-
-// powershellQuote renders a native command argument. PowerShell 7.3 changed
-// native argument passing and Windows PowerShell 5.1 cannot be moved off the
-// historic behavior, so copilotCommands pins every rendered command to Legacy
-// and this escaping targets it: Legacy wraps whitespace-bearing values in
-// double quotes but never escapes their contents, leaving the caller to apply
-// the escaping CommandLineToArgvW expects.
-func powershellQuote(value string) string {
-	return powershellLiteral(commandLineArgument(value))
-}
-
-// powershellLiteral renders a PowerShell single-quoted string, which takes its
-// contents literally apart from the doubled quote.
-func powershellLiteral(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
-// commandLineArgument escapes value so CommandLineToArgvW recovers it. A
-// backslash run is literal unless it precedes a double quote, where it must be
-// doubled, and a trailing run must be doubled when Legacy quoting appends a
-// closing double quote of its own.
-func commandLineArgument(value string) string {
-	var argument strings.Builder
-	backslashes := 0
-	for _, character := range value {
-		switch character {
-		case '\\':
-			backslashes++
-			continue
-		case '"':
-			argument.WriteString(strings.Repeat(`\`, 2*backslashes+1))
-		default:
-			argument.WriteString(strings.Repeat(`\`, backslashes))
-		}
-		argument.WriteRune(character)
-		backslashes = 0
-	}
-	if strings.ContainsAny(value, " \t") {
-		backslashes *= 2
-	}
-	argument.WriteString(strings.Repeat(`\`, backslashes))
-	return argument.String()
-}
-
-func powershellPluginPath(path model.RelativePath) string {
-	value := strings.NewReplacer("`", "``", `"`, "`\"", "$", "`$").Replace("/" + string(path))
-	return `"$env:PLUGIN_ROOT` + value + `"`
 }
 
 func packageFilePath(hook packageoutput.HookInput, path model.RelativePath) (model.RelativePath, bool) {
