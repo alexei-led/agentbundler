@@ -14,7 +14,7 @@ func TestInstalledClaudeStrictlyValidatesGeneratedHookFixtureOffline(t *testing.
 	claude := vendorsmoke.RequireExecutable(t, "claude")
 	realHome := vendorsmoke.UserHome(t)
 	claudeRoot := filepath.Join(realHome, ".claude")
-	vendorsmoke.ProtectPath(t, claudeRoot, "context-mode/sessions")
+	vendorsmoke.ProtectPath(t, claudeRoot, "context-mode/sessions", "projects")
 	vendorsmoke.ProtectPaths(t, filepath.Join(realHome, ".config", "claude"))
 
 	workspace, _ := compileClaudeHookFixture(t)
