@@ -264,7 +264,10 @@ func TestReplaceOutputRejectsForgedJournalWithoutMutatingFiles(t *testing.T) {
 				t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
 			}
 			assertFile(t, filepath.Join(output, "state.txt"), "new")
-			assertFile(t, journalPath(output), `{"output":"`+output+`","staging":"`+staging+`","backup":"`+backup+`","hadOld":true,"phase":"old-moved"}`)
+			assertFile(t, journalPath(output), journalJSON(t, replacementJournal{
+				Output: output, Staging: staging, Backup: backup,
+				HadOld: true, Phase: phaseOldMoved,
+			}))
 			assertFile(t, journalPath(output)+".tmp", "temporary")
 			assertFile(t, filepath.Join(staging, "state.txt"), "staged")
 			assertFile(t, filepath.Join(backup, "state.txt"), "old")
@@ -292,7 +295,10 @@ func TestReplaceOutputOldMovedRequiresDirectoryBackupBeforeRemovingOutput(t *tes
 		t.Fatalf("ReplaceOutput() diagnostics = %#v", diagnostics)
 	}
 	assertFile(t, filepath.Join(output, "state.txt"), "new")
-	assertFile(t, journalPath(output), `{"output":"`+output+`","staging":"`+staging+`","backup":"`+backup+`","hadOld":true,"phase":"old-moved"}`)
+	assertFile(t, journalPath(output), journalJSON(t, replacementJournal{
+		Output: output, Staging: staging, Backup: backup,
+		HadOld: true, Phase: phaseOldMoved,
+	}))
 	assertFile(t, filepath.Join(staging, "state.txt"), "staged")
 	assertFile(t, backup, "not a directory")
 }
@@ -306,11 +312,16 @@ func failingPlan() model.BuildPlan {
 
 func mustWriteJournal(t *testing.T, output string, journal replacementJournal) {
 	t.Helper()
+	mustWriteFile(t, journalPath(output), journalJSON(t, journal))
+}
+
+func journalJSON(t *testing.T, journal replacementJournal) string {
+	t.Helper()
 	bytes, err := json.Marshal(journal)
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
-	mustWriteFile(t, journalPath(output), string(bytes))
+	return string(bytes)
 }
 
 func mustMkdir(t *testing.T, path string) {
