@@ -41,22 +41,29 @@ acknowledgment.
 
 | Cell             | Claude                     | Codex                           | Pi aggregate                      | Copilot CLI                     | Cursor                          | Grok              |
 | ---------------- | -------------------------- | ------------------------------- | --------------------------------- | ------------------------------- | ------------------------------- | ----------------- |
-| Command `exec`   | native                     | native                          | native                            | advisory: quoted command string | advisory: quoted command string | native            |
+| Command `exec`   | native                     | native                          | native                            | advisory: Bash/PowerShell forms | advisory: quoted command string | native            |
 | Explicit `shell` | native                     | native                          | native                            | native                          | native                          | native            |
 | Tool matcher     | native categories          | Bash/MCP subset                 | native categories                 | native categories               | documented native-name subset   | native categories |
 | Async            | passive hooks              | unsupported                     | passive hooks                     | notification only               | unsupported                     | unsupported       |
-| Block            | applicable blocking events | applicable blocking events      | pre-tool                          | pre-tool/stop                   | pre-tool/prompt-submit          | pre-tool only     |
-| Rewrite input    | pre-tool                   | pre-tool                        | pre-tool                          | pre-tool                        | pre-tool                        | unsupported       |
+| Block            | unsupported                | unsupported                     | pre-tool                          | unsupported                     | unsupported                     | unsupported       |
+| Rewrite input    | unsupported                | unsupported                     | pre-tool                          | unsupported                     | unsupported                     | unsupported       |
 | Fail closed      | unsupported general policy | unsupported                     | runtime-enforced                  | unsupported general policy      | pre-tool/prompt-submit only     | unsupported       |
 | Package agents   | native                     | unsupported; use project agents | equivalent through `pi-subagents` | native                          | native                          | native            |
+
+Decision-bearing hooks need a canonical subprocess stdin/stdout protocol plus a
+target-owned translator for each vendor protocol. Only the generated Pi runtime
+currently supplies that boundary. Claude, Codex, Copilot, Cursor, and Grok may
+have native decision features, but Agent Bundler rejects portable block and
+rewrite capabilities for them rather than invoke an author payload with an
+incompatible vendor protocol.
 
 Event subsets also differ. Codex does not provide the required portable
 `session-end`, `notification`, or `post-tool-failure` equivalents. Copilot has no
 documented `post-compact`. Cursor has no equivalent `notification` or
 `post-compact`. Pi has no equivalent notification event. Claude and Grok expose
-the full initial event-name set, but only events with matching blocking,
-timeout, and failure behavior are accepted. Target validators return exact
-per-hook diagnostics for narrower cases.
+the full initial event-name set, but only events with matching timeout and
+failure behavior are accepted. Target validators return exact per-hook
+diagnostics for narrower cases.
 
 HTTP, prompt-handler, agent-handler, and MCP-tool-handler hooks are not part of
 the initial portable command-hook contract. Target-native resources also remain

@@ -43,6 +43,73 @@ func TestResolveBuiltInAdapters(t *testing.T) {
 	}
 }
 
+func TestOnlyPiAdvertisesPortableDecisionProtocol(t *testing.T) {
+	t.Parallel()
+
+	for _, targetID := range []model.TargetID{model.TargetClaude, model.TargetCodex, model.TargetCopilot, model.TargetCursor, model.TargetGrok, model.TargetPi} {
+		adapter, diagnostics := Resolve(targetID)
+		if len(diagnostics) != 0 {
+			t.Fatalf("Resolve(%q) diagnostics = %#v", targetID, diagnostics)
+		}
+		states := make(map[model.CapabilityKey]model.CapabilityState)
+		for _, rule := range Capabilities(adapter) {
+			states[rule.Key] = rule.State
+		}
+		want := model.CapabilityStateUnsupported
+		if targetID == model.TargetPi {
+			want = model.CapabilityStateNative
+		}
+		for _, key := range []model.CapabilityKey{"hook.decision.block", "hook.decision.rewrite-input"} {
+			if states[key] != want {
+				t.Errorf("Capabilities(%q)[%q] = %q, want %q", targetID, key, states[key], want)
+			}
+		}
+	}
+}
+
+func TestNonPiTargetsRejectDecisionHooksBeforeOutput(t *testing.T) {
+	t.Parallel()
+
+	for _, targetID := range []model.TargetID{model.TargetClaude, model.TargetCodex, model.TargetCopilot, model.TargetCursor, model.TargetGrok} {
+		for _, key := range []model.CapabilityKey{"hook.decision.block", "hook.decision.rewrite-input"} {
+			t.Run(string(targetID)+"/"+string(key), func(t *testing.T) {
+				command := "true"
+				location := model.SourceLocation{Path: "source/hooks/decision/hook.json"}
+				identity := model.AssetID("hook/decision")
+				pkg := model.NormalizedPackage{
+					Identity: "demo", Target: targetID, Profile: model.TargetProfilePackage,
+					Assets: []model.NormalizedAsset{{
+						Identity: identity, Kind: model.AssetKindHook,
+						Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{}},
+						Hook: &model.HookDescriptor{
+							Identity: identity, Location: location, Event: model.HookEventStop,
+							Handler:             model.HookCommand{Mode: model.HookHandlerModeShell, ShellCommand: &command},
+							TimeoutMilliseconds: 1_000, FailurePolicy: model.HookFailurePolicyOpen,
+						},
+						CapabilityUses: []model.CapabilityUse{
+							{Key: "asset.hook", Location: location},
+							{Key: "hook.command.shell", Location: location},
+							{Key: "hook.event.stop", Location: location},
+							{Key: key, Location: location},
+						},
+					}},
+				}
+				adapter, diagnostics := Resolve(targetID)
+				if len(diagnostics) != 0 {
+					t.Fatalf("Resolve(%q) diagnostics = %#v", targetID, diagnostics)
+				}
+				plan, diagnostics := Render(adapter, model.TargetRenderInput{Packages: []model.NormalizedPackage{pkg}, PackageMode: model.TargetPackageModeSeparate})
+				if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" {
+					t.Fatalf("Render(%q, %q) = (%#v, %#v), want unsupported-capability", targetID, key, plan, diagnostics)
+				}
+				if len(plan.Files) != 0 || len(plan.NativeChecks) != 0 {
+					t.Fatalf("rejected decision hook produced partial plan: %#v", plan)
+				}
+			})
+		}
+	}
+}
+
 func TestCapabilitiesReturnsIndependentRules(t *testing.T) {
 	t.Parallel()
 

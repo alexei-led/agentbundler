@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetGrok
-	FormatRevision = 6
+	FormatRevision = 7
 )
 
 // Adapter renders Grok project skills and installable plugins.
@@ -54,7 +54,7 @@ func nativeChecks(packages []model.PackageID) []model.NativeCheck {
 	for _, identity := range packages {
 		root := "."
 		if len(packages) > 1 {
-			root = string(identity)
+			root = "./" + string(identity)
 		}
 		checks = append(checks, model.NativeCheck{
 			Program:   "grok",

@@ -13,15 +13,15 @@ import (
 )
 
 func TestGrokCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 6 {
-		t.Fatalf("FormatRevision = %d, want 6", FormatRevision)
+	if FormatRevision != 7 {
+		t.Fatalf("FormatRevision = %d, want 7", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateUnsupported,
 		"hook.command.exec": model.CapabilityStateNative, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
+		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
 		"hook.event.notification": model.CapabilityStateNative, "hook.event.post-compact": model.CapabilityStateNative,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateNative,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateNative,
@@ -133,9 +133,9 @@ func TestRenderGrokRejectsUnsupportedSemantics(t *testing.T) {
 		{name: "rewrite", asset: grokShellHook("rewrite", model.HookEventPreTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: a.Hook.Location})
 		}, wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input"},
-		{name: "block passive", asset: grokShellHook("block", model.HookEventStop, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
+		{name: "block decision", asset: grokShellHook("block", model.HookEventPreTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: a.Hook.Location})
-		}, wantCode: "unsupported-hook-semantics", wantText: "only for Grok pre-tool"},
+		}, wantCode: "unsupported-capability", wantText: "hook.decision.block"},
 		{name: "unknown event", asset: grokShellHook("unknown", model.HookEvent("future"), nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.CapabilityUses = grokUses(a.Hook.Location.Path, "asset.hook", "hook.command.shell")
 		}, wantCode: "invalid-model", wantText: "event \"future\" is invalid"},
@@ -169,7 +169,6 @@ func TestRenderGrokRejectsUnsupportedAgentField(t *testing.T) {
 
 func TestRenderGrokMatcherTimeoutCollisionSeparateAndDeterministic(t *testing.T) {
 	asset := grokShellHook("match", model.HookEventPreTool, []model.HookToolCategory{model.HookToolCategoryCommand, model.HookToolCategoryRead, model.HookToolCategoryWrite, model.HookToolCategoryEdit, model.HookToolCategorySearch, model.HookToolCategoryWeb, model.HookToolCategoryTask, model.HookToolCategoryMCP}, 1_250, 0, "true")
-	asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: asset.Hook.Location})
 	pkg := model.NormalizedPackage{Identity: "demo", Target: Target, Profile: model.TargetProfilePackage, Assets: []model.NormalizedAsset{asset}}
 	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 0 {
@@ -207,10 +206,23 @@ func TestRenderGrokMatcherTimeoutCollisionSeparateAndDeterministic(t *testing.T)
 		t.Fatal("zeta separate package root is missing")
 	}
 	if got, want := first.NativeChecks, []model.NativeCheck{
-		{Program: "grok", Arguments: []string{"plugin", "validate", "alpha"}, Location: model.SourceLocation{Path: "internal/target/grok/codec.go"}},
-		{Program: "grok", Arguments: []string{"plugin", "validate", "zeta"}, Location: model.SourceLocation{Path: "internal/target/grok/codec.go"}},
+		{Program: "grok", Arguments: []string{"plugin", "validate", "./alpha"}, Location: model.SourceLocation{Path: "internal/target/grok/codec.go"}},
+		{Program: "grok", Arguments: []string{"plugin", "validate", "./zeta"}, Location: model.SourceLocation{Path: "internal/target/grok/codec.go"}},
 	}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("NativeChecks = %#v, want %#v", got, want)
+	}
+}
+
+func TestNativeChecksAnchorOptionLikePluginRoots(t *testing.T) {
+	checks := nativeChecks([]model.PackageID{"--help", "-version"})
+	want := [][]string{
+		{"plugin", "validate", "./--help"},
+		{"plugin", "validate", "./-version"},
+	}
+	for index := range checks {
+		if !reflect.DeepEqual(checks[index].Arguments, want[index]) {
+			t.Fatalf("NativeChecks[%d].Arguments = %#v, want %#v", index, checks[index].Arguments, want[index])
+		}
 	}
 }
 
@@ -218,7 +230,6 @@ func grokGoldenPackage() model.NormalizedPackage {
 	path := model.RelativePath("scripts/guard.sh")
 	guard := grokExecHook("guard", model.HookEventPreTool, []model.HookToolCategory{model.HookToolCategoryCommand}, 5_000, 1, "bash", []model.HookArgument{{Literal: grokStringPointer("-eu")}, {PackageFile: &path}})
 	guard.Content.Files[path] = model.FileContent{Bytes: []byte("#!/usr/bin/env bash\ncat >/dev/null\n"), Executable: true}
-	guard.CapabilityUses = append(guard.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: guard.Hook.Location})
 	post := grokShellHook("audit", model.HookEventPostTool, []model.HookToolCategory{model.HookToolCategoryWrite}, 7_250, 2, `cd "${GROK_PLUGIN_ROOT}" && printf done`)
 	agent := model.NormalizedAsset{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"}, Body: "Review.\n", Files: map[model.RelativePath]model.FileContent{}}, CapabilityUses: grokUses("source/agent", "asset.agent")}
 	skill := model.NormalizedAsset{Identity: "skill/guide", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "guide", "description": "Guide"}, Body: "Guide.\n", Files: map[model.RelativePath]model.FileContent{}}, CapabilityUses: grokUses("source/skill", "asset.skill")}

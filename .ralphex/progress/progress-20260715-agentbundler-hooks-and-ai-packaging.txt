@@ -91,3 +91,49 @@ Worktree: /Users/alexei/.pi/plan-exec/worktrees/agentbundler-3d78e2435a70-agentb
 [2026-07-15T20:41:57.000Z] Task 18 smoke/release infrastructure: one test-only vendor harness provides exact executable skips, sorted temporary environments, 32 KiB combined-output bounds, positive deadlines with bounded wait, and cleanup-time normal-config digest assertions. All six opt-in suites passed locally: installed Claude 2.1.210, Codex 0.144.4, Pi 0.80.7, Copilot 1.0.70, and Grok 0.2.101 smokes ran; installed Cursor Agent 2026.07.09-a3815c0 reported the documented exact skip because CURSOR_API_KEY was unset. A forced missing-Codex run emitted the exact CLI diagnostic. The pinned Grok Linux download independently matched SHA-256 2556299cded37f81e54c02420cfa7f1a2df9feab72a445869a0f5596e143b333.
 [2026-07-15T20:41:57.000Z] Task 18 CI/release/docs: CI now gates formatting, full/race Go, vet/lint, Bun typecheck/tests, deterministic fixture bytes, architecture, and pinned Claude/Grok safe validators. Release validation tests exact embedded Pi runtime bytes, injects the tag, and checks both version forms; local Darwin/Linux/Windows amd64/arm64 cross-builds contained v9.8.7 and host version/--version smokes passed. README and configuration/target/architecture/install/release/vendor/skill docs now show canonical authoring, native output, isolated install-validation, unsupported capability cells, and the scoped post-implementation architecture re-review across compiler model/source/composition, all targets including the Pi runtime, and artifact handling.
 [2026-07-15T20:41:57.000Z] Task 18 final verification passed: gofmt; go test -count=1 ./...; go test -count=1 -race ./...; go vet ./...; golangci-lint run ./... (0 issues); Bun install/typecheck/test (13 tests, 48 assertions); scripts/check-acceptance-fixture; scripts/check-architecture; direct Archfit with and without --base origin/master (PASS, 0 blocking, 12 existing advisories, score improved 27 to 35 versus base); vendor_smoke target/compiler suites; installed Claude/Grok acceptance-tree validators; release cross-build/version smokes; git diff --check. GitNexus was refreshed, reported low risk, 46 mapped symbols, 0 affected processes, and no circular imports; manual review found no new layer edge, runtime ownership leak, production process/network behavior, or consuming-repository migration claim.
+[2026-07-15T20:44:55.944Z] Task 18 completed after 2 attempt(s).
+[2026-07-15T20:44:55.990Z] All plan checkboxes are complete.
+[2026-07-15T21:02:24.091Z] Applied fixes for comprehensive_review iteration 1.
+[2026-07-15T21:18:49.176Z] Applied fixes for comprehensive_review iteration 2.
+[2026-07-15T21:25:13.985Z] Run failed at comprehensive_review: Review operation ended as failed.
+[2026-07-16T03:51:15.626Z] Manual recovery retried the failed comprehensive_review stage.
+[2026-07-16T04:04:48.208Z] Applied fixes for comprehensive_review iteration 4.
+[2026-07-16T04:13:24.420Z] comprehensive_review reached its iteration cap with unresolved findings.
+FINDING: MAJOR | Native validators run from the aggregate output root instead of their target root
+Evidence: internal/compiler/compiler.go:128-129, internal/target/claude/claude.go:52-69, internal/target/grok/grok.go:52-62, internal/artifact/nativeverify/nativeverify.go:69-72. Generated files live under `<output>/claude` or `<output>/grok`, but checks omit `WorkingDirectory`, so `check --native` validates `.` or package IDs relative to `<output>`.
+Fix: While collecting each target plan’s checks, prefix its working directory with the target ID; nil becomes `<target>`. Add a compiler integration test with fake validators asserting cwd and argv.
+
+FINDING: MAJOR | Project renderers discard executable intent and source origins
+Evidence: internal/target/skills/native.go:82-112. `addSupportFiles` extracts only `FileContent.Bytes`, and `add` creates a `PlannedFile` with default `Executable: false` and no origin. An executable skill or resource support script therefore loses its mode in project-profile output and bypasses Windows executable-intent rejection.
+Fix: Add support files from the complete `FileContent`, copying bytes, `Executable`, and cloned origins. Test executable and non-executable project support files with source evidence.
+
+FINDING: MINOR | Codex project-profile documentation contradicts rendered output
+Evidence: docs/targets-and-cli.md:24-26 says Codex project skills use `.agents/skills`, while internal/target/codex/codex.go:47-65 and internal/target/codex/codex_test.go:15-19 produce `.codex-plugin/plugin.json` with root `skills/`.
+Fix: Document the preserved compatibility layout actually emitted by the project profile, including root `skills/` and `.codex/agents/*.toml`.
+[2026-07-16T04:13:24.421Z] comprehensive_review reached its iteration cap.
+[2026-07-16T04:25:44.822Z] Applied fixes for smells_review iteration 1.
+[2026-07-16T04:25:44.823Z] smells_review fixes applied.
+[2026-07-16T04:47:18.089Z] Applied fixes for fusion_review iteration 1.
+[2026-07-16T05:03:15.844Z] Applied fixes for fusion_review iteration 2.
+[2026-07-16T05:12:01.912Z] Applied fixes for fusion_review iteration 3.
+[2026-07-16T05:26:23.054Z] Applied fixes for fusion_review iteration 4.
+[2026-07-16T05:38:06.548Z] Applied fixes for fusion_review iteration 5.
+[2026-07-16T05:43:30.843Z] fusion_review found no issues.
+[2026-07-16T05:43:30.844Z] fusion_review passed.
+[2026-07-16T06:19:49.892Z] Run failed at critical_review: Fix operation ended as failed.
+[2026-07-16T06:19:55.804Z] Manual recovery retried the failed critical_review stage.
+[2026-07-16T06:19:55.839Z] critical_review reached its iteration cap with unresolved findings.
+FINDING: MAJOR | Decision-bearing hooks have no portable process protocol
+Evidence: internal/target/pi/runtime/src/runtime.ts:63-74,188-208 expects `{event,hook,piEvent}` input and `{decision:...}` output, while internal/compiler/testdata/hooks-claude/source/src/hooks/deny/protocol.py:18-35 uses Claude’s incompatible input and `hookSpecificOutput`. Other adapters invoke author payloads directly, e.g. internal/target/claude/codec.go:175-207. A canonical deny/rewrite hook therefore cannot preserve its declared semantics unchanged across targets despite those capabilities being marked native.
+Fix: Define one canonical hook stdin/stdout protocol and generate target-owned wrappers translating each vendor protocol. Until then, reject decision capabilities for targets lacking such translation. Add deny/rewrite fire tests for every target.
+
+FINDING: MAJOR | Package IDs can bypass Claude and Grok native validation through option injection
+Evidence: internal/compiler/model/validation.go:758-768 accepts IDs such as `--help`; internal/target/claude/claude.go:61-69 and internal/target/grok/grok.go:54-62 pass multi-package IDs directly as CLI arguments. For a package named `--help`, both validators display help and exit successfully instead of validating that package.
+Fix: Pass paths as `./<package-id>` or insert `--` before every path argument. Add regression tests using `--help` and other option-like package IDs.
+
+FINDING: MAJOR | Copilot exec hooks are rendered with POSIX-only quoting as cross-platform commands
+Evidence: internal/target/copilot/codec.go:143-168 emits only the cross-platform `command` field, while lines 185-211 serialize exec arguments using POSIX single-quote syntax and adjacent shell strings. docs/vendor-package-contracts.md:61 states this field is used for both Bash and PowerShell. On Windows, a generated command such as `'node' '--flag' "${PLUGIN_ROOT}"'/hooks/script.js'` is not valid PowerShell, so passive hooks fail and pre-tool hooks can block every matching tool due to command failure.
+Fix: Emit separate verified `bash` and `powershell` forms with shell-specific quoting, or mark exec hooks unsupported when cross-platform equivalence cannot be proven. Add Windows execution tests for literals, quotes, spaces, and package-file arguments.
+[2026-07-16T06:19:55.840Z] critical_review reached its iteration cap.
+[2026-07-16T06:35:36.000Z] Finalization resolved all critical-review findings: Claude, Codex, Copilot, Cursor, and Grok now reject portable block/rewrite decisions until target-owned protocol translators exist, with cross-target no-output tests and a Claude compiler deny/rewrite rejection fixture; Pi remains the sole native canonical decision runtime. Claude and Grok validator paths are anchored as ./<package-id>, including --help/-version regressions. Copilot exec hooks emit separately quoted Bash and PowerShell fields, with Unix execution coverage and a Windows CI PowerShell execution gate for literals, quotes, spaces, ambient expansion syntax, and package-file paths. Target format revisions and contracts were updated for all changed render/capability surfaces.
+[2026-07-16T06:35:36.000Z] Finalization verification passed: gofmt and git diff --check; focused compiler/all-target tests; go test -count=1 ./...; go test -race ./...; go test -run '^$' -tags=vendor_smoke ./...; go vet ./...; golangci-lint run ./... (0 issues); Bun frozen install/typecheck/test (13 tests, 48 assertions); scripts/check-architecture (PASS, 0 blocking, 12 existing advisory warnings); scripts/check-acceptance-fixture (all six target trees current and deterministic). Windows PowerShell execution is wired into CI and cannot be run on the Darwin host because PowerShell is unavailable locally.

@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetClaude
-	FormatRevision = 5
+	FormatRevision = 6
 )
 
 // Adapter renders Claude project skills and installable plugins.
@@ -61,7 +61,7 @@ func nativeChecks(packages []model.PackageID, catalog bool) []model.NativeCheck 
 	for _, identity := range packages {
 		root := "."
 		if len(packages) > 1 {
-			root = string(identity)
+			root = "./" + string(identity)
 		}
 		checks = append(checks, model.NativeCheck{
 			Program:   "claude",

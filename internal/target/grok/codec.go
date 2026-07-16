@@ -24,7 +24,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateUnsupported},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateNative},
+	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
 	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.notification", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
@@ -283,16 +283,6 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		if descriptor.Matcher != nil {
 			if _, err := grokMatcher(*descriptor); err != nil {
 				return []model.Diagnostic{hookDiagnostic(asset, err.Error())}
-			}
-		}
-		for _, use := range asset.CapabilityUses {
-			switch use.Key {
-			case "hook.decision.block":
-				if descriptor.Event != model.HookEventPreTool {
-					return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Grok pre-tool hooks", use.Key))}
-				}
-			case "hook.decision.rewrite-input":
-				return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is unsupported because Grok supports only explicit allow or deny", use.Key))}
 			}
 		}
 	}

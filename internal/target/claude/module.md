@@ -51,8 +51,9 @@ Package-file command arguments render with `${CLAUDE_PLUGIN_ROOT}` and contained
 
 Verified initial semantic cells:
 
-- native/equivalent: `asset.hook`, `hook.command.exec`, explicit adopted `hook.command.shell`, events `session-start`, `session-end`, `prompt-submit`, `pre-tool`, `post-tool`, `post-tool-failure`, `stop`, `notification`, `pre-compact`, `post-compact`, tool-category matchers, explicit block decisions, and pre-tool input rewrite;
+- native/equivalent: `asset.hook`, `hook.command.exec`, explicit adopted `hook.command.shell`, events `session-start`, `session-end`, `prompt-submit`, `pre-tool`, `post-tool`, `post-tool-failure`, `stop`, `notification`, `pre-compact`, `post-compact`, and tool-category matchers;
 - native only for passive compatible events: `hook.async`;
+- unsupported until a target-owned translator exists: `hook.decision.block` and `hook.decision.rewrite-input`; Claude's native decision output is not the portable author-payload protocol;
 - unsupported unless a concrete mapping proves crash and timeout behavior: `hook.failure.closed`;
 - unsupported: HTTP, prompt, agent, and MCP-tool handlers in the initial portable command-hook contract.
 
@@ -82,6 +83,7 @@ Primary sources: <https://code.claude.com/docs/en/plugins-reference> and <https:
 
 ## Test Specification
 
-- Golden trees cover hook-free and mixed hook packages, command roots, event/matcher/timeout/async/decision mappings, payload modes, collisions, and catalogs.
+- Golden trees cover hook-free and mixed hook packages, command roots, event/matcher/timeout/async mappings, payload modes, collisions, and catalogs.
+- Decision capability tests prove rejection before output until protocol translation exists.
 - Unsupported semantic cells produce no partial plan.
 - Official strict validator declarations are exact and process-free at render time.

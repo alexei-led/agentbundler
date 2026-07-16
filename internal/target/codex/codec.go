@@ -24,8 +24,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateUnsupported},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateNative},
-	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateNative},
+	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.notification", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
@@ -302,18 +302,6 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		}
 		if descriptor.TimeoutMilliseconds%1_000 != 0 {
 			return []model.Diagnostic{assetDiagnostic(asset, "Codex hook timeouts use whole seconds and cannot preserve the requested millisecond timeout")}
-		}
-		for _, use := range asset.CapabilityUses {
-			switch use.Key {
-			case "hook.decision.block":
-				if descriptor.Event != model.HookEventPreTool && descriptor.Event != model.HookEventPromptSubmit && descriptor.Event != model.HookEventStop {
-					return []model.Diagnostic{assetDiagnostic(asset, fmt.Sprintf("capability %q is unsupported for Codex event %q", use.Key, descriptor.Event))}
-				}
-			case "hook.decision.rewrite-input":
-				if descriptor.Event != model.HookEventPreTool {
-					return []model.Diagnostic{assetDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Codex pre-tool hooks", use.Key))}
-				}
-			}
 		}
 	}
 	return nil
