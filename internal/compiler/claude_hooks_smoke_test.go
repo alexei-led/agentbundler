@@ -13,11 +13,9 @@ import (
 func TestInstalledClaudeStrictlyValidatesGeneratedHookFixtureOffline(t *testing.T) {
 	claude := vendorsmoke.RequireExecutable(t, "claude")
 	realHome := vendorsmoke.UserHome(t)
-	normalRoots := []string{
-		filepath.Join(realHome, ".claude"),
-		filepath.Join(realHome, ".config", "claude"),
-	}
-	vendorsmoke.ProtectPaths(t, normalRoots...)
+	claudeRoot := filepath.Join(realHome, ".claude")
+	vendorsmoke.ProtectPath(t, claudeRoot, "context-mode/sessions")
+	vendorsmoke.ProtectPaths(t, filepath.Join(realHome, ".config", "claude"))
 
 	workspace, _ := compileClaudeHookFixture(t)
 	isolatedRoot := t.TempDir()

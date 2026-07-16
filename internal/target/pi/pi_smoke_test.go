@@ -20,7 +20,7 @@ import (
 func TestInstalledPiDiscoversAggregatePackageWithoutRealConfigChanges(t *testing.T) {
 	pi := vendorsmoke.RequireExecutable(t, "pi")
 	realRoot := filepath.Join(vendorsmoke.UserHome(t), ".pi", "agent")
-	vendorsmoke.ProtectPaths(t, realRoot)
+	vendorsmoke.ProtectPath(t, realRoot, "sessions", "logs/hooks.log")
 
 	workspace, packageRoot := compilePiSmokeFixture(t)
 	isolatedRoot := t.TempDir()
@@ -58,7 +58,7 @@ func TestInstalledPiLoaderImportsGeneratedAdapterOnceAndReportsSchemaMismatch(t 
 		t.Skip("vendor smoke unavailable: installed pi is not a Node package with the documented extension loader")
 	}
 	realRoot := filepath.Join(vendorsmoke.UserHome(t), ".pi", "agent")
-	vendorsmoke.ProtectPaths(t, realRoot)
+	vendorsmoke.ProtectPath(t, realRoot, "sessions", "logs/hooks.log")
 	workspace, packageRoot := compilePiSmokeFixture(t)
 	adapter := filepath.Join(packageRoot, "extensions", "agentbundler-hooks.ts")
 

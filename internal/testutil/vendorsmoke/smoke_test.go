@@ -76,6 +76,34 @@ func TestSnapshotDetectsFileChanges(t *testing.T) {
 	}
 }
 
+func TestTreeDigestIgnoresOnlyDeclaredRuntimePaths(t *testing.T) {
+	root := t.TempDir()
+	runtimePath := root + "/sessions/live.jsonl"
+	configPath := root + "/settings.json"
+	if err := os.MkdirAll(root+"/sessions", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(runtimePath, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte("before"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := treeDigestIgnoring(t, root, []string{"sessions"})
+	if err := os.WriteFile(runtimePath, []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if after := treeDigestIgnoring(t, root, []string{"sessions"}); after != before {
+		t.Fatal("ignored runtime path changed the digest")
+	}
+	if err := os.WriteFile(configPath, []byte("after"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if after := treeDigestIgnoring(t, root, []string{"sessions"}); after == before {
+		t.Fatal("configuration change outside ignored paths did not change the digest")
+	}
+}
+
 func TestVendorSmokeHelperProcess(t *testing.T) {
 	if os.Getenv("VENDORSMOKE_HELPER") != "1" {
 		return

@@ -123,6 +123,19 @@ func ProtectPaths(t *testing.T, paths ...string) {
 	})
 }
 
+// ProtectPath registers an assertion that root remains unchanged except for
+// caller-owned relative runtime paths known to be volatile.
+func ProtectPath(t *testing.T, root string, ignored ...string) {
+	t.Helper()
+	ignored = normalizeIgnoredPaths(t, ignored)
+	before := treeDigestIgnoring(t, root, ignored)
+	t.Cleanup(func() {
+		if after := treeDigestIgnoring(t, root, ignored); after != before {
+			t.Fatalf("vendor smoke changed normal configuration path %q", root)
+		}
+	})
+}
+
 // Snapshot records content and metadata digests for paths that must not change.
 func Snapshot(t *testing.T, paths ...string) map[string][32]byte {
 	t.Helper()
@@ -145,6 +158,11 @@ func AssertUnchanged(t *testing.T, before map[string][32]byte) {
 
 func treeDigest(t *testing.T, root string) [32]byte {
 	t.Helper()
+	return treeDigestIgnoring(t, root, nil)
+}
+
+func treeDigestIgnoring(t *testing.T, root string, ignored []string) [32]byte {
+	t.Helper()
 	entries := make([]string, 0)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if os.IsNotExist(err) {
@@ -160,6 +178,12 @@ func treeDigest(t *testing.T, root string) [32]byte {
 				return err
 			}
 			relative = filepath.ToSlash(value)
+		}
+		if isIgnoredPath(relative, ignored) {
+			if entry.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		info, err := entry.Info()
 		if err != nil {
@@ -187,6 +211,28 @@ func treeDigest(t *testing.T, root string) [32]byte {
 	}
 	sort.Strings(entries)
 	return sha256.Sum256([]byte(strings.Join(entries, "\n")))
+}
+
+func normalizeIgnoredPaths(t *testing.T, paths []string) []string {
+	t.Helper()
+	result := make([]string, len(paths))
+	for index, value := range paths {
+		clean := filepath.ToSlash(filepath.Clean(value))
+		if clean == "." || filepath.IsAbs(value) || clean == ".." || strings.HasPrefix(clean, "../") {
+			t.Fatalf("ignored vendor smoke path must be relative and below its root: %q", value)
+		}
+		result[index] = clean
+	}
+	return result
+}
+
+func isIgnoredPath(relative string, ignored []string) bool {
+	for _, value := range ignored {
+		if relative == value || strings.HasPrefix(relative, value+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 type boundedBuffer struct {
