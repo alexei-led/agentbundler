@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -137,8 +138,8 @@ func TestCompileNativeChecksRunFromTargetRoots(t *testing.T) {
 
 	bin := t.TempDir()
 	logs := t.TempDir()
-	writeFakeNativeValidator(t, bin, "claude")
-	writeFakeNativeValidator(t, bin, "grok")
+	writeFakeNativeValidator(t, bin, "claude", filepath.Join(logs, "claude"))
+	writeFakeNativeValidator(t, bin, "grok", filepath.Join(logs, "grok"))
 	t.Setenv("NATIVE_CHECK_LOG", logs)
 	t.Setenv("PATH", bin)
 
@@ -252,13 +253,17 @@ func writeCompilerFixture(t *testing.T, root, relative, content string) {
 	}
 }
 
-func writeFakeNativeValidator(t *testing.T, root, name string) {
+func writeFakeNativeValidator(t *testing.T, root, name, logPath string) {
 	t.Helper()
-	content := "#!/bin/sh\n{\n  pwd -P\n  printf '%s\\n' \"$@\"\n} > \"$NATIVE_CHECK_LOG/" + name + "\"\n"
+	content := "#!/bin/sh\nif [ \"${NATIVE_CHECK_LOG+x}\" = x ]; then exit 90; fi\n{\n  pwd -P\n  printf '%s\\n' \"$@\"\n} > " + shellTestQuote(logPath) + "\n"
 	path := filepath.Join(root, name)
 	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
 		t.Fatalf("WriteFile(%q): %v", path, err)
 	}
+}
+
+func shellTestQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func assertNativeValidatorLog(t *testing.T, path, want string) {

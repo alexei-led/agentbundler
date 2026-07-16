@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -17,6 +18,7 @@ const MaxOutputBytesPerStream = 32 * 1024
 
 const (
 	invalidCheckCode                = "NATIVE_VERIFY_INVALID_CHECK"
+	isolationUnavailableCode        = "NATIVE_VERIFY_ISOLATION_UNAVAILABLE"
 	outputRootUnavailableCode       = "NATIVE_VERIFY_OUTPUT_ROOT_UNAVAILABLE"
 	workingDirectoryEscapeCode      = "NATIVE_VERIFY_WORKING_DIRECTORY_ESCAPE"
 	workingDirectoryUnavailableCode = "NATIVE_VERIFY_WORKING_DIRECTORY_UNAVAILABLE"
@@ -47,6 +49,19 @@ func RunNativeChecks(checks []model.NativeCheck, outputRoot string) Result {
 			)},
 		}
 	}
+
+	environment, cleanup, err := isolatedEnvironment()
+	if err != nil {
+		return Result{
+			Diagnostics: []model.Diagnostic{diagnostic(
+				isolationUnavailableCode,
+				model.SeverityError,
+				checks[0],
+				fmt.Sprintf("native verification isolation is unavailable: %v", err),
+			)},
+		}
+	}
+	defer cleanup()
 
 	result := Result{Success: true}
 	for _, check := range checks {
@@ -117,6 +132,7 @@ func RunNativeChecks(checks []model.NativeCheck, outputRoot string) Result {
 		stderr := &boundedOutput{}
 		command := exec.Command(program, check.Arguments...)
 		command.Dir = resolvedWorkingDirectory
+		command.Env = environment
 		command.Stdin = strings.NewReader("")
 		command.Stdout = stdout
 		command.Stderr = stderr
@@ -164,6 +180,48 @@ func validateCheck(check model.NativeCheck) error {
 		}
 	}
 	return nil
+}
+
+func isolatedEnvironment() ([]string, func(), error) {
+	root, err := os.MkdirTemp("", "agbun-native-verify-")
+	if err != nil {
+		return nil, func() {}, err
+	}
+	cleanup := func() { _ = os.RemoveAll(root) }
+
+	home := filepath.Join(root, "home")
+	config := filepath.Join(root, "config")
+	cache := filepath.Join(root, "cache")
+	temporary := filepath.Join(root, "tmp")
+	for _, directory := range []string{home, config, cache, temporary} {
+		if err := os.Mkdir(directory, 0o700); err != nil {
+			cleanup()
+			return nil, func() {}, err
+		}
+	}
+
+	environment := []string{
+		"HOME=" + home,
+		"PATH=" + os.Getenv("PATH"),
+		"TMPDIR=" + temporary,
+		"XDG_CACHE_HOME=" + cache,
+		"XDG_CONFIG_HOME=" + config,
+	}
+	if runtime.GOOS == "windows" {
+		environment = append(environment,
+			"APPDATA="+config,
+			"LOCALAPPDATA="+cache,
+			"TEMP="+temporary,
+			"TMP="+temporary,
+			"USERPROFILE="+home,
+		)
+		for _, name := range []string{"COMSPEC", "PATHEXT", "SYSTEMROOT", "WINDIR"} {
+			if value, ok := os.LookupEnv(name); ok {
+				environment = append(environment, name+"="+value)
+			}
+		}
+	}
+	return environment, cleanup, nil
 }
 
 func resolveDirectory(path string) (string, error) {

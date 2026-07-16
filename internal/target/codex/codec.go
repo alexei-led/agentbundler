@@ -214,7 +214,7 @@ func codexCommand(descriptor model.HookDescriptor, hook packageoutput.HookInput)
 				if !ok {
 					return "", fmt.Errorf("hook %q package file %q is missing from its rendered payload", descriptor.Identity, *argument.PackageFile)
 				}
-				parts = append(parts, `"`+codexPluginRoot+`/`+string(packagePath)+`"`)
+				parts = append(parts, `"`+codexPluginRoot+`"`+shellQuote("/"+string(packagePath)))
 			default:
 				return "", fmt.Errorf("hook %q has an invalid command argument", descriptor.Identity)
 			}

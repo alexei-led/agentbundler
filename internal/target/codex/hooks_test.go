@@ -1,9 +1,12 @@
 package codex
 
 import (
+	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -62,11 +65,56 @@ func TestRenderCodexHookGoldenAndTrustBoundary(t *testing.T) {
 	if _, exists := files["hooks.json"]; exists {
 		t.Fatal("rendered stale root hooks.json path")
 	}
-	if got, want := string(files["hooks/hooks.json"].Bytes), "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"^Bash$\",\"hooks\":[{\"type\":\"command\",\"command\":\"'bash' '-eu' \\\"${PLUGIN_ROOT}/assets/hooks/guard/scripts/check.sh\\\" 'a'\\\"'\\\"'b; touch /tmp/no'\",\"timeout\":2}]}]}}\n"; got != want {
+	if got, want := string(files["hooks/hooks.json"].Bytes), "{\"hooks\":{\"PreToolUse\":[{\"matcher\":\"^Bash$\",\"hooks\":[{\"type\":\"command\",\"command\":\"'bash' '-eu' \\\"${PLUGIN_ROOT}\\\"'/assets/hooks/guard/scripts/check.sh' 'a'\\\"'\\\"'b; touch /tmp/no'\",\"timeout\":2}]}]}}\n"; got != want {
 		t.Fatalf("hooks manifest = %q, want %q", got, want)
 	}
 	if !files["assets/hooks/guard/scripts/check.sh"].Executable {
 		t.Fatal("hook payload lost executable intent")
+	}
+}
+
+func TestRenderCodexShellQuotesHostilePackageFilePath(t *testing.T) {
+	path := model.RelativePath("scripts/check-\"-$AMBIENT-$(touch INJECTED)-`touch BACKTICK`-'.sh")
+	hook := codexExecHook("guard", model.HookEventStop, nil, 2_000, false, 0, "printf", []model.HookArgument{
+		{Literal: codexStringPointer("%s")}, {PackageFile: &path},
+	})
+	hook.Content.Files[path] = model.FileContent{Bytes: []byte("payload")}
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{codexHookPackage("demo", hook)}))
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+
+	var manifest nativeHookManifest
+	if err := json.Unmarshal(codexPlannedFiles(plan)["hooks/hooks.json"].Bytes, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	command := manifest.Hooks["Stop"][0].Hooks[0].Command
+	wantCommand := "'printf' '%s' \"${PLUGIN_ROOT}\"'/assets/hooks/guard/scripts/check-\"-$AMBIENT-$(touch INJECTED)-`touch BACKTICK`-'\"'\"'.sh'"
+	if command != wantCommand {
+		t.Fatalf("command = %q, want %q", command, wantCommand)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skipf("sh is unavailable: %v", err)
+	}
+	workingDirectory := t.TempDir()
+	pluginRoot := filepath.Join(workingDirectory, "plugin")
+	process := exec.Command("sh", "-c", command)
+	process.Dir = workingDirectory
+	process.Env = []string{"AMBIENT=expanded", "PATH=" + os.Getenv("PATH"), "PLUGIN_ROOT=" + pluginRoot}
+	output, err := process.Output()
+	if err != nil {
+		t.Fatalf("execute rendered command: %v", err)
+	}
+	if got, want := string(output), pluginRoot+"/assets/hooks/guard/"+string(path); got != want {
+		t.Fatalf("rendered argument = %q, want %q", got, want)
+	}
+	for _, marker := range []string{"INJECTED", "BACKTICK"} {
+		if _, err := os.Stat(filepath.Join(workingDirectory, marker)); !os.IsNotExist(err) {
+			t.Fatalf("injection marker %q exists or could not be checked: %v", marker, err)
+		}
 	}
 }
 
