@@ -62,6 +62,56 @@ func TestRenderProducesSiblingResourceTree(t *testing.T) {
 	}
 }
 
+func TestRenderProjectPreservesSupportFileMetadata(t *testing.T) {
+	line := 7
+	scriptOrigin := []model.SourceLocation{{Path: "source/skills/guide/scripts/run.sh", Line: &line}}
+	resourceOrigin := []model.SourceLocation{{Path: "source/resources/templates/report.md"}}
+	scriptBytes := []byte("#!/bin/sh\n")
+	pkg := model.NormalizedPackage{
+		Identity: "demo",
+		Target:   model.TargetCopilot,
+		Assets: []model.NormalizedAsset{
+			{
+				Identity: "skill/guide",
+				Kind:     model.AssetKindSkill,
+				Content: model.AssetContent{Body: "# Guide\n", Files: map[model.RelativePath]model.FileContent{
+					"scripts/run.sh": {Bytes: scriptBytes, Executable: true, Origin: scriptOrigin},
+				}},
+			},
+			{
+				Identity: "resource/templates",
+				Kind:     model.AssetKindResource,
+				Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{
+					"report.md": {Bytes: []byte("# Report\n"), Origin: resourceOrigin},
+				}},
+			},
+		},
+	}
+
+	plan, diagnostics := RenderProject(model.TargetCopilot, ".github/skills", ".github/resources", []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("RenderProject() diagnostics = %#v", diagnostics)
+	}
+	files := make(map[model.RelativePath]model.PlannedFile, len(plan.Files))
+	for _, file := range plan.Files {
+		files[file.Path] = file
+	}
+	script := files[".github/skills/guide/scripts/run.sh"]
+	if !script.Executable || !reflect.DeepEqual(script.Origin, scriptOrigin) {
+		t.Fatalf("script metadata = %#v, want executable with origin %#v", script, scriptOrigin)
+	}
+	resource := files[".github/resources/templates/report.md"]
+	if resource.Executable || !reflect.DeepEqual(resource.Origin, resourceOrigin) {
+		t.Fatalf("resource metadata = %#v, want non-executable with origin %#v", resource, resourceOrigin)
+	}
+
+	script.Bytes[0] = 'X'
+	*script.Origin[0].Line = 99
+	if string(scriptBytes) != "#!/bin/sh\n" || line != 7 {
+		t.Fatal("planned support file bytes or origin alias normalized input")
+	}
+}
+
 func TestRenderRejectsUnsupportedSubsetAndAggregation(t *testing.T) {
 	base := model.NormalizedPackage{Identity: "demo", Target: model.TargetPi}
 	agent := base

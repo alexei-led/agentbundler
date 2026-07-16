@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -115,6 +116,67 @@ func TestCompileRejectsHookCapabilityInPiProjectProfile(t *testing.T) {
 	}
 }
 
+func TestCompileNativeChecksRunFromTargetRoots(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake native validators require POSIX shell scripts")
+	}
+
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
+	manifest := skillsManifest(model.TargetClaude)
+	manifest.Targets = []model.TargetID{model.TargetClaude, model.TargetGrok}
+	manifest.Composition = []model.TargetComposition{
+		{Target: model.TargetClaude, Profile: model.TargetProfilePackage},
+		{Target: model.TargetGrok, Profile: model.TargetProfilePackage},
+	}
+
+	build := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(build.Diagnostics) != 0 {
+		t.Fatalf("build diagnostics = %#v", build.Diagnostics)
+	}
+
+	bin := t.TempDir()
+	logs := t.TempDir()
+	writeFakeNativeValidator(t, bin, "claude")
+	writeFakeNativeValidator(t, bin, "grok")
+	t.Setenv("NATIVE_CHECK_LOG", logs)
+	t.Setenv("PATH", bin)
+
+	check := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeCheck, NativeVerify: true})
+	if len(check.Diagnostics) != 0 || check.NativeVerificationFailed {
+		t.Fatalf("native check result = %#v", check)
+	}
+
+	outputRoot, err := filepath.EvalSymlinks(filepath.Join(workspace, "generated"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertNativeValidatorLog(t, filepath.Join(logs, "claude"), filepath.Join(outputRoot, "claude")+"\nplugin\nvalidate\n--strict\n.\n")
+	assertNativeValidatorLog(t, filepath.Join(logs, "grok"), filepath.Join(outputRoot, "grok")+"\nplugin\nvalidate\n.\n")
+}
+
+func TestNativeChecksPrefixTargetRelativeWorkingDirectories(t *testing.T) {
+	packageRoot := model.RelativePath("packages/demo")
+	plan := model.BuildPlan{Targets: []model.TargetPlan{
+		{Target: model.TargetClaude, NativeChecks: []model.NativeCheck{{Program: "claude"}}},
+		{Target: model.TargetGrok, NativeChecks: []model.NativeCheck{{Program: "grok", WorkingDirectory: &packageRoot}}},
+	}}
+
+	checks := nativeChecks(plan)
+	claudeRoot := model.RelativePath("claude")
+	grokPackageRoot := model.RelativePath("grok/packages/demo")
+	want := []model.NativeCheck{
+		{Program: "claude", WorkingDirectory: &claudeRoot},
+		{Program: "grok", WorkingDirectory: &grokPackageRoot},
+	}
+	if !reflect.DeepEqual(checks, want) {
+		t.Fatalf("nativeChecks() = %#v, want %#v", checks, want)
+	}
+	if plan.Targets[0].NativeChecks[0].WorkingDirectory != nil || *plan.Targets[1].NativeChecks[0].WorkingDirectory != "packages/demo" {
+		t.Fatalf("nativeChecks() mutated target-relative checks: %#v", plan.Targets)
+	}
+}
+
 func TestTargetRenderInputUsesManifestDistributionAndExplicitPackageMode(t *testing.T) {
 	packages := []model.NormalizedPackage{
 		{Identity: "zeta", Target: model.TargetPi, Profile: model.TargetProfilePackage},
@@ -187,5 +249,25 @@ func writeCompilerFixture(t *testing.T, root, relative, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q): %v", path, err)
+	}
+}
+
+func writeFakeNativeValidator(t *testing.T, root, name string) {
+	t.Helper()
+	content := "#!/bin/sh\n{\n  pwd -P\n  printf '%s\\n' \"$@\"\n} > \"$NATIVE_CHECK_LOG/" + name + "\"\n"
+	path := filepath.Join(root, name)
+	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q): %v", path, err)
+	}
+}
+
+func assertNativeValidatorLog(t *testing.T, path, want string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", path, err)
+	}
+	if string(data) != want {
+		t.Fatalf("native validator log = %q, want %q", data, want)
 	}
 }

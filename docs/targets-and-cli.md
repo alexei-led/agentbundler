@@ -21,10 +21,11 @@ Pi hook packages use explicit aggregate mode instead.
 | Cursor      | `.cursor-plugin/plugin.json`, `skills/`, `agents/*.md`, `hooks/hooks.json`, hook payloads                                  | `.cursor-plugin/marketplace.json`  |
 | Grok Build  | Claude-compatible `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                    | `.claude-plugin/marketplace.json`  |
 
-Project profiles remain narrower: Claude uses `.claude/skills`, Codex uses
-`.agents/skills` plus `.codex/agents/*.toml`, Pi uses `.pi/skills`, Copilot uses
-`.github/skills`, Grok uses `.grok/{skills,resources}`, and Cursor keeps its
-project layout. The Grok package profile is distinct from `.grok/skills`.
+Project profiles remain narrower: Claude uses `.claude/skills`; Codex uses
+`.codex-plugin/plugin.json`, a root `skills/` tree, and `.codex/agents/*.toml`;
+Pi uses `.pi/skills`; Copilot uses `.github/skills`; Grok uses
+`.grok/{skills,resources}`; and Cursor keeps its project layout. The Grok
+package profile is distinct from `.grok/skills`.
 
 The Pi aggregate package contains exactly one extension registration. Its thin
 adapter imports a dependency-free TypeScript runtime embedded in `agbun`; the

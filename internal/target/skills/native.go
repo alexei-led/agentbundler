@@ -60,7 +60,7 @@ func render(target model.TargetID, root, resourceRoot string, packages []model.N
 			if err != nil {
 				return empty(target), []model.Diagnostic{diagnostic("invalid-skill-frontmatter", err.Error())}
 			}
-			if err := add(&files, paths, model.RelativePath(base+"/SKILL.md"), content); err != nil {
+			if err := add(&files, paths, model.RelativePath(base+"/SKILL.md"), model.FileContent{Bytes: content}); err != nil {
 				return empty(target), []model.Diagnostic{diagnostic("duplicate-output-path", err.Error())}
 			}
 		case model.AssetKindResource:
@@ -86,7 +86,7 @@ func addSupportFiles(files *[]model.PlannedFile, paths map[model.RelativePath]st
 	}
 	sort.Slice(supportPaths, func(i, j int) bool { return supportPaths[i] < supportPaths[j] })
 	for _, path := range supportPaths {
-		if err := add(files, paths, model.RelativePath(base+"/"+string(path)), supportFiles[path].Bytes); err != nil {
+		if err := add(files, paths, model.RelativePath(base+"/"+string(path)), supportFiles[path]); err != nil {
 			return err
 		}
 	}
@@ -104,12 +104,17 @@ func markdown(frontmatter map[string]any, body string) ([]byte, error) {
 	return []byte("---\n" + string(encoded) + "\n---\n" + body), nil
 }
 
-func add(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, path model.RelativePath, bytes []byte) error {
+func add(files *[]model.PlannedFile, paths map[model.RelativePath]struct{}, path model.RelativePath, content model.FileContent) error {
 	if _, exists := paths[path]; exists {
 		return fmt.Errorf("generated output path %q is duplicated", path)
 	}
 	paths[path] = struct{}{}
-	*files = append(*files, model.PlannedFile{Path: path, Bytes: append([]byte(nil), bytes...)})
+	*files = append(*files, model.PlannedFile{
+		Path:       path,
+		Bytes:      append([]byte(nil), content.Bytes...),
+		Executable: content.Executable,
+		Origin:     model.CloneSourceLocations(content.Origin),
+	})
 	return nil
 }
 

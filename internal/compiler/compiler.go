@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -253,7 +254,15 @@ func compositionPolicy(manifest model.SourceManifest, targetID model.TargetID, c
 func nativeChecks(plan model.BuildPlan) []model.NativeCheck {
 	var checks []model.NativeCheck
 	for _, targetPlan := range plan.Targets {
-		checks = append(checks, targetPlan.NativeChecks...)
+		for _, check := range targetPlan.NativeChecks {
+			workingDirectory := string(targetPlan.Target)
+			if check.WorkingDirectory != nil {
+				workingDirectory = path.Join(workingDirectory, string(*check.WorkingDirectory))
+			}
+			targetWorkingDirectory := model.RelativePath(workingDirectory)
+			check.WorkingDirectory = &targetWorkingDirectory
+			checks = append(checks, check)
+		}
 	}
 	return checks
 }
