@@ -46,6 +46,7 @@ export function createPiHookRuntime(pi: PiExtensionAPI, value: unknown, options:
   const runner = options.runner ?? runProcess;
   const active = new Set<{ controller: AbortController; done: Promise<void> }>();
   let closed = false;
+  let shutdownRequested = false;
   let shutdownPromise: Promise<void> | undefined;
 
   const invoke = async (hook: HookDescriptor, event: Record<string, unknown>, context: PiEventContext): Promise<HookDecision> => {
@@ -146,11 +147,12 @@ export function createPiHookRuntime(pi: PiExtensionAPI, value: unknown, options:
       }
       closed = true;
       shutdownPromise = (async () => {
-        await drainActive();
+        await cancelActive("session shutdown");
+        if (shutdownRequested) return;
         try {
           await dispatchHooks(hooks, event, context, true);
         } finally {
-          await drainActive();
+          await waitForActive();
         }
       })();
       await shutdownPromise;
@@ -158,16 +160,25 @@ export function createPiHookRuntime(pi: PiExtensionAPI, value: unknown, options:
     });
   }
 
-  async function drainActive(): Promise<void> {
+  async function cancelActive(reason: string): Promise<void> {
     const pending = [...active];
-    for (const invocation of pending) invocation.controller.abort("session shutdown");
+    for (const invocation of pending) invocation.controller.abort(reason);
+    await Promise.all(pending.map((invocation) => invocation.done));
+  }
+
+  async function waitForActive(): Promise<void> {
+    const pending = [...active];
     await Promise.all(pending.map((invocation) => invocation.done));
   }
 
   function shutdown(): Promise<void> {
-    if (shutdownPromise !== undefined) return shutdownPromise;
+    shutdownRequested = true;
+    if (shutdownPromise !== undefined) {
+      for (const invocation of active) invocation.controller.abort("runtime shutdown");
+      return shutdownPromise;
+    }
     closed = true;
-    shutdownPromise = drainActive();
+    shutdownPromise = cancelActive("runtime shutdown");
     return shutdownPromise;
   }
 

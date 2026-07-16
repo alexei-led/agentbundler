@@ -286,7 +286,7 @@ func TestInspectClaudePluginRejectsPartialNativeMatcherCategories(t *testing.T) 
 	}
 }
 
-func TestInspectClaudePluginReportsUnsupportedNativeHandlerAsGap(t *testing.T) {
+func TestInspectClaudePluginReportsUnsupportedNativeHandlerAsTargetNeutralGap(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
 	writeFixture(t, workspace, "source/plugin/hooks/hooks.json", `{"hooks":{"PostToolUse":[{"hooks":[{"type":"http","url":"https://example.test/hook"}]}]}}`)
@@ -295,8 +295,26 @@ func TestInspectClaudePluginReportsUnsupportedNativeHandlerAsGap(t *testing.T) {
 	if len(diagnostics) != 0 {
 		t.Fatalf("diagnostics = %#v", diagnostics)
 	}
-	if len(inventory.Packages[0].Assets) != 0 || len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Component != "source/plugin/hooks/hooks.json#hooks.PostToolUse[0].hooks[0]" || inventory.NativeGaps[0].Target == nil || *inventory.NativeGaps[0].Target != model.TargetClaude {
+	if len(inventory.Packages[0].Assets) != 0 || len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Component != "source/plugin/hooks/hooks.json#hooks.PostToolUse[0].hooks[0]" || inventory.NativeGaps[0].Target != nil {
 		t.Fatalf("inventory = %#v", inventory)
+	}
+}
+
+func TestInspectClaudePluginPreservesOneShotCommandsAsTargetNeutralGaps(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+	writeFixture(t, workspace, "source/plugin/hooks/hooks.json", `{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"once","once":true},{"type":"command","command":"repeat","once":false}]}]}}`)
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+	assets := inventory.Packages[0].Assets
+	if len(assets) != 1 || assets[0].Identity != "hook/SessionStart-2" || assets[0].Hook == nil || assets[0].Hook.Handler.ShellCommand == nil || *assets[0].Hook.Handler.ShellCommand != "repeat" {
+		t.Fatalf("assets = %#v", assets)
+	}
+	if len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Component != "source/plugin/hooks/hooks.json#hooks.SessionStart[0].hooks[0]" || inventory.NativeGaps[0].Target != nil {
+		t.Fatalf("native gaps = %#v", inventory.NativeGaps)
 	}
 }
 
