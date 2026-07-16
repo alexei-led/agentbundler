@@ -396,7 +396,7 @@ describe("shutdown", () => {
         program: "node",
         arguments: [
           { literal: "-e" },
-          { literal: "process.on('SIGTERM',()=>{});require('node:fs').writeFileSync(process.argv[1],String(process.pid));setInterval(()=>{},1000)" },
+          { literal: "const fs=require('node:fs');process.on('SIGTERM',()=>{});fs.writeFileSync(process.argv[1],'');setTimeout(()=>fs.writeFileSync(process.argv[1],String(process.pid)),20);setInterval(()=>{},1000)" },
           { literal: pidFile },
         ],
       },
@@ -408,10 +408,13 @@ describe("shutdown", () => {
       await pi.emit("tool_result", { toolName: "bash", isError: false });
       let childPID = 0;
       for (let attempt = 0; attempt < 100 && childPID === 0; attempt++) {
-        try { childPID = Number.parseInt(readFileSync(pidFile, "utf8"), 10); }
-        catch { await new Promise((resolve) => setTimeout(resolve, 10)); }
+        try {
+          const candidate = Number.parseInt(readFileSync(pidFile, "utf8"), 10);
+          if (Number.isSafeInteger(candidate) && candidate > 0) childPID = candidate;
+        } catch { /* The child has not created the PID file yet. */ }
+        if (childPID === 0) await new Promise((resolve) => setTimeout(resolve, 10));
       }
-      if (!Number.isSafeInteger(childPID) || childPID <= 0) throw new Error("child process did not write its PID");
+      if (childPID === 0) throw new Error("child process did not write its PID");
 
       await runtime.shutdown();
       let running = true;
