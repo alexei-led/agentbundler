@@ -12,6 +12,7 @@ docs/posts/
 bin/
 *.test
 coverage.out
+testdata/cc-thingz-hooks/generated/
 
 # Local environment
 .env
