@@ -213,6 +213,25 @@ func TestInspectClaudePluginRejectsSymlinkedManifestRootAncestor(t *testing.T) {
 	}
 }
 
+func TestInspectClaudePluginRejectsSymlinkedTargetSidecars(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+	writeFixture(t, workspace, "source/plugin/skills/alpha/SKILL.md", "Alpha.\n")
+	writeFixture(t, workspace, "unintended-targets/pi/files/leak.txt", "must not import\n")
+	sidecarRoot := filepath.Join(workspace, "source/plugin/.agentbundler/assets/skill/alpha")
+	if err := os.MkdirAll(sidecarRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(workspace, "unintended-targets"), filepath.Join(sidecarRoot, "targets")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if !hasErrors(diagnostics) || len(inventory.Packages) != 0 || !containsDiagnostic(diagnostics, "symlink") {
+		t.Fatalf("inventory = %#v, diagnostics = %#v, want symlink rejection", inventory, diagnostics)
+	}
+}
+
 func containsDiagnostic(diagnostics []model.Diagnostic, text string) bool {
 	for _, diagnostic := range diagnostics {
 		if strings.Contains(diagnostic.Message, text) {

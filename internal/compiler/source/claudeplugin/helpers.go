@@ -152,6 +152,13 @@ func (i *claudeInspector) supportFiles(assetRoot, skillFile string) map[model.Re
 
 func (i *claudeInspector) sidecars(identity model.AssetID, kind model.AssetKind, name string) ([]model.CapabilityUse, []model.TargetOverlay) {
 	sidecarRoot := filepath.Join(i.sourceRoot, ".agentbundler", "assets", string(kind), name)
+	if err := i.noSymlinkComponents(i.sourceRoot, sidecarRoot); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		i.error(i.relativePath(sidecarRoot), "inspect sidecar: "+err.Error())
+		return nil, nil
+	}
 	info, err := i.lstat(sidecarRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -191,6 +198,13 @@ func (i *claudeInspector) sidecars(identity model.AssetID, kind model.AssetKind,
 }
 
 func (i *claudeInspector) targetSidecars(identity model.AssetID, targetsRoot string) []model.TargetOverlay {
+	if err := i.noSymlinkComponents(i.sourceRoot, targetsRoot); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		i.error(i.relativePath(targetsRoot), "inspect target sidecars: "+err.Error())
+		return nil
+	}
 	entries, err := i.readDir(targetsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
