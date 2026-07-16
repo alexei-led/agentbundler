@@ -22,7 +22,7 @@ This module renders the Grok Build project profile and a separately generated Gr
 ## Encapsulated Knowledge
 
 - Grok project paths and Claude-compatible plugin discovery.
-- `GROK_PLUGIN_ROOT`, `GROK_PLUGIN_DATA`, hook events, explicit deny, timeout, and fail-open behavior.
+- `GROK_PLUGIN_ROOT`, `GROK_PLUGIN_DATA`, hook events, timeout, and fail-open behavior.
 - `grok plugin validate` declaration.
 
 ## Public Contract
@@ -45,7 +45,7 @@ hooks/hooks.json
 
 The tree is generated and tested for Grok; it is not a byte-copy of Claude output. Package-file command arguments use `GROK_PLUGIN_ROOT`, not an ambient source path. Catalog-enabled installable output is format revision 5.
 
-Documented portable events are session start/end, prompt submit, pre/post tool, post-tool failure, stop, notification, pre-compact, and post-compact. Matchers are regexes over mapped tool names. `PreToolUse` is the only blocking event and supports explicit deny; Grok documents no input-rewrite decision. Timeout/crash/malformed-output failures are fail open, so `hook.failure.closed` is unsupported. Grok does not document asynchronous command handlers, so `hook.async` is unsupported. Claude-compatible agents render as Markdown, but Claude-only `sandbox_mode` is rejected.
+Documented portable events are session start/end, prompt submit, pre/post tool, post-tool failure, stop, notification, pre-compact, and post-compact. Matchers are regexes over mapped tool names. Grok `PreToolUse` supports explicit deny, but Agent Bundler rejects portable block decisions until a target-owned process-protocol translator exists; Grok documents no input-rewrite decision. Timeout/crash/malformed-output failures are fail open, so `hook.failure.closed` is unsupported. Grok does not document asynchronous command handlers, so `hook.async` is unsupported. Claude-compatible agents render as Markdown, but Claude-only `sandbox_mode` is rejected.
 
 The adapter declares `grok plugin validate <plugin-root>` as a `NativeCheck` for every generated plugin root. Grok documents no separate offline marketplace validator, so the Claude-compatible catalog is covered by golden/schema tests. Rendering does not execute validators.
 
@@ -72,5 +72,6 @@ Primary sources: <https://docs.x.ai/build/features/skills-plugins-marketplaces> 
 ## Test Specification
 
 - Project and package goldens prove distinct roots and exact plugin/catalog paths.
-- Event/matcher/timeout/block/fail-open/root-variable cases are covered.
+- Event/matcher/timeout/fail-open/root-variable cases are covered.
+- Decision capability tests prove rejection before output until protocol translation exists.
 - Grok validator declarations are exact and render remains process-free.

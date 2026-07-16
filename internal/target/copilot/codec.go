@@ -24,8 +24,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateNative},
 	{Key: "hook.command.exec", State: model.CapabilityStateAdvisory},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateNative},
-	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateNative},
+	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.notification", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
@@ -142,7 +142,9 @@ type nativeHookManifest struct {
 
 type nativeHookHandler struct {
 	Type       string `json:"type,omitempty"`
-	Command    string `json:"command"`
+	Command    string `json:"command,omitempty"`
+	Bash       string `json:"bash,omitempty"`
+	PowerShell string `json:"powershell,omitempty"`
 	Matcher    string `json:"matcher,omitempty"`
 	TimeoutSec any    `json:"timeoutSec"`
 }
@@ -159,12 +161,12 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
-		command, err := copilotCommand(descriptor, hook)
+		command, bash, powershell, err := copilotCommands(descriptor, hook)
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookHandler{
-			Type: "command", Command: command, Matcher: matcher,
+			Type: "command", Command: command, Bash: bash, PowerShell: powershell, Matcher: matcher,
 			TimeoutSec: copilotTimeout(descriptor.TimeoutMilliseconds),
 		})
 	}
@@ -175,40 +177,52 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 	return packageoutput.HookManifest{Path: copilotHooksPath, Bytes: append(data, '\n')}, nil
 }
 
-func copilotCommand(descriptor model.HookDescriptor, hook packageoutput.HookInput) (string, error) {
+func copilotCommands(descriptor model.HookDescriptor, hook packageoutput.HookInput) (command, bash, powershell string, err error) {
 	switch descriptor.Handler.Mode {
 	case model.HookHandlerModeShell:
 		if descriptor.Handler.ShellCommand == nil {
-			return "", fmt.Errorf("hook %q shell handler has no command", descriptor.Identity)
+			return "", "", "", fmt.Errorf("hook %q shell handler has no command", descriptor.Identity)
 		}
-		return *descriptor.Handler.ShellCommand, nil
+		return *descriptor.Handler.ShellCommand, "", "", nil
 	case model.HookHandlerModeExec:
 		if descriptor.Handler.Program == nil {
-			return "", fmt.Errorf("hook %q exec handler has no program", descriptor.Identity)
+			return "", "", "", fmt.Errorf("hook %q exec handler has no program", descriptor.Identity)
 		}
-		parts := []string{shellQuote(*descriptor.Handler.Program)}
+		bashParts := []string{shellQuote(*descriptor.Handler.Program)}
+		powershellParts := []string{powershellQuote(*descriptor.Handler.Program)}
 		for _, argument := range descriptor.Handler.Arguments {
 			switch {
 			case argument.Literal != nil:
-				parts = append(parts, shellQuote(*argument.Literal))
+				bashParts = append(bashParts, shellQuote(*argument.Literal))
+				powershellParts = append(powershellParts, powershellQuote(*argument.Literal))
 			case argument.PackageFile != nil:
 				packagePath, ok := packageFilePath(hook, *argument.PackageFile)
 				if !ok {
-					return "", fmt.Errorf("hook %q package file %q is missing from its rendered payload", descriptor.Identity, *argument.PackageFile)
+					return "", "", "", fmt.Errorf("hook %q package file %q is missing from its rendered payload", descriptor.Identity, *argument.PackageFile)
 				}
-				parts = append(parts, `"`+copilotPluginRoot+`"`+shellQuote("/"+string(packagePath)))
+				bashParts = append(bashParts, `"`+copilotPluginRoot+`"`+shellQuote("/"+string(packagePath)))
+				powershellParts = append(powershellParts, powershellPluginPath(packagePath))
 			default:
-				return "", fmt.Errorf("hook %q has an invalid command argument", descriptor.Identity)
+				return "", "", "", fmt.Errorf("hook %q has an invalid command argument", descriptor.Identity)
 			}
 		}
-		return strings.Join(parts, " "), nil
+		return "", strings.Join(bashParts, " "), "& " + strings.Join(powershellParts, " "), nil
 	default:
-		return "", fmt.Errorf("hook %q handler mode %q is unsupported by Copilot CLI", descriptor.Identity, descriptor.Handler.Mode)
+		return "", "", "", fmt.Errorf("hook %q handler mode %q is unsupported by Copilot CLI", descriptor.Identity, descriptor.Handler.Mode)
 	}
 }
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func powershellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func powershellPluginPath(path model.RelativePath) string {
+	value := strings.NewReplacer("`", "``", `"`, "`\"", "$", "`$").Replace("/" + string(path))
+	return `"$env:PLUGIN_ROOT` + value + `"`
 }
 
 func packageFilePath(hook packageoutput.HookInput, path model.RelativePath) (model.RelativePath, bool) {
@@ -293,18 +307,6 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		if descriptor.Matcher != nil {
 			if _, err := copilotMatcher(*descriptor); err != nil {
 				return []model.Diagnostic{hookDiagnostic(asset, err.Error())}
-			}
-		}
-		for _, use := range asset.CapabilityUses {
-			switch use.Key {
-			case "hook.decision.block":
-				if descriptor.Event != model.HookEventPreTool && descriptor.Event != model.HookEventStop {
-					return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Copilot pre-tool and stop hooks", use.Key))}
-				}
-			case "hook.decision.rewrite-input":
-				if descriptor.Event != model.HookEventPreTool {
-					return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Copilot pre-tool hooks", use.Key))}
-				}
 			}
 		}
 	}

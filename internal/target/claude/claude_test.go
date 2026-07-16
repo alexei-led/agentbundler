@@ -33,8 +33,8 @@ func TestRenderRejectsNonSkillAssets(t *testing.T) {
 }
 
 func TestClaudeCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 5 {
-		t.Fatalf("FormatRevision = %d, want 5", FormatRevision)
+	if FormatRevision != 6 {
+		t.Fatalf("FormatRevision = %d, want 6", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent":                  model.CapabilityStateNative,
@@ -45,8 +45,8 @@ func TestClaudeCapabilitiesAndFormatRevision(t *testing.T) {
 		"hook.async":                   model.CapabilityStateNative,
 		"hook.command.exec":            model.CapabilityStateNative,
 		"hook.command.shell":           model.CapabilityStateNative,
-		"hook.decision.block":          model.CapabilityStateNative,
-		"hook.decision.rewrite-input":  model.CapabilityStateNative,
+		"hook.decision.block":          model.CapabilityStateUnsupported,
+		"hook.decision.rewrite-input":  model.CapabilityStateUnsupported,
 		"hook.event.notification":      model.CapabilityStateNative,
 		"hook.event.post-compact":      model.CapabilityStateNative,
 		"hook.event.post-tool":         model.CapabilityStateNative,
@@ -175,24 +175,18 @@ func TestRenderClaudeRejectsUnsupportedHookCells(t *testing.T) {
 			wantCode: "unsupported-capability", wantText: "hook.failure.closed",
 		},
 		{
-			name: "block on passive event",
+			name: "block decision",
 			mutate: func(asset *model.NormalizedAsset) {
-				asset.Hook.Event = model.HookEventSessionEnd
-				asset.Hook.Matcher = nil
-				asset.CapabilityUses = replaceCapability(asset.CapabilityUses, "hook.event.pre-tool", "hook.event.session-end")
 				asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: asset.Hook.Location})
 			},
-			wantCode: "unsupported-hook-semantics", wantText: "unsupported for Claude event",
+			wantCode: "unsupported-capability", wantText: "hook.decision.block",
 		},
 		{
-			name: "rewrite outside pre-tool",
+			name: "input rewrite decision",
 			mutate: func(asset *model.NormalizedAsset) {
-				asset.Hook.Event = model.HookEventStop
-				asset.Hook.Matcher = nil
-				asset.CapabilityUses = replaceCapability(asset.CapabilityUses, "hook.event.pre-tool", "hook.event.stop")
 				asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: asset.Hook.Location})
 			},
-			wantCode: "unsupported-hook-semantics", wantText: "supported only",
+			wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input",
 		},
 		{
 			name: "other tool category",
@@ -317,11 +311,24 @@ func TestRenderClaudeDeclaresStrictValidatorPerPluginRoot(t *testing.T) {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
 	want := []model.NativeCheck{
-		{Program: "claude", Arguments: []string{"plugin", "validate", "--strict", "alpha"}, Location: model.SourceLocation{Path: "internal/target/claude/codec.go"}},
-		{Program: "claude", Arguments: []string{"plugin", "validate", "--strict", "zeta"}, Location: model.SourceLocation{Path: "internal/target/claude/codec.go"}},
+		{Program: "claude", Arguments: []string{"plugin", "validate", "--strict", "./alpha"}, Location: model.SourceLocation{Path: "internal/target/claude/codec.go"}},
+		{Program: "claude", Arguments: []string{"plugin", "validate", "--strict", "./zeta"}, Location: model.SourceLocation{Path: "internal/target/claude/codec.go"}},
 	}
 	if !reflect.DeepEqual(plan.NativeChecks, want) {
 		t.Fatalf("NativeChecks = %#v, want %#v", plan.NativeChecks, want)
+	}
+}
+
+func TestNativeChecksAnchorOptionLikePluginRoots(t *testing.T) {
+	checks := nativeChecks([]model.PackageID{"--help", "-version"}, false)
+	want := [][]string{
+		{"plugin", "validate", "--strict", "./--help"},
+		{"plugin", "validate", "--strict", "./-version"},
+	}
+	for index := range checks {
+		if !reflect.DeepEqual(checks[index].Arguments, want[index]) {
+			t.Fatalf("NativeChecks[%d].Arguments = %#v, want %#v", index, checks[index].Arguments, want[index])
+		}
 	}
 }
 
@@ -345,10 +352,6 @@ func goldenHookPackage() model.NormalizedPackage {
 		{PackageFile: &guardPath},
 	})
 	guard.Content.Files[guardPath] = model.FileContent{Bytes: []byte("#!/usr/bin/env bash\ncat >/dev/null\n"), Executable: true, Origin: []model.SourceLocation{{Path: "source/hooks/guard/scripts/guard.sh"}}}
-	guard.CapabilityUses = append(guard.CapabilityUses,
-		model.CapabilityUse{Key: "hook.decision.block", Location: guard.Hook.Location},
-		model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: guard.Hook.Location},
-	)
 	async := execHook("async", model.HookEventPostTool, []model.HookToolCategory{model.HookToolCategoryWrite, model.HookToolCategoryEdit}, 7_250, true, 1, "node", []model.HookArgument{
 		{PackageFile: &asyncPath},
 		{Literal: stringPointer("--fix")},

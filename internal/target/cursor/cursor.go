@@ -7,7 +7,7 @@ import (
 	"github.com/alexei-led/agentbundler/internal/target/plugin"
 )
 
-const formatRevision = 5
+const formatRevision = 6
 
 // Adapter describes Cursor's native plugin asset subset.
 type Adapter struct {
@@ -22,7 +22,7 @@ func New() Adapter {
 
 func Render(adapter Adapter, input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	if adapter.Target != model.TargetCursor || adapter.FormatRevision != formatRevision || !sameCapabilityRules(adapter.Capabilities, capabilityRules) {
-		return model.TargetPlan{Target: model.TargetCursor}, []model.Diagnostic{{Code: "invalid-adapter", Severity: model.SeverityError, Message: "adapter is not the Cursor format revision 5 capability profile"}}
+		return model.TargetPlan{Target: model.TargetCursor}, []model.Diagnostic{{Code: "invalid-adapter", Severity: model.SeverityError, Message: "adapter is not the Cursor format revision 6 capability profile"}}
 	}
 	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
 		return packageoutput.RenderWithCodec(input, PackageCodec())

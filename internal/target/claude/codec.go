@@ -24,8 +24,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateNative},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateNative},
-	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateNative},
+	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.notification", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
@@ -283,18 +283,6 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
 			return []model.Diagnostic{hookDiagnostic(asset, "hook.failure.closed is unsupported because Claude command failures do not preserve portable fail-closed behavior")}
 		}
-		for _, use := range asset.CapabilityUses {
-			switch use.Key {
-			case "hook.decision.block":
-				if !claudeEventCanBlock(descriptor.Event) {
-					return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is unsupported for Claude event %q", use.Key, descriptor.Event))}
-				}
-			case "hook.decision.rewrite-input":
-				if descriptor.Event != model.HookEventPreTool {
-					return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("capability %q is supported only for Claude pre-tool hooks", use.Key))}
-				}
-			}
-		}
 		if descriptor.Matcher != nil {
 			if _, err := claudeMatcher(*descriptor); err != nil {
 				return []model.Diagnostic{hookDiagnostic(asset, err.Error())}
@@ -302,16 +290,6 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		}
 	}
 	return nil
-}
-
-func claudeEventCanBlock(event model.HookEvent) bool {
-	switch event {
-	case model.HookEventPromptSubmit, model.HookEventPreTool, model.HookEventPostTool,
-		model.HookEventPostToolFailure, model.HookEventStop, model.HookEventPreCompact:
-		return true
-	default:
-		return false
-	}
 }
 
 func hookDiagnostic(asset model.NormalizedAsset, message string) model.Diagnostic {

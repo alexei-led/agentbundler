@@ -25,15 +25,15 @@ func TestRenderUsesCopilotNativeSkillRoot(t *testing.T) {
 }
 
 func TestCopilotCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 6 {
-		t.Fatalf("FormatRevision = %d, want 6", FormatRevision)
+	if FormatRevision != 7 {
+		t.Fatalf("FormatRevision = %d, want 7", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateNative,
 		"hook.command.exec": model.CapabilityStateAdvisory, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative,
+		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
 		"hook.event.notification": model.CapabilityStateNative, "hook.event.post-compact": model.CapabilityStateUnsupported,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateNative,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateAdvisory,
@@ -73,8 +73,14 @@ func TestRenderCopilotHookGolden(t *testing.T) {
 	if pre["matcher"] != "Bash" || pre["timeoutSec"] != 5.0 {
 		t.Fatalf("pre-tool hook = %#v", pre)
 	}
-	if got, want := pre["command"], `'bash' '-eu' "${PLUGIN_ROOT}"'/hooks/guard/scripts/guard.sh'`; got != want {
-		t.Fatalf("command = %#v, want %#v", got, want)
+	if _, exists := pre["command"]; exists {
+		t.Fatalf("exec hook has cross-platform command field: %#v", pre)
+	}
+	if got, want := pre["bash"], `'bash' '-eu' "${PLUGIN_ROOT}"'/hooks/guard/scripts/guard.sh'`; got != want {
+		t.Fatalf("bash = %#v, want %#v", got, want)
+	}
+	if got, want := pre["powershell"], `& 'bash' '-eu' "$env:PLUGIN_ROOT/hooks/guard/scripts/guard.sh"`; got != want {
+		t.Fatalf("powershell = %#v, want %#v", got, want)
 	}
 	post := hooks["PostToolUse"].([]any)[0].(map[string]any)
 	if post["timeoutSec"] != 7.25 || post["command"] != `printf done | cat` {
@@ -99,10 +105,15 @@ func TestRenderCopilotShellQuotesHostilePackageFilePath(t *testing.T) {
 	}
 
 	hooks := decodeObject(t, plannedFiles(plan)["hooks.json"].Bytes)["hooks"].(map[string]any)
-	command := hooks["Stop"].([]any)[0].(map[string]any)["command"].(string)
-	wantCommand := "'printf' '%s' \"${PLUGIN_ROOT}\"'/hooks/guard/scripts/check-\"-$AMBIENT-$(touch INJECTED)-`touch BACKTICK`-'\"'\"'.sh'"
-	if command != wantCommand {
-		t.Fatalf("command = %q, want %q", command, wantCommand)
+	handler := hooks["Stop"].([]any)[0].(map[string]any)
+	bashCommand := handler["bash"].(string)
+	wantBash := "'printf' '%s' \"${PLUGIN_ROOT}\"'/hooks/guard/scripts/check-\"-$AMBIENT-$(touch INJECTED)-`touch BACKTICK`-'\"'\"'.sh'"
+	if bashCommand != wantBash {
+		t.Fatalf("bash = %q, want %q", bashCommand, wantBash)
+	}
+	wantPowerShell := `& 'printf' '%s' "$env:PLUGIN_ROOT/hooks/guard/scripts/check-` + "`\"-`$AMBIENT-`$(touch INJECTED)-``touch BACKTICK``-'.sh\""
+	if got := handler["powershell"]; got != wantPowerShell {
+		t.Fatalf("powershell = %q, want %q", got, wantPowerShell)
 	}
 	if runtime.GOOS == "windows" {
 		return
@@ -112,7 +123,7 @@ func TestRenderCopilotShellQuotesHostilePackageFilePath(t *testing.T) {
 	}
 	workingDirectory := t.TempDir()
 	pluginRoot := filepath.Join(workingDirectory, "plugin")
-	process := exec.Command("sh", "-c", command)
+	process := exec.Command("sh", "-c", bashCommand)
 	process.Dir = workingDirectory
 	process.Env = []string{"AMBIENT=expanded", "PATH=" + os.Getenv("PATH"), "PLUGIN_ROOT=" + pluginRoot}
 	output, err := process.Output()
@@ -127,6 +138,91 @@ func TestRenderCopilotShellQuotesHostilePackageFilePath(t *testing.T) {
 			t.Fatalf("injection marker %q exists or could not be checked: %v", marker, err)
 		}
 	}
+}
+
+func TestRenderedCopilotExecCommandsRunWithShellSpecificQuoting(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	helperDirectory := filepath.Join(t.TempDir(), "helper directory")
+	if err := os.MkdirAll(helperDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	helperName := "copilot-test-helper"
+	if runtime.GOOS == "windows" {
+		helperName += ".exe"
+	}
+	helper := filepath.Join(helperDirectory, helperName)
+	data, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(helper, data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := model.RelativePath("scripts/file with 'quote' and $dollar.txt")
+	literal := `single' and "double" with spaces`
+	hook := execHook("guard", model.HookEventStop, nil, 2_000, false, 0, helperName, []model.HookArgument{
+		{Literal: stringPointer("-test.run=^TestCopilotExecCommandHelper$")},
+		{Literal: stringPointer("--")},
+		{Literal: &literal},
+		{PackageFile: &path},
+	})
+	hook.Content.Files[path] = model.FileContent{Bytes: []byte("payload")}
+	pkg := model.NormalizedPackage{Identity: "demo", Target: Target, Profile: model.TargetProfilePackage, Assets: []model.NormalizedAsset{hook}}
+	pkg.Acknowledgments = acknowledge(hook, "hook.command.exec")
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	handler := decodeObject(t, plannedFiles(plan)["hooks.json"].Bytes)["hooks"].(map[string]any)["Stop"].([]any)[0].(map[string]any)
+
+	pluginRoot := filepath.Join(t.TempDir(), "plugin root with spaces")
+	var process *exec.Cmd
+	if runtime.GOOS == "windows" {
+		powershell, err := exec.LookPath("powershell")
+		if err != nil {
+			t.Skipf("Windows PowerShell is unavailable: %v", err)
+		}
+		process = exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command", handler["powershell"].(string))
+	} else {
+		bash, err := exec.LookPath("bash")
+		if err != nil {
+			t.Skipf("bash is unavailable: %v", err)
+		}
+		process = exec.Command(bash, "-c", handler["bash"].(string))
+	}
+	process.Env = append(os.Environ(), "AGENTBUNDLER_COPILOT_HELPER=1", "PLUGIN_ROOT="+pluginRoot, "PATH="+helperDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+	output, err := process.CombinedOutput()
+	if err != nil {
+		t.Fatalf("execute rendered command: %v: %s", err, output)
+	}
+	var arguments []string
+	if err := json.Unmarshal(output, &arguments); err != nil {
+		t.Fatalf("decode helper output %q: %v", output, err)
+	}
+	if len(arguments) != 2 || arguments[0] != literal {
+		t.Fatalf("rendered literal arguments = %#v", arguments)
+	}
+	wantPath := filepath.Join(pluginRoot, "hooks", "guard", filepath.FromSlash(string(path)))
+	if filepath.Clean(arguments[1]) != filepath.Clean(wantPath) {
+		t.Fatalf("rendered package-file argument = %q, want %q", arguments[1], wantPath)
+	}
+}
+
+func TestCopilotExecCommandHelper(t *testing.T) {
+	if os.Getenv("AGENTBUNDLER_COPILOT_HELPER") != "1" {
+		return
+	}
+	for index, argument := range os.Args {
+		if argument == "--" {
+			_ = json.NewEncoder(os.Stdout).Encode(os.Args[index+1:])
+			os.Exit(0)
+		}
+	}
+	os.Exit(2)
 }
 
 func TestRenderCopilotHookFreePackageRegression(t *testing.T) {
@@ -209,9 +305,9 @@ func TestRenderCopilotRejectsFailureTimeoutAndDecisionMismatches(t *testing.T) {
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.async", Location: a.Hook.Location})
 		}, wantCode: "unsupported-hook-semantics", wantText: "hook.async"},
 		{name: "synchronous notification", asset: shellHook("notify", model.HookEventNotification, nil, 1_000, false, 0, "true"), mutate: func(*model.NormalizedAsset) {}, wantCode: "unsupported-hook-semantics", wantText: "inherently asynchronous"},
-		{name: "rewrite on stop", asset: shellHook("stop", model.HookEventStop, nil, 1_000, false, 0, "true"), mutate: func(a *model.NormalizedAsset) {
+		{name: "rewrite decision", asset: shellHook("stop", model.HookEventStop, nil, 1_000, false, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: a.Hook.Location})
-		}, wantCode: "unsupported-hook-semantics", wantText: "pre-tool"},
+		}, wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			test.mutate(&test.asset)
@@ -290,7 +386,6 @@ func goldenHookPackage() model.NormalizedPackage {
 	path := model.RelativePath("scripts/guard.sh")
 	guard := execHook("guard", model.HookEventPreTool, []model.HookToolCategory{model.HookToolCategoryCommand}, 5_000, false, 1, "bash", []model.HookArgument{{Literal: stringPointer("-eu")}, {PackageFile: &path}})
 	guard.Content.Files[path] = model.FileContent{Bytes: []byte("#!/usr/bin/env bash\ncat >/dev/null\n"), Executable: true}
-	guard.CapabilityUses = append(guard.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: guard.Hook.Location}, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: guard.Hook.Location})
 	post := shellHook("report", model.HookEventPostTool, []model.HookToolCategory{model.HookToolCategoryWrite}, 7_250, false, 2, "printf done | cat")
 	agent := model.NormalizedAsset{Identity: "agent/reviewer", Kind: model.AssetKindAgent, Content: model.AssetContent{Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"}, Body: "Review.\n", Files: map[model.RelativePath]model.FileContent{}}, CapabilityUses: uses("source/agent", "asset.agent")}
 	skill := model.NormalizedAsset{Identity: "skill/guide", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "guide"}, Body: "Guide.\n", Files: map[model.RelativePath]model.FileContent{}}, CapabilityUses: uses("source/skill", "asset.skill")}

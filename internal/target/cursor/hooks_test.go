@@ -13,15 +13,15 @@ import (
 )
 
 func TestCursorCapabilitiesAndFormatRevision(t *testing.T) {
-	if formatRevision != 5 {
-		t.Fatalf("formatRevision = %d, want 5", formatRevision)
+	if formatRevision != 6 {
+		t.Fatalf("formatRevision = %d, want 6", formatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateUnsupported,
 		"hook.command.exec": model.CapabilityStateAdvisory, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative,
+		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
 		"hook.event.notification": model.CapabilityStateUnsupported, "hook.event.post-compact": model.CapabilityStateUnsupported,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateNative,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateNative,
@@ -140,12 +140,12 @@ func TestRenderCursorRejectsDecisionAndFailureGaps(t *testing.T) {
 			a.Hook.FailurePolicy = model.HookFailurePolicyClosed
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.failure.closed", Location: a.Hook.Location})
 		}, wantCode: "unsupported-hook-semantics", wantText: "pre-tool and prompt-submit"},
-		{name: "block after tool", asset: cursorShellHook("block", model.HookEventPostTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
+		{name: "block decision", asset: cursorShellHook("block", model.HookEventPreTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: a.Hook.Location})
-		}, wantCode: "unsupported-hook-semantics", wantText: "pre-tool and prompt-submit"},
-		{name: "rewrite prompt", asset: cursorShellHook("rewrite", model.HookEventPromptSubmit, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
+		}, wantCode: "unsupported-capability", wantText: "hook.decision.block"},
+		{name: "rewrite decision", asset: cursorShellHook("rewrite", model.HookEventPreTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: a.Hook.Location})
-		}, wantCode: "unsupported-hook-semantics", wantText: "pre-tool hooks"},
+		}, wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			test.mutate(&test.asset)
@@ -206,9 +206,7 @@ func cursorGoldenPackage() model.NormalizedPackage {
 	guard.Content.Files[path] = model.FileContent{Bytes: []byte("#!/usr/bin/env bash\ncat >/dev/null\n"), Executable: true}
 	guard.Hook.FailurePolicy = model.HookFailurePolicyClosed
 	guard.CapabilityUses = append(guard.CapabilityUses,
-		model.CapabilityUse{Key: "hook.failure.closed", Location: guard.Hook.Location},
-		model.CapabilityUse{Key: "hook.decision.block", Location: guard.Hook.Location},
-		model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: guard.Hook.Location})
+		model.CapabilityUse{Key: "hook.failure.closed", Location: guard.Hook.Location})
 	post := cursorShellHook("report", model.HookEventPostTool, []model.HookToolCategory{model.HookToolCategoryWrite}, 7_250, 2, "printf done | cat")
 	end := cursorShellHook("audit", model.HookEventSessionEnd, nil, 3_000, 3, "./hooks/audit/audit.sh")
 	end.Content.Files["audit.sh"] = model.FileContent{Bytes: []byte("#!/bin/sh\nexit 0\n"), Executable: true}

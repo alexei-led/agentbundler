@@ -43,9 +43,9 @@ hooks.json
 <hook payload files>
 ```
 
-The manifest points to the root `hooks.json`. Package-file command arguments use `${PLUGIN_ROOT}` through a target-owned representation. Copilot command hooks are shell command fields (`bash`, `powershell`, or `command`); an exec-form portable hook is equivalent only when the adapter can render its literal and package-file arguments without changing quoting or injection semantics on every emitted platform form.
+The manifest points to the root `hooks.json`. Package-file command arguments use `${PLUGIN_ROOT}` through a target-owned representation. Copilot command hooks are shell command fields (`bash`, `powershell`, or `command`). Explicit shell hooks keep the cross-platform `command` field; portable exec hooks emit separate Bash and PowerShell commands with shell-specific quoting for every literal and package-file argument.
 
-Verified portable events render with the documented PascalCase/VS Code-compatible names: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, and `PreCompact`. `PreToolUse` uses Claude-compatible matcher semantics and supports explicit block and input rewrite. Hook entries execute in order. Notification is inherently async and cannot block. There is no documented `PostCompact` event.
+Verified portable events render with the documented PascalCase/VS Code-compatible names: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, and `PreCompact`. `PreToolUse` uses Claude-compatible matcher names. Copilot has native block and rewrite results, but Agent Bundler rejects those portable capabilities until a target-owned process-protocol translator exists. Hook entries execute in order. Notification is inherently async and cannot block. There is no documented `PostCompact` event.
 
 Failure behavior is event-specific: most command failures and timeouts fail open; pre-tool command crashes/nonzero exits fail closed while pre-tool timeout still fails open. Portable `hook.failure.closed` is therefore unsupported. Pre-tool behavior and conversion of portable exec arguments into Copilot's cross-platform shell `command` field are advisory and require exact acknowledgments. HTTP and prompt handlers are outside the initial command-hook contract.
 
@@ -72,5 +72,7 @@ Primary sources: <https://docs.github.com/en/copilot/reference/copilot-cli-refer
 ## Test Specification
 
 - Golden project and package trees cover exact manifest, agent, hook, payload, and catalog paths.
-- Event/matcher/timeout/order/block/rewrite/failure cases prove exact capability states.
+- Event/matcher/timeout/order/failure cases prove exact capability states.
+- Decision capability tests prove rejection before output until protocol translation exists.
+- Bash execution tests run on Unix and PowerShell execution tests run in Windows CI for quoted literals, spaces, and package-file arguments.
 - Unsupported post-compact, unsafe exec conversion, and failure-policy combinations yield no partial plan.

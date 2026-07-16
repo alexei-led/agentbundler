@@ -2,12 +2,10 @@
   "id": "protocol-hooks",
   "metadata": {
     "version": "1.0.0",
-    "description": "Hermetic Claude hook protocol fixture",
+    "description": "Hermetic Claude passive hook fixture",
     "author": "Agent Bundler"
   },
   "assets": [
-    "src/hooks/allow",
-    "src/hooks/deny",
-    "src/hooks/rewrite"
+    "src/hooks/allow"
   ]
 }

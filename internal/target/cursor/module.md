@@ -22,7 +22,7 @@ This module renders Cursor project profiles and installable plugins using Cursor
 ## Encapsulated Knowledge
 
 - Cursor plugin component discovery and marketplace schema.
-- `hooks/hooks.json`, command-string handlers, tool matchers, block/rewrite output, timeout, and event-specific failure behavior.
+- `hooks/hooks.json`, command-string handlers, tool matchers, timeout, and event-specific failure behavior.
 - The absence of an official production native validator.
 
 ## Public Contract
@@ -45,7 +45,7 @@ hooks/hooks.json
 
 Cursor auto-discovers those component roots. Package-file handler arguments are rendered as contained package-relative command paths. Since Cursor command hooks are command strings, a canonical exec hook is equivalent only where deterministic quoting preserves every literal/package-file argument; adopted shell remains explicit shell.
 
-Verified portable events include session start/end, prompt submit (`beforeSubmitPrompt`), generic pre/post tool, post-tool failure, stop, and pre-compact. Generic tool matchers use only exact documented names: `Shell`, `Read`, `Write`, `Task`, and `MCP:<tool_name>`; broader portable edit, search, and web categories are rejected because Cursor does not expose a lossless matcher. `preToolUse` supports explicit allow/deny and `updated_input`. Prompt submit can continue or block. Session lifecycle and pre-compact behavior is observational where documented. No current `postCompact` event exists.
+Verified portable events include session start/end, prompt submit (`beforeSubmitPrompt`), generic pre/post tool, post-tool failure, stop, and pre-compact. Generic tool matchers use only exact documented names: `Shell`, `Read`, `Write`, `Task`, and `MCP:<tool_name>`; broader portable edit, search, and web categories are rejected because Cursor does not expose a lossless matcher. Cursor has native allow/deny and updated-input results, but Agent Bundler rejects portable block and rewrite capabilities until a target-owned process-protocol translator exists. Session lifecycle and pre-compact behavior is observational where documented. No current `postCompact` event exists.
 
 The hook entry `timeout` is seconds. Exit 0 uses JSON output, exit 2 blocks an applicable action, and other failures default fail open. Documented `failClosed: true` is emitted only for blocking pre-tool and prompt-submit hooks; the adapter cannot make a blanket closed-failure claim. Prompt handler hooks are outside the initial command-hook contract.
 
@@ -72,5 +72,6 @@ Primary sources: <https://cursor.com/docs/plugins>, <https://cursor.com/docs/ref
 ## Test Specification
 
 - Golden package trees cover plugin, skills, agents, hook file, payloads, and catalog paths.
-- Tests cover event/matcher/timeout/block/rewrite/fail-open/closed constraints and deterministic order.
+- Tests cover event/matcher/timeout/fail-open/closed constraints and deterministic order.
+- Decision capability tests prove rejection before output until protocol translation exists.
 - Unsupported semantic cells and collisions return no partial plan.

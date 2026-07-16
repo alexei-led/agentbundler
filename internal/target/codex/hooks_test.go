@@ -14,15 +14,15 @@ import (
 )
 
 func TestCodexCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 4 {
-		t.Fatalf("FormatRevision = %d, want 4", FormatRevision)
+	if FormatRevision != 5 {
+		t.Fatalf("FormatRevision = %d, want 5", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateUnsupported,
 		"hook.command.exec": model.CapabilityStateNative, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative,
+		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
 		"hook.event.notification": model.CapabilityStateUnsupported, "hook.event.post-compact": model.CapabilityStateNative,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateUnsupported,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateNative,
@@ -48,10 +48,6 @@ func TestRenderCodexHookGoldenAndTrustBoundary(t *testing.T) {
 		{Literal: codexStringPointer("-eu")}, {PackageFile: &path}, {Literal: codexStringPointer("a'b; touch /tmp/no")},
 	})
 	hook.Content.Files[path] = model.FileContent{Bytes: []byte("#!/bin/sh\n"), Executable: true}
-	hook.CapabilityUses = append(hook.CapabilityUses,
-		model.CapabilityUse{Key: "hook.decision.block", Location: hook.Hook.Location},
-		model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: hook.Hook.Location},
-	)
 	pkg := codexHookPackage("demo", hook)
 	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
 	if len(diagnostics) != 0 {
