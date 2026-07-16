@@ -46,11 +46,7 @@ func TestPackageTargetsRenderCatalogGoldens(t *testing.T) {
 			if file.Executable || len(file.Origin) != 0 {
 				t.Fatalf("catalog file metadata = %#v", file)
 			}
-			wantSource := "./"
-			if test.target == model.TargetClaude || test.target == model.TargetGrok {
-				wantSource = ".."
-			}
-			assertCatalogSources(t, test.target, file.Bytes, []string{"alpha"}, []string{wantSource})
+			assertCatalogSources(t, test.target, file.Bytes, []string{"alpha"}, []string{"./"})
 			assertCatalogRequiredFields(t, test.target, file.Bytes)
 		})
 	}
@@ -80,11 +76,7 @@ func TestPackageTargetCatalogsOrderMultiPackageRootsAndAreReproducible(t *testin
 			if !exists {
 				t.Fatalf("catalog is absent; paths = %#v", plannedPaths(first))
 			}
-			wantSources := []string{"./alpha", "./zeta"}
-			if targetID == model.TargetClaude || targetID == model.TargetGrok {
-				wantSources = []string{"../alpha", "../zeta"}
-			}
-			assertCatalogSources(t, targetID, catalog.Bytes, []string{"alpha", "zeta"}, wantSources)
+			assertCatalogSources(t, targetID, catalog.Bytes, []string{"alpha", "zeta"}, []string{"./alpha", "./zeta"})
 			if targetID == model.TargetClaude {
 				want := []model.NativeCheck{{Program: "claude", Arguments: []string{"plugin", "validate", "--strict", "."}, Location: model.SourceLocation{Path: "internal/target/claude/codec.go"}}}
 				if !reflect.DeepEqual(first.NativeChecks, want) {
@@ -107,7 +99,7 @@ func TestPackageTargetCatalogsOrderMultiPackageRootsAndAreReproducible(t *testin
 	}
 }
 
-func TestClaudeAndGrokCatalogSourcesResolveFromCatalogDirectory(t *testing.T) {
+func TestClaudeAndGrokCatalogSourcesResolveFromMarketplaceRoot(t *testing.T) {
 	t.Parallel()
 
 	for _, targetID := range []model.TargetID{model.TargetClaude, model.TargetGrok} {
@@ -146,15 +138,15 @@ func TestClaudeAndGrokCatalogSourcesResolveFromCatalogDirectory(t *testing.T) {
 				if len(document.Plugins) != len(test.packages) {
 					t.Fatalf("catalog plugins = %#v", document.Plugins)
 				}
-				catalogDirectory := path.Dir(string(catalog.Path))
+				marketplaceRoot := "."
 				for _, plugin := range document.Plugins {
 					wantRoot := "."
 					if len(test.packages) > 1 {
 						wantRoot = plugin.Name
 					}
-					resolvedRoot := path.Clean(path.Join(catalogDirectory, plugin.Source))
+					resolvedRoot := path.Clean(path.Join(marketplaceRoot, plugin.Source))
 					if resolvedRoot != wantRoot {
-						t.Fatalf("source %q from %q resolves to %q, want %q", plugin.Source, catalogDirectory, resolvedRoot, wantRoot)
+						t.Fatalf("source %q from marketplace root %q resolves to %q, want %q", plugin.Source, marketplaceRoot, resolvedRoot, wantRoot)
 					}
 					manifestPath := model.RelativePath(path.Join(resolvedRoot, ".claude-plugin/plugin.json"))
 					if _, exists := plannedFile(plan, manifestPath); !exists {

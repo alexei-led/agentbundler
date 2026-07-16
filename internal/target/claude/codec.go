@@ -97,9 +97,9 @@ func catalogManifest(catalog marketplace.Catalog) (packageoutput.CatalogManifest
 
 func claudeMarketplaceSource(root string) string {
 	if root == "." {
-		return ".."
+		return "./"
 	}
-	return "../" + root
+	return "./" + root
 }
 
 func markdownAgent(asset model.NormalizedAsset) ([]byte, string, error) {
