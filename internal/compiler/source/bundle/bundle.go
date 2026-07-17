@@ -208,12 +208,8 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 		if !ok {
 			continue
 		}
-		if nativeGap != nil && (nativeGap.Target == nil || len(entry.Targets) != 1 || entry.Targets[0] != *nativeGap.Target) {
-			target := model.TargetID("")
-			if nativeGap.Target != nil {
-				target = *nativeGap.Target
-			}
-			i.addDiagnostic(packagePath, "native resource path %q must declare an exact target allow-list [%q]", assetPath, target)
+		if nativeGap != nil && nativeGap.Target != nil && *nativeGap.Target == model.TargetAntigravity && (len(entry.Targets) != 1 || entry.Targets[0] != *nativeGap.Target) {
+			i.addDiagnostic(packagePath, "native resource path %q must declare an exact target allow-list [%q]", assetPath, *nativeGap.Target)
 			continue
 		}
 		asset.Targets = append([]model.TargetID(nil), entry.Targets...)

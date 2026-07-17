@@ -140,12 +140,7 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 	for _, gap := range gaps {
 		if gap.Target != nil && *gap.Target != target.Target {
 			if gap.Asset != nil {
-				for _, reference := range assets[*gap.Asset] {
-					if reference.asset.Kind == model.AssetKindNativeResource && assetSelectedForTarget(reference.asset, target.Target) {
-						diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native resource asset %q belongs to target %q by path but is selected for target %q", *gap.Asset, *gap.Target, target.Target))
-						break
-					}
-				}
+				excluded[*gap.Asset] = true
 			}
 			continue
 		}

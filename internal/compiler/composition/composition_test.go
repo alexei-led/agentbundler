@@ -386,18 +386,23 @@ func TestComposeIncludesDeclarativePiNativeResourceWithoutGapPolicy(t *testing.T
 	}
 }
 
-func TestComposeRejectsWrongTargetSelectedNativeResource(t *testing.T) {
-	asset := model.SourceAsset{
-		Identity: "native-resource/foo", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity},
-		Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"rules/foo.md": {Bytes: []byte("rule\n")}}},
+func TestComposeExcludesNativeResourceOwnedByDifferentTarget(t *testing.T) {
+	native := model.SourceAsset{
+		Identity: "native-resource/foo", Kind: model.AssetKindNativeResource,
+		Base:   model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"extensions/foo.ts": {Bytes: []byte("export {}\n")}}},
+		Native: &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/foo.ts"}},
+	}
+	skill := model.SourceAsset{
+		Identity: "skill/demo", Kind: model.AssetKindSkill,
+		Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}},
 	}
 	inventory := model.SourceInventory{
-		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}},
-		NativeGaps: []model.NativeGap{{Component: "foo", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetClaude), Location: model.SourceLocation{Path: "src/plugins/claude/foo"}}},
+		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{native, skill}}},
+		NativeGaps: []model.NativeGap{{Component: "foo", Asset: assetPointer(native.Identity), Target: targetPointer(model.TargetPi), Location: model.SourceLocation{Path: "src/plugins/pi/foo"}}},
 	}
 
-	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetAntigravity})
-	if packages != nil || !diagnosticsContainText(diagnostics, `native resource asset "native-resource/foo" belongs to target "claude" by path but is selected for target "antigravity"`) {
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetClaude})
+	if len(diagnostics) != 0 || len(packages) != 1 || len(packages[0].Assets) != 1 || packages[0].Assets[0].Identity != skill.Identity {
 		t.Fatalf("Compose() = (%#v, %#v)", packages, diagnostics)
 	}
 }

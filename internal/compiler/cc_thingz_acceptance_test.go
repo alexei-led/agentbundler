@@ -261,6 +261,19 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 	if len(selectedPlan.NativeChecks) != 1 || selectedPlan.NativeChecks[0].WorkingDirectory != nil {
 		t.Fatalf("selected Antigravity native checks = %#v", selectedPlan.NativeChecks)
 	}
+
+	_, _, workflowSelected := compileCCThingzFixture(t, []model.TargetID{model.TargetAntigravity}, []model.PackageID{"workflow-tools"})
+	if len(workflowSelected.Plan.Targets) != 1 || !reflect.DeepEqual(workflowSelected.Plan.Targets[0].Packages, []model.PackageID{"workflow-tools"}) {
+		t.Fatalf("workflow-only acceptance plan = %#v", workflowSelected.Plan.Targets)
+	}
+	workflowPlan := workflowSelected.Plan.Targets[0]
+	wantWorkflowPaths := []model.RelativePath{"README.md", "plugin.json", "skills/release/SKILL.md"}
+	if got := targetPaths(workflowPlan); !reflect.DeepEqual(got, wantWorkflowPaths) {
+		t.Fatalf("workflow-only Antigravity paths = %#v, want %#v", got, wantWorkflowPaths)
+	}
+	if len(workflowPlan.NativeChecks) != 1 || workflowPlan.NativeChecks[0].WorkingDirectory != nil {
+		t.Fatalf("workflow-only Antigravity native checks = %#v", workflowPlan.NativeChecks)
+	}
 }
 
 func assertAcceptanceProvenance(t *testing.T, plan model.BuildPlan, wantTargets []model.TargetID, wantAntigravityPaths []model.RelativePath) {

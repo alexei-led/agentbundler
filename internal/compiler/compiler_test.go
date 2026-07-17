@@ -253,6 +253,32 @@ func TestTargetRenderInputUsesManifestDistributionAndExplicitPackageMode(t *test
 	}
 }
 
+func TestSelectPackagesFiltersOnlyPackageOwnedNativeGaps(t *testing.T) {
+	ownedAsset := model.AssetID("native-resource/core")
+	missingAsset := model.AssetID("native-resource/missing")
+	inventory := model.SourceInventory{
+		Packages: []model.SourcePackage{
+			{Identity: "core", Assets: []model.SourceAsset{{Identity: ownedAsset}}},
+			{Identity: "workflow", Assets: []model.SourceAsset{{Identity: "skill/release"}}},
+		},
+		NativeGaps: []model.NativeGap{
+			{Component: "core", Asset: &ownedAsset},
+			{Component: "missing", Asset: &missingAsset},
+			{Component: "assetless"},
+		},
+	}
+	var diagnostics []model.Diagnostic
+
+	selected := selectPackages(inventory, []model.PackageID{"workflow"}, &diagnostics)
+
+	if len(diagnostics) != 0 || len(selected.Packages) != 1 || selected.Packages[0].Identity != "workflow" {
+		t.Fatalf("selectPackages() = (%#v, %#v)", selected, diagnostics)
+	}
+	if want := inventory.NativeGaps[1:]; !reflect.DeepEqual(selected.NativeGaps, want) {
+		t.Fatalf("native gaps = %#v, want %#v", selected.NativeGaps, want)
+	}
+}
+
 func TestCompileRejectsUndeclaredTargetBeforeFilesystemWork(t *testing.T) {
 	root := t.TempDir()
 	manifest := model.SourceManifest{

@@ -113,15 +113,15 @@ Package file:
 Bundle package assets use exact forms such as `src/skills/<name>`,
 `src/agents/<name>.md`, `src/resources/<name>`, `src/hooks/<name>`, and
 `src/plugins/<target>/<file-or-directory>`. The `src/` prefix is optional.
-Asset target lists are exact allow-lists. A target-native resource entry must
-list exactly the one target named in its path. Portable resource directories
-render under `resources/` in package profiles. Pi-native extension trees
-require an explicit `piExtensions` declaration. Antigravity-native trees
-require an explicit `asset.native-resource` declaration and an
-Antigravity-only package asset allow-list. Other target-native resources remain
-explicit gaps. The old
-exact `src/hooks/<name>.json` form remains compatible only for a payload-free
-descriptor.
+Asset target lists are exact allow-lists. An Antigravity-native resource entry
+must list exactly `antigravity`; earlier target-native entries may retain the
+version-1 string shorthand, and their path target still prevents them from
+rendering for other targets. Portable resource directories render under
+`resources/` in package profiles. Pi-native extension trees require an explicit
+`piExtensions` declaration. Antigravity-native trees require an explicit
+`asset.native-resource` declaration. Other target-native resources remain
+explicit gaps. The old exact `src/hooks/<name>.json` form remains compatible
+only for a payload-free descriptor.
 
 Pi package metadata may include a `dependencies` object with package-name keys
 and non-empty string versions. **Agent Bundler** writes it only to Pi

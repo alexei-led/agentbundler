@@ -96,7 +96,7 @@ func TestImportRoutesExplicitSourceKinds(t *testing.T) {
 
 func TestImportPreservesNativeGaps(t *testing.T) {
 	workspace := t.TempDir()
-	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/plugins/pi/resource","targets":["pi"]}]}`)
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/plugins/pi/resource"]}`)
 	writeFixture(t, workspace, "bundle/src/plugins/pi/resource", "native")
 	manifest := model.SourceManifest{
 		Kind:    model.SourceKindBundle,
