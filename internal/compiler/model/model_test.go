@@ -127,7 +127,7 @@ func TestAntigravityTargetValidatesAcrossModelBoundaries(t *testing.T) {
 	inventory := SourceInventory{
 		Packages: []SourcePackage{{Identity: "base", Metadata: PackageMetadata{}, Assets: []SourceAsset{asset}}},
 		NativeGaps: []NativeGap{{
-			Component: "conductor", Asset: &assetID, Location: SourceLocation{Path: "src/plugins/antigravity/conductor"}, Target: &targetID,
+			Package: "base", Component: "conductor", Asset: &assetID, Location: SourceLocation{Path: "src/plugins/antigravity/conductor"}, Target: &targetID,
 		}},
 	}
 	if diagnostics := ValidateSourceInventory(inventory); len(diagnostics) != 0 {

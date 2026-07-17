@@ -24,8 +24,13 @@ type inspector struct {
 	filesystem    *os.Root
 	root          string
 	inputs        map[model.RelativePath]string
-	nativeGaps    map[model.RelativePath]model.NativeGap
+	nativeGaps    map[nativeGapKey]model.NativeGap
 	diagnostics   []model.Diagnostic
+}
+
+type nativeGapKey struct {
+	packageID model.PackageID
+	assetPath model.RelativePath
 }
 
 type packageManifest struct {
@@ -116,7 +121,7 @@ func InspectBundleRoot(manifest model.SourceManifest, workspaceRoot string, work
 		filesystem:    workspace,
 		root:          root,
 		inputs:        make(map[model.RelativePath]string),
-		nativeGaps:    make(map[model.RelativePath]model.NativeGap),
+		nativeGaps:    make(map[nativeGapKey]model.NativeGap),
 	}
 	info, err := inspector.lstat(root)
 	if err != nil {
@@ -152,6 +157,9 @@ func InspectBundleRoot(manifest model.SourceManifest, workspaceRoot string, work
 		nativeGaps = append(nativeGaps, gap)
 	}
 	sort.Slice(nativeGaps, func(i, j int) bool {
+		if nativeGaps[i].Package != nativeGaps[j].Package {
+			return nativeGaps[i].Package < nativeGaps[j].Package
+		}
 		return nativeGaps[i].Location.Path < nativeGaps[j].Location.Path
 	})
 	inputs := make([]model.InputFile, 0, len(inspector.inputs))
@@ -217,7 +225,8 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 			sort.Slice(asset.Targets, func(left, right int) bool { return asset.Targets[left] < asset.Targets[right] })
 		}
 		if nativeGap != nil {
-			i.nativeGaps[assetPath] = *nativeGap
+			nativeGap.Package = packageID
+			i.nativeGaps[nativeGapKey{packageID: packageID, assetPath: assetPath}] = *nativeGap
 		}
 		if _, exists := seenAssets[asset.Identity]; exists {
 			i.addDiagnostic(packagePath, "asset identity %q is duplicated", asset.Identity)
@@ -244,6 +253,10 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 
 	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath]model.FileContent)}
 	metadataDir := assetDir
+	nativeTarget := model.TargetID("")
+	if kind == model.AssetKindNativeResource {
+		nativeTarget = nativeResourceTarget(assetPath)
+	}
 	switch kind {
 	case model.AssetKindResource:
 		i.readSupportFiles(assetDir, &content)
@@ -259,7 +272,11 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 			return model.SourceAsset{}, nil, false
 		}
 		if info.IsDir() {
-			i.readNativeResourceFiles(assetDir, &content)
+			if nativeTarget == model.TargetAntigravity {
+				i.readNativeResourceFiles(assetDir, &content)
+			} else {
+				i.readSupportFiles(assetDir, &content)
+			}
 		} else {
 			metadataDir = filepath.ToSlash(filepath.Dir(string(assetPath)))
 			data, ok := i.readRegular(mainPath)
@@ -327,17 +344,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 	if kind != model.AssetKindNativeResource {
 		return asset, nil, true
 	}
-	parts := strings.Split(string(assetPath), "/")
-	targetIndex := 1
-	if len(parts) > 0 && parts[0] == "src" {
-		targetIndex = 2
-	}
-	if len(parts) <= targetIndex {
-		i.addDiagnostic(assetPath, "native resource path is missing its target")
-		return model.SourceAsset{}, nil, false
-	}
-	target := model.TargetID(parts[targetIndex])
-	if target == model.TargetAntigravity {
+	if nativeTarget == model.TargetAntigravity {
 		declared := false
 		for _, capability := range capabilities {
 			if capability.Key == "asset.native-resource" {
@@ -353,8 +360,16 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		Component: name,
 		Asset:     &identity,
 		Location:  model.SourceLocation{Path: assetPath},
-		Target:    &target,
+		Target:    &nativeTarget,
 	}, true
+}
+
+func nativeResourceTarget(assetPath model.RelativePath) model.TargetID {
+	parts := strings.Split(string(assetPath), "/")
+	if parts[0] == "src" {
+		return model.TargetID(parts[2])
+	}
+	return model.TargetID(parts[1])
 }
 
 func classifyAsset(assetPath string) (model.AssetKind, string, string, string, bool, bool, error) {

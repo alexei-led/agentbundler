@@ -262,9 +262,9 @@ func TestSelectPackagesFiltersOnlyPackageOwnedNativeGaps(t *testing.T) {
 			{Identity: "workflow", Assets: []model.SourceAsset{{Identity: "skill/release"}}},
 		},
 		NativeGaps: []model.NativeGap{
-			{Component: "core", Asset: &ownedAsset},
-			{Component: "missing", Asset: &missingAsset},
-			{Component: "assetless"},
+			{Package: "core", Component: "core", Asset: &ownedAsset},
+			{Package: "workflow", Component: "missing", Asset: &missingAsset},
+			{Package: "workflow", Component: "assetless"},
 		},
 	}
 	var diagnostics []model.Diagnostic
@@ -277,6 +277,45 @@ func TestSelectPackagesFiltersOnlyPackageOwnedNativeGaps(t *testing.T) {
 	if want := inventory.NativeGaps[1:]; !reflect.DeepEqual(selected.NativeGaps, want) {
 		t.Fatalf("native gaps = %#v, want %#v", selected.NativeGaps, want)
 	}
+}
+
+func TestCompilePackageSelectorKeepsSelectedNativeResourceWithCrossTargetDuplicateID(t *testing.T) {
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/packages/pi.json", `{"id":"pi-only","metadata":{},"assets":[{"path":"src/plugins/pi/shared","targets":["pi"]}]}`)
+	writeCompilerFixture(t, workspace, "source/packages/antigravity.json", `{"id":"antigravity-only","metadata":{},"assets":[{"path":"src/plugins/antigravity/shared","targets":["antigravity"]}]}`)
+	writeCompilerFixture(t, workspace, "source/src/plugins/pi/shared/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/shared.ts"]}`)
+	writeCompilerFixture(t, workspace, "source/src/plugins/pi/shared/extensions/shared.ts", "export default function shared() {}\n")
+	writeCompilerFixture(t, workspace, "source/src/plugins/antigravity/shared/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
+	writeCompilerFixture(t, workspace, "source/src/plugins/antigravity/shared/rules/shared.md", "# Shared\n")
+	manifest := model.SourceManifest{
+		Version: 1,
+		Kind:    model.SourceKindBundle,
+		Root:    "source",
+		Targets: []model.TargetID{model.TargetPi, model.TargetAntigravity},
+		Output:  "generated",
+		Composition: []model.TargetComposition{{
+			Target: model.TargetPi, Profile: model.TargetProfilePackage, PackageMode: model.TargetPackageModeAggregate,
+			Aggregate: &model.AggregatePackage{Identity: "selected", Metadata: model.PackageMetadata{"version": "1.0.0"}},
+		}},
+		Bundle: &model.BundleSourceConfig{Packages: []model.RelativePath{"packages/pi.json", "packages/antigravity.json"}},
+	}
+
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(workspace),
+		Manifest:      manifest,
+		Targets:       []model.TargetID{model.TargetPi},
+		Packages:      []model.PackageID{"pi-only"},
+		Mode:          BuildModeBuild,
+	})
+	if len(result.Diagnostics) != 0 || len(result.Plan.Targets) != 1 {
+		t.Fatalf("Compile() = (%#v, %#v)", result.Plan, result.Diagnostics)
+	}
+	for _, file := range result.Plan.Targets[0].Files {
+		if file.Path == "extensions/shared.ts" && string(file.Bytes) == "export default function shared() {}\n" {
+			return
+		}
+	}
+	t.Fatalf("selected Pi native resource missing from files %#v", result.Plan.Targets[0].Files)
 }
 
 func TestCompileRejectsUndeclaredTargetBeforeFilesystemWork(t *testing.T) {

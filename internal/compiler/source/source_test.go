@@ -111,6 +111,7 @@ func TestImportPreservesNativeGaps(t *testing.T) {
 		t.Fatalf("Import() diagnostics = %#v", diagnostics)
 	}
 	if got, want := inventory.NativeGaps, []model.NativeGap{{
+		Package:   "base",
 		Component: "resource",
 		Asset:     assetID("native-resource/resource"),
 		Location:  model.SourceLocation{Path: "src/plugins/pi/resource"},

@@ -233,8 +233,9 @@ type NativeResourceOptions struct {
 	PiExtensions []RelativePath `json:"piExtensions,omitempty"`
 }
 
-// NativeGap identifies a source component with target-native behavior.
+// NativeGap identifies a package-owned source component with target-native behavior.
 type NativeGap struct {
+	Package   PackageID      `json:"package"`
 	Component string         `json:"component"`
 	Asset     *AssetID       `json:"asset,omitempty"`
 	Location  SourceLocation `json:"location"`

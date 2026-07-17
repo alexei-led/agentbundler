@@ -79,6 +79,7 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 		t.Fatalf("native resource = %#v", got)
 	}
 	if got, want := inventory.NativeGaps, []model.NativeGap{{
+		Package:   "alpha",
 		Component: "resource.bin",
 		Asset:     assetID("native-resource/resource.bin"),
 		Location:  model.SourceLocation{Path: "src/plugins/pi/resource.bin"},
@@ -100,6 +101,9 @@ func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
 	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/custom.ts"]}`)
 	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/custom.ts", `export default () => {};`)
 	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/shared/util.ts", `export const value = 1;`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/node_modules/helper/index.js", `module.exports = {};`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/custom.ts.bak", `backup`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/.DS_Store", `editor`)
 
 	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
 	if len(diagnostics) != 0 {
@@ -111,6 +115,11 @@ func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
 	}
 	if got := string(asset.Base.Files["extensions/shared/util.ts"].Bytes); got != "export const value = 1;" {
 		t.Fatalf("nested native resource = %q", got)
+	}
+	for _, ignored := range []model.RelativePath{"node_modules/helper/index.js", "extensions/custom.ts.bak", ".DS_Store"} {
+		if _, exists := asset.Base.Files[ignored]; exists || containsInput(inventory, model.RelativePath("src/plugins/pi/cc-thingz/")+ignored) {
+			t.Fatalf("ignored Pi native resource path %q was imported", ignored)
+		}
 	}
 	if len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Target == nil || *inventory.NativeGaps[0].Target != model.TargetPi {
 		t.Fatalf("native gaps = %#v", inventory.NativeGaps)

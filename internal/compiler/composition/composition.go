@@ -53,7 +53,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 			if !assetSelectedForTarget(sourceAsset, target.Target) {
 				continue
 			}
-			if gapActions[sourceAsset.Identity] {
+			if gapActions[assetKey{packageID: sourcePackage.Identity, assetID: sourceAsset.Identity}] {
 				continue
 			}
 
@@ -114,6 +114,11 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 	return packages, diagnostics
 }
 
+type assetKey struct {
+	packageID model.PackageID
+	assetID   model.AssetID
+}
+
 type assetReference struct {
 	packageID model.PackageID
 	asset     model.SourceAsset
@@ -129,39 +134,34 @@ func indexAssets(packages []model.SourcePackage) map[model.AssetID][]assetRefere
 	return assets
 }
 
-func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, assets map[model.AssetID][]assetReference) (map[model.AssetID]bool, []model.Diagnostic) {
+func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, assets map[model.AssetID][]assetReference) (map[assetKey]bool, []model.Diagnostic) {
 	policies := make(map[string]model.NativeGapPolicy, len(target.NativeGaps))
 	for _, policy := range target.NativeGaps {
 		policies[policy.Component] = policy
 	}
 	usedPolicies := make(map[string]bool, len(policies))
-	excluded := make(map[model.AssetID]bool)
+	excluded := make(map[assetKey]bool)
 	var diagnostics []model.Diagnostic
 	for _, gap := range gaps {
 		if gap.Target != nil && *gap.Target != target.Target {
 			if gap.Asset != nil {
-				excluded[*gap.Asset] = true
+				excluded[assetKey{packageID: gap.Package, assetID: *gap.Asset}] = true
 			}
 			continue
 		}
 		if gap.Asset != nil {
-			if references := assets[*gap.Asset]; len(references) == 1 && nativeAssetSupportedByTarget(references[0].asset, target.Target) {
+			if reference, ok := gapAssetReference(gap, assets); ok && nativeAssetSupportedByTarget(reference.asset, target.Target) {
 				continue
 			}
 		}
 		if gap.Asset != nil {
-			references := assets[*gap.Asset]
-			if len(references) == 0 {
+			reference, ok := gapAssetReference(gap, assets)
+			if !ok {
 				usedPolicies[gap.Component] = policyExists(policies, gap.Component)
-				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q references missing asset %q", gap.Component, *gap.Asset))
+				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q references missing asset %q in package %q", gap.Component, *gap.Asset, gap.Package))
 				continue
 			}
-			if len(references) > 1 {
-				usedPolicies[gap.Component] = policyExists(policies, gap.Component)
-				diagnostics = append(diagnostics, diagnostic(diagnosticNativeGap, &gap.Location, "native gap %q asset %q is ambiguous across packages %s", gap.Component, *gap.Asset, packageList(references)))
-				continue
-			}
-			if !assetSelectedForTarget(references[0].asset, target.Target) {
+			if !assetSelectedForTarget(reference.asset, target.Target) {
 				usedPolicies[gap.Component] = policyExists(policies, gap.Component)
 				continue
 			}
@@ -191,7 +191,7 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 			}
 		}
 		if gap.Asset != nil && (policy.Action == model.NativeGapActionReplace || policy.Action == model.NativeGapActionExclude || policy.Action == model.NativeGapActionSourceOnly) {
-			excluded[*gap.Asset] = true
+			excluded[assetKey{packageID: gap.Package, assetID: *gap.Asset}] = true
 		}
 	}
 	for _, policy := range target.NativeGaps {
@@ -200,6 +200,18 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		}
 	}
 	return excluded, diagnostics
+}
+
+func gapAssetReference(gap model.NativeGap, assets map[model.AssetID][]assetReference) (assetReference, bool) {
+	if gap.Asset == nil {
+		return assetReference{}, false
+	}
+	for _, reference := range assets[*gap.Asset] {
+		if reference.packageID == gap.Package {
+			return reference, true
+		}
+	}
+	return assetReference{}, false
 }
 
 func nativeAssetSupportedByTarget(asset model.SourceAsset, target model.TargetID) bool {

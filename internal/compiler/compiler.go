@@ -217,22 +217,14 @@ func selectPackages(inventory model.SourceInventory, requested []model.PackageID
 	}
 	filtered := inventory
 	filtered.Packages = nil
-	allAssets := make(map[model.AssetID]bool)
-	selectedAssets := make(map[model.AssetID]bool)
 	for _, pkg := range inventory.Packages {
-		for _, asset := range pkg.Assets {
-			allAssets[asset.Identity] = true
-			if selected[pkg.Identity] {
-				selectedAssets[asset.Identity] = true
-			}
-		}
 		if selected[pkg.Identity] {
 			filtered.Packages = append(filtered.Packages, pkg)
 		}
 	}
 	filtered.NativeGaps = nil
 	for _, gap := range inventory.NativeGaps {
-		if gap.Asset == nil || !allAssets[*gap.Asset] || selectedAssets[*gap.Asset] {
+		if selected[gap.Package] {
 			filtered.NativeGaps = append(filtered.NativeGaps, gap)
 		}
 	}
