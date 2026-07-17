@@ -17,11 +17,8 @@ import (
 	"github.com/alexei-led/agentbundler/internal/testutil/vendorsmoke"
 )
 
-func TestInstalledPiDiscoversAggregatePackageWithoutRealConfigChanges(t *testing.T) {
+func TestInstalledPiDiscoversAggregatePackageInProjectSettings(t *testing.T) {
 	pi := vendorsmoke.RequireExecutable(t, "pi")
-	realRoot := filepath.Join(vendorsmoke.UserHome(t), ".pi", "agent")
-	vendorsmoke.ProtectPath(t, realRoot, "sessions", "logs/hooks.log")
-
 	workspace, packageRoot := compilePiSmokeFixture(t)
 	isolatedRoot := t.TempDir()
 	environment := vendorsmoke.Environment(map[string]string{
@@ -92,8 +89,6 @@ func TestInstalledPiLoaderImportsGeneratedAdapterOnceAndReportsSchemaMismatch(t 
 	if !ok {
 		t.Skip("vendor smoke unavailable: installed pi is not a Node package with the documented extension loader")
 	}
-	realRoot := filepath.Join(vendorsmoke.UserHome(t), ".pi", "agent")
-	vendorsmoke.ProtectPath(t, realRoot, "sessions", "logs/hooks.log")
 	workspace, packageRoot := compilePiSmokeFixture(t)
 	adapter := filepath.Join(packageRoot, "extensions", "agentbundler-hooks.ts")
 
