@@ -60,6 +60,22 @@ publisher. It creates target-ready files; your project or release workflow
 decides where to install or publish them. Run repository-owned vendor smoke tests
 before publishing; see [Targets and CLI](docs/targets-and-cli.md).
 
+## Idempotence
+
+Idempotence is a required product quality, separate from deterministic output.
+With unchanged source bytes, manifest, selectors, and compiler version, a
+successful `build` must leave a current output tree untouched: no replacement,
+mtime change, or filesystem watcher churn. `check` must remain write-free, and
+`package` must preserve an existing archive when its deterministic bytes match.
+Real drift may still trigger the complete atomic replacement needed to remove
+stale output safely.
+
+The current writer and archive implementation produce identical bytes but still
+replace unchanged filesystem objects. This is a known product gap, not the
+intended steady-state contract. Until content-aware no-op writes land, run
+`check` first and invoke `build` only when it reports drift. See
+[Idempotence quality contract](docs/targets-and-cli.md#idempotence-quality-contract).
+
 ## Install
 
 Homebrew is the default install:

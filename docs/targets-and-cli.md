@@ -110,6 +110,29 @@ A missing declared validator is a native-verification failure, not a skip. Codex
 Pi, Copilot, and Cursor have no production native validator because their useful
 load/install checks are mutating, model-backed, or incomplete.
 
+### Idempotence quality contract
+
+Idempotence is a required product quality. It is stronger than deterministic
+bytes. With unchanged source bytes, manifest, target/package selectors, and
+compiler version:
+
+- `build` must compare the complete planned tree with current output and perform
+  no staging, replacement, chmod, or timestamp update when they match;
+- `check` must perform no writes whether output is current, drifted, or invalid;
+- `package` must preserve an existing archive and its timestamp when the
+  deterministic archive bytes match;
+- real path, byte, type, executable-mode, or stale-file drift may trigger the
+  existing complete atomic replacement and cleanup path.
+
+The current implementation only partially meets this contract. `check` is
+write-free, and generated trees and archives are byte-deterministic. However,
+`build` currently replaces the complete output tree on every successful run,
+and `package` replaces byte-identical archives. This unnecessary rewrite is a
+known product gap. Until content-aware no-op writes are implemented, run
+`agbun check` first and run `agbun build` only after drift exit status `2`.
+Compilation or observation failures use status `1` and must not be treated as a
+reason to overwrite output.
+
 ## Installation and validation examples
 
 Build first. Then use the exact generated target root in an isolated integration

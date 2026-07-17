@@ -31,6 +31,13 @@ The CLI has two build commands:
 - `build` compiles and replaces the complete configured output directory.
 - `check` compares the expected plan with output and does not write files.
 
+Idempotence is a required product quality: an equivalent build should perform no
+filesystem writes, preserve output identity and timestamps, and report current.
+The current writer is byte-deterministic but still replaces an unchanged output
+tree. Until content-aware no-op writes land, run `check` first and invoke `build`
+only after drift exit status `2`; never treat status `1` as permission to rebuild.
+Do not report repeated `build` as idempotent merely because hashes match.
+
 Do not use `build` against a project root containing hand-written agent files.
 Use a dedicated output such as `generated/`.
 
@@ -215,12 +222,14 @@ Normal workflow after source/config changes:
 
 1. Inspect the manifest and target/package selection.
 2. Run `agbun check` to see whether output is stale.
-3. Run `agbun build` using the dedicated output directory.
-4. Run `agbun check` again.
-5. For a distributed package, run repository-owned vendor smoke tests. `agbun
+3. If `check` exits `0`, stop without running `build`; current output must remain untouched.
+4. If `check` exits `2`, run `agbun build` using the dedicated output directory.
+5. If `check` exits `1` or `3`, diagnose the failure; do not overwrite output.
+6. Run `agbun check` again.
+7. For a distributed package, run repository-owned vendor smoke tests. `agbun
 check --native` runs only declared checks; built-in adapters do not invoke
    optional vendor CLIs.
-6. Inspect generated target paths and report any unsupported source assets.
+8. Inspect generated target paths and report any unsupported source assets.
 
 ## Diagnose failures
 

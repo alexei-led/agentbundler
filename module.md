@@ -15,6 +15,7 @@
 - Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, and Cursor CLI.
 - Preserve native semantics where possible and fail on unsupported or unacknowledged semantic loss.
 - Produce reproducible generated trees, installable package roots, deterministic target catalogs, and provenance outside native package roots.
+- Preserve idempotence: an equivalent `build` or `package` run must not replace, rewrite, chmod, or retimestamp current output.
 
 ## Subdomain Classification
 
@@ -40,6 +41,8 @@ check [--root path] [--target id] [--package id] [--native] [--json]
 ```
 
 `build` and `check` are the only user-facing verbs. Normal diagnostics use stable codes and source locations. JSON output is one versioned result object on standard output; human diagnostics use standard error. Exit status is zero on success, one for source/capability/render/write failure, two for drift, and three for optional native verification failure.
+
+Idempotence is a required quality contract, not an optimization. Given unchanged source bytes, manifest, selectors, and compiler version, `build` must leave a current output tree untouched and `package` must preserve matching archives. Real drift may use complete atomic replacement to retain stale-file cleanup and rollback safety. The current writer and archive path are byte-deterministic but still replace unchanged filesystem objects; this is a known implementation gap until content-aware no-op writes are added.
 
 ## Integrations
 
@@ -83,11 +86,12 @@ A command creates a compile request and invokes the compiler. The compiler impor
 - Add a target adapter or revise a target format.
 - Add a source importer based on a repeated adoption case.
 - Add an asset capability after its portable semantics are specified.
-- Strengthen deterministic output, provenance, or native verification.
+- Strengthen deterministic and idempotent output, provenance, or native verification.
 
 ## Constraints and Invariants
 
 - Normal builds use no network, clock, hostname, locale, absolute source path, Git state, installed vendor version, or mutable environment as an output input.
+- Equivalent successful runs are filesystem no-ops: unchanged output files, directories, and archives retain identity and timestamps. This required invariant is not yet satisfied by the current writer/archive implementation.
 - The compiler never silently drops or weakens security, permission, sandbox, hook, executable, decision, timeout, failure, or capability semantics.
 - Generated output contains no **Agent Bundler** executable/runtime dependency. The embedded Pi payload is target-owned generated source loaded by Pi, not a call back into `agbun`.
 - Deterministic marketplace/catalog generation is artifact creation only. Production code never publishes, submits, authenticates, installs, changes vendor configuration, or fetches packages.
@@ -130,6 +134,12 @@ A command creates a compile request and invokes the compiler. The compiler impor
 - **Test name**: deterministic complete compilation.
   - **Scenario**: build the same fixture from two distinct absolute paths.
   - **Expected behavior**: output trees and provenance bytes are identical.
+- **Test name**: unchanged build is a filesystem no-op.
+  - **Scenario**: run `build` twice with identical source bytes, manifest, selectors, and compiler version.
+  - **Expected behavior**: the second run creates no staging transaction and preserves every output path, byte, mode, file identity, and timestamp.
+- **Test name**: unchanged package preserves archives.
+  - **Scenario**: run `package` twice against a current generated tree.
+  - **Expected behavior**: byte-identical destination archives retain file identity and timestamps.
 - **Test name**: strict semantic preservation.
   - **Scenario**: compile an asset with an unsupported security-relevant capability.
   - **Expected behavior**: compilation fails unless a valid explicit policy resolves it.
