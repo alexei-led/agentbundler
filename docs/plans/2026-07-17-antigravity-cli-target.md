@@ -789,25 +789,25 @@ Manual checks:
   byte rather than updating expectations blindly.
 - Confirm no generated directory from temporary examples is tracked.
 
-- [ ] Update compiler, CLI, archive, and target-list tests so Antigravity is
+- [x] Update compiler, CLI, archive, and target-list tests so Antigravity is
       selected and recorded through every public path with exact failure exits.
-- [ ] Extend the cc-thingz fixture to seven targets, explicitly exclude portable
+- [x] Extend the cc-thingz fixture to seven targets, explicitly exclude portable
       hooks from Antigravity, and add a benign Antigravity-only native rule.
-- [ ] Extend acceptance assertions for lexical target order, generated paths,
+- [x] Extend acceptance assertions for lexical target order, generated paths,
       two native checks, selectors, drift, deterministic plans, provenance, and
       unchanged existing targets.
-- [ ] Update `scripts/check-acceptance-fixture` from six to seven targets without
+- [x] Update `scripts/check-acceptance-fixture` from six to seven targets without
       weakening its two-copy byte comparison.
-- [ ] Add the complete Conductor-shaped example source and README with original
+- [x] Add the complete Conductor-shaped example source and README with original
       minimal content, upstream/pinned references, exact build/validate/install
       commands, unsupported-feature notes, and a narrow `.gitignore` entry for
       its generated output.
-- [ ] Add an example integration test that builds and checks in temporary roots,
+- [x] Add an example integration test that builds and checks in temporary roots,
       inspects exact bytes and native checks, and never installs or contacts a
       model service.
-- [ ] Validate the generated example with local `agy plugin validate` and verify
+- [x] Validate the generated example with local `agy plugin validate` and verify
       no generated example files were added to Git.
-- [ ] Run the Task 3 verification and impact commands; all focused tests,
+- [x] Run the Task 3 verification and impact commands; all focused tests,
       acceptance checks, and architecture gates must pass before Task 4.
 
 ### Task 4: Add isolated vendor smoke coverage and pinned CI validation

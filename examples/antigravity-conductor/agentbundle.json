@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "kind": "bundle",
+  "root": "source",
+  "targets": [
+    "antigravity"
+  ],
+  "output": "generated",
+  "distribution": {
+    "name": "conductor-example",
+    "description": "Conductor-shaped Antigravity CLI plugin example",
+    "version": "0.1.0"
+  },
+  "composition": [
+    {
+      "target": "antigravity",
+      "profile": "package",
+      "packageMode": "separate"
+    }
+  ],
+  "bundle": {
+    "packages": [
+      "packages/conductor-example.json"
+    ]
+  }
+}

@@ -3,6 +3,7 @@
   "kind": "bundle",
   "root": "source",
   "targets": [
+    "antigravity",
     "claude",
     "codex",
     "pi",
@@ -20,6 +21,11 @@
     "version": "1.0.0"
   },
   "composition": [
+    {
+      "target": "antigravity",
+      "profile": "package",
+      "packageMode": "separate"
+    },
     {
       "target": "claude",
       "profile": "package",

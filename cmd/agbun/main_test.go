@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -74,6 +75,27 @@ func TestRunHelpTopicsDoNotNeedManifest(t *testing.T) {
 	}
 }
 
+func TestTargetsHelpListsAntigravityInLexicalOrder(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"help", "targets"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("targets help status=%d stderr=%q", status, stderr.String())
+	}
+	want := []string{"antigravity", "claude", "codex", "copilot", "cursor", "grok", "pi"}
+	previous := -1
+	for _, target := range want {
+		index := strings.Index(stdout.String(), "\n  "+target+" ")
+		if index <= previous {
+			t.Fatalf("targets help is missing lexical order %q: %q", want, stdout.String())
+		}
+		previous = index
+	}
+	for _, help := range []string{buildHelp(), checkHelp(), packageHelp()} {
+		if !strings.Contains(help, "antigravity") {
+			t.Errorf("command help does not list Antigravity: %q", help)
+		}
+	}
+}
+
 func TestRunCommandHelpDoesNotNeedManifest(t *testing.T) {
 	for _, command := range []string{"build", "check", "package"} {
 		t.Run(command, func(t *testing.T) {
@@ -116,45 +138,83 @@ func TestRunRejectsUnknownCommandWithDiscoveryHint(t *testing.T) {
 }
 
 func TestRunPackageArchivesCurrentTargetRootWithoutRebuilding(t *testing.T) {
-	root := t.TempDir()
-	writeCLIFile(t, root, "agentbundle.json", `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","distribution":{"name":"demo"},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`)
-	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
-	var stdout, stderr bytes.Buffer
-	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
-		t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-	}
-	stdout.Reset()
-	stderr.Reset()
-	if status := run([]string{"package", "--out", "release"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
-		t.Fatalf("package status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "demo-claude.tar.gz") || !strings.Contains(stdout.String(), "package: ok") || stderr.Len() != 0 {
-		t.Fatalf("package stdout=%q stderr=%q", stdout.String(), stderr.String())
-	}
-	if _, err := os.Stat(filepath.Join(root, "release", "demo-claude.tar.gz")); err != nil {
-		t.Fatal(err)
+	for _, test := range []struct {
+		name     string
+		manifest string
+		archive  string
+	}{
+		{
+			name:     "Claude",
+			manifest: `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","distribution":{"name":"demo"},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`,
+			archive:  "demo-claude.tar.gz",
+		},
+		{
+			name:     "Antigravity",
+			manifest: `{"version":1,"kind":"skills-repository","root":"source","targets":["antigravity"],"output":"generated","distribution":{"name":"demo"},"composition":[{"target":"antigravity","profile":"package","packageMode":"separate"}],"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`,
+			archive:  "demo-antigravity.tar.gz",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeCLIFile(t, root, "agentbundle.json", test.manifest)
+			writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+			var stdout, stderr bytes.Buffer
+			if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+				t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+			stdout.Reset()
+			stderr.Reset()
+			if status := run([]string{"package", "--out", "release"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+				t.Fatalf("package status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String(), test.archive) || !strings.Contains(stdout.String(), "package: ok") || stderr.Len() != 0 {
+				t.Fatalf("package stdout=%q stderr=%q", stdout.String(), stderr.String())
+			}
+			if _, err := os.Stat(filepath.Join(root, "release", test.archive)); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
 func TestRunBuildThenCheckDetectsRealDrift(t *testing.T) {
-	root := t.TempDir()
-	writeCLIFile(t, root, "agentbundle.json", `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`)
-	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+	for _, test := range []struct {
+		name      string
+		manifest  string
+		driftPath string
+	}{
+		{
+			name:      "Claude",
+			manifest:  `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`,
+			driftPath: "generated/claude/.claude/skills/demo/SKILL.md",
+		},
+		{
+			name:      "Antigravity",
+			manifest:  `{"version":1,"kind":"skills-repository","root":"source","targets":["antigravity"],"output":"generated","composition":[{"target":"antigravity","profile":"package","packageMode":"separate"}],"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`,
+			driftPath: "generated/antigravity/skills/demo/SKILL.md",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeCLIFile(t, root, "agentbundle.json", test.manifest)
+			writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
 
-	var stdout, stderr bytes.Buffer
-	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 || stdout.String() != "build: ok\n" || stderr.Len() != 0 {
-		t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-	}
-	stdout.Reset()
-	if status := run([]string{"check"}, root, &stdout, &stderr, compiler.Compile); status != 0 || stdout.String() != "check: current\n" || stderr.Len() != 0 {
-		t.Fatalf("current check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-	}
+			var stdout, stderr bytes.Buffer
+			if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 || stdout.String() != "build: ok\n" || stderr.Len() != 0 {
+				t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+			stdout.Reset()
+			if status := run([]string{"check"}, root, &stdout, &stderr, compiler.Compile); status != 0 || stdout.String() != "check: current\n" || stderr.Len() != 0 {
+				t.Fatalf("current check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
 
-	writeCLIFile(t, root, "generated/claude/.claude/skills/demo/SKILL.md", "changed")
-	stdout.Reset()
-	stderr.Reset()
-	if status := run([]string{"check"}, root, &stdout, &stderr, compiler.Compile); status != 2 || !strings.Contains(stderr.String(), "DRIFT_CHANGED") {
-		t.Fatalf("drift check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			writeCLIFile(t, root, test.driftPath, "changed")
+			stdout.Reset()
+			stderr.Reset()
+			if status := run([]string{"check"}, root, &stdout, &stderr, compiler.Compile); status != 2 || !strings.Contains(stderr.String(), "DRIFT_CHANGED") {
+				t.Fatalf("drift check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+		})
 	}
 }
 
@@ -174,6 +234,35 @@ func TestRunMapsManifestAndSelectors(t *testing.T) {
 		t.Fatalf("run() status = %d, stderr = %q", status, stderr.String())
 	}
 	if request.Manifest.Kind != model.SourceKindBundle || len(request.Targets) != 1 || request.Targets[0] != model.TargetClaude {
+		t.Fatalf("request = %#v", request)
+	}
+	if request.Manifest.Distribution["name"] != "Team tools" || len(request.Manifest.Composition) != 1 || request.Manifest.Composition[0].PackageMode != model.TargetPackageModeSeparate {
+		t.Fatalf("render configuration = %#v", request.Manifest)
+	}
+	if request.Mode != compiler.BuildModeCheck || request.WorkspaceRoot != root {
+		t.Fatalf("request = %#v", request)
+	}
+	if !strings.Contains(stdout.String(), `"command":"check"`) || stderr.Len() != 0 {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunMapsAntigravityManifestAndSelectors(t *testing.T) {
+	root := t.TempDir()
+	manifest := `{"version":1,"kind":"bundle","root":"source","targets":["antigravity"],"output":"generated","distribution":{"name":"Team tools"},"composition":[{"target":"antigravity","profile":"package","packageMode":"separate"}],"bundle":{"packages":["packages/base.json"]}}`
+	if err := os.WriteFile(filepath.Join(root, "agentbundle.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var request compiler.CompileRequest
+	var stdout, stderr bytes.Buffer
+	status := run([]string{"check", "--target", "antigravity", "--package", "core-tools", "--json"}, root, &stdout, &stderr, func(got compiler.CompileRequest) compiler.CompilationResult {
+		request = got
+		return compiler.CompilationResult{}
+	})
+	if status != 0 {
+		t.Fatalf("run() status = %d, stderr = %q", status, stderr.String())
+	}
+	if request.Manifest.Kind != model.SourceKindBundle || len(request.Targets) != 1 || request.Targets[0] != model.TargetAntigravity || !reflect.DeepEqual(request.Packages, []model.PackageID{"core-tools"}) {
 		t.Fatalf("request = %#v", request)
 	}
 	if request.Manifest.Distribution["name"] != "Team tools" || len(request.Manifest.Composition) != 1 || request.Manifest.Composition[0].PackageMode != model.TargetPackageModeSeparate {
@@ -332,6 +421,8 @@ func TestRunCCThingzAcceptanceFixtureBuildCheckAndSelectors(t *testing.T) {
 		t.Fatalf("acceptance check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 	for _, relative := range []string{
+		"generated/antigravity/core-tools/plugin.json",
+		"generated/antigravity/core-tools/rules/conductor_antigravity.md",
 		"generated/claude/.claude-plugin/marketplace.json",
 		"generated/codex/.agents/plugins/marketplace.json",
 		"generated/copilot/.github/plugin/marketplace.json",
@@ -344,20 +435,55 @@ func TestRunCCThingzAcceptanceFixtureBuildCheckAndSelectors(t *testing.T) {
 		}
 	}
 
-	selectedRoot := t.TempDir()
-	if err := os.CopyFS(selectedRoot, os.DirFS(filepath.Join("..", "..", "testdata", "cc-thingz-hooks"))); err != nil {
-		t.Fatalf("copy selected cc-thingz fixture: %v", err)
+	for _, selected := range []struct {
+		target       string
+		manifestPath string
+	}{
+		{target: "antigravity", manifestPath: "generated/antigravity/plugin.json"},
+		{target: "codex", manifestPath: "generated/codex/.codex-plugin/plugin.json"},
+	} {
+		t.Run("selected "+selected.target, func(t *testing.T) {
+			selectedRoot := t.TempDir()
+			if err := os.CopyFS(selectedRoot, os.DirFS(filepath.Join("..", "..", "testdata", "cc-thingz-hooks"))); err != nil {
+				t.Fatalf("copy selected cc-thingz fixture: %v", err)
+			}
+			stdout.Reset()
+			stderr.Reset()
+			if status := run([]string{"build", "--target", selected.target, "--package", "core-tools"}, selectedRoot, &stdout, &stderr, compiler.Compile); status != 0 {
+				t.Fatalf("selected acceptance build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			}
+			if _, err := os.Stat(filepath.Join(selectedRoot, filepath.FromSlash(selected.manifestPath))); err != nil {
+				t.Fatalf("selected flat %s package: %v", selected.target, err)
+			}
+			if _, err := os.Stat(filepath.Join(selectedRoot, "generated", "claude")); !os.IsNotExist(err) {
+				t.Fatalf("selected build unexpectedly wrote Claude output: %v", err)
+			}
+		})
 	}
+}
+
+func TestRunAntigravityNativeCheckReportsUnavailableToolInJSON(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "agentbundle.json", `{"version":1,"kind":"skills-repository","root":"source","targets":["antigravity"],"output":"generated","composition":[{"target":"antigravity","profile":"package","packageMode":"separate"}],"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`)
+	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("Antigravity build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	t.Setenv("PATH", t.TempDir())
 	stdout.Reset()
 	stderr.Reset()
-	if status := run([]string{"build", "--target", "codex", "--package", "core-tools"}, selectedRoot, &stdout, &stderr, compiler.Compile); status != 0 {
-		t.Fatalf("selected acceptance build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	status := run([]string{"check", "--target", "antigravity", "--native", "--json"}, root, &stdout, &stderr, compiler.Compile)
+	if status != 3 || stderr.Len() != 0 {
+		t.Fatalf("Antigravity native check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
-	if _, err := os.Stat(filepath.Join(selectedRoot, "generated", "codex", ".codex-plugin", "plugin.json")); err != nil {
-		t.Fatalf("selected flat Codex package: %v", err)
+	var result jsonResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(selectedRoot, "generated", "claude")); !os.IsNotExist(err) {
-		t.Fatalf("selected build unexpectedly wrote Claude output: %v", err)
+	if !result.NativeVerificationFailed || result.Drift || len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "NATIVE_VERIFY_TOOL_UNAVAILABLE" || !strings.Contains(result.Diagnostics[0].Message, `tool "agy" is unavailable`) {
+		t.Fatalf("Antigravity native JSON result = %#v", result)
 	}
 }
 

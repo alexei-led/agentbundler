@@ -1,0 +1,16 @@
+{
+  "id": "conductor-example",
+  "metadata": {
+    "version": "0.1.0",
+    "description": "Plan and execute a small change with explicit checkpoints"
+  },
+  "assets": [
+    "src/skills/conductor-setup",
+    {
+      "path": "src/plugins/antigravity/conductor-ux",
+      "targets": [
+        "antigravity"
+      ]
+    }
+  ]
+}
