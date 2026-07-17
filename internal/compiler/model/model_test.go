@@ -87,6 +87,113 @@ func TestDecodeSourceManifestJSONRejectsStrictInvalidInput(t *testing.T) {
 	}
 }
 
+func TestAntigravityTargetValidatesAcrossModelBoundaries(t *testing.T) {
+	t.Parallel()
+
+	manifest := SourceManifest{
+		Version: 1,
+		Kind:    SourceKindBundle,
+		Root:    "source",
+		Targets: []TargetID{TargetAntigravity},
+		Output:  "generated",
+		Composition: []TargetComposition{{
+			Target:      TargetAntigravity,
+			Profile:     TargetProfilePackage,
+			PackageMode: TargetPackageModeSeparate,
+		}},
+		Bundle: &BundleSourceConfig{Packages: []RelativePath{"packages/base.json"}},
+	}
+	if diagnostics := ValidateSourceManifest(manifest); len(diagnostics) != 0 {
+		t.Fatalf("ValidateSourceManifest() diagnostics = %#v", diagnostics)
+	}
+
+	asset := SourceAsset{
+		Identity: "native-resource/conductor",
+		Kind:     AssetKindNativeResource,
+		Targets:  []TargetID{TargetAntigravity},
+		Base: AssetContent{Frontmatter: map[string]any{}, Files: map[RelativePath]FileContent{
+			"rules/conductor.md": {Bytes: []byte("# Rule\n"), Origin: []SourceLocation{{Path: "src/plugins/antigravity/conductor/rules/conductor.md"}}},
+		}},
+		CapabilityUses: []CapabilityUse{{Key: "asset.native-resource", Location: SourceLocation{Path: "src/plugins/antigravity/conductor/.agentbundler/asset.json"}}},
+		Overlays: []TargetOverlay{{
+			Target: TargetAntigravity,
+			Acknowledgments: []Acknowledgment{{
+				Asset: "native-resource/conductor", Target: TargetAntigravity, Key: "native-review", Reason: "Reviewed for Antigravity.",
+			}},
+		}},
+	}
+	assetID := asset.Identity
+	targetID := TargetAntigravity
+	inventory := SourceInventory{
+		Packages: []SourcePackage{{Identity: "base", Metadata: PackageMetadata{}, Assets: []SourceAsset{asset}}},
+		NativeGaps: []NativeGap{{
+			Component: "conductor", Asset: &assetID, Location: SourceLocation{Path: "src/plugins/antigravity/conductor"}, Target: &targetID,
+		}},
+	}
+	if diagnostics := ValidateSourceInventory(inventory); len(diagnostics) != 0 {
+		t.Fatalf("ValidateSourceInventory() diagnostics = %#v", diagnostics)
+	}
+
+	normalized := NormalizedPackage{
+		Identity: "base",
+		Metadata: PackageMetadata{},
+		Target:   TargetAntigravity,
+		Profile:  TargetProfilePackage,
+		Assets: []NormalizedAsset{{
+			Identity: asset.Identity, Kind: asset.Kind, Content: asset.Base, CapabilityUses: asset.CapabilityUses,
+		}},
+		Acknowledgments: []Acknowledgment{{
+			Asset: asset.Identity, Target: TargetAntigravity, Key: "native-review", Reason: "Reviewed for Antigravity.",
+		}},
+	}
+	if diagnostics := ValidateNormalizedPackage(normalized); len(diagnostics) != 0 {
+		t.Fatalf("ValidateNormalizedPackage() diagnostics = %#v", diagnostics)
+	}
+	if diagnostics := ValidateTargetRenderInput(TargetRenderInput{
+		Packages: []NormalizedPackage{normalized}, Distribution: DistributionMetadata{}, PackageMode: TargetPackageModeSeparate,
+	}); len(diagnostics) != 0 {
+		t.Fatalf("ValidateTargetRenderInput() diagnostics = %#v", diagnostics)
+	}
+
+	plan := BuildPlan{Targets: []TargetPlan{{
+		Target: TargetAntigravity, Packages: []PackageID{"base"},
+		Files:        []PlannedFile{{Path: "plugin.json", Bytes: []byte(`{"name":"base"}`)}},
+		NativeChecks: []NativeCheck{{Program: "agy", Arguments: []string{"plugin", "validate", "."}, Location: SourceLocation{Path: "internal/target/antigravity/antigravity.go"}}},
+	}}}
+	if diagnostics := ValidateBuildPlan(plan); len(diagnostics) != 0 {
+		t.Fatalf("ValidateBuildPlan() diagnostics = %#v", diagnostics)
+	}
+}
+
+func TestUnknownTargetStillFailsAcrossModelBoundaries(t *testing.T) {
+	t.Parallel()
+
+	unknown := TargetID("unknown")
+	asset := SourceAsset{
+		Identity: "skill/demo", Kind: AssetKindSkill, Base: AssetContent{Frontmatter: map[string]any{}},
+		Targets: []TargetID{unknown}, Overlays: []TargetOverlay{{Target: unknown}},
+	}
+	checks := []struct {
+		name        string
+		diagnostics []Diagnostic
+	}{
+		{name: "manifest", diagnostics: ValidateSourceManifest(SourceManifest{Version: 1, Kind: SourceKindBundle, Root: "source", Targets: []TargetID{unknown}, Output: "generated", Bundle: &BundleSourceConfig{Packages: []RelativePath{"packages/base.json"}}})},
+		{name: "composition", diagnostics: ValidateTargetComposition(TargetComposition{Target: unknown})},
+		{name: "inventory", diagnostics: ValidateSourceInventory(SourceInventory{Packages: []SourcePackage{{Identity: "base", Metadata: PackageMetadata{}, Assets: []SourceAsset{asset}}}})},
+		{name: "normalized package", diagnostics: ValidateNormalizedPackage(NormalizedPackage{Identity: "base", Metadata: PackageMetadata{}, Target: unknown})},
+		{name: "build plan", diagnostics: ValidateBuildPlan(BuildPlan{Targets: []TargetPlan{{Target: unknown}}})},
+	}
+	for _, check := range checks {
+		check := check
+		t.Run(check.name, func(t *testing.T) {
+			t.Parallel()
+			if !hasError(check.diagnostics) {
+				t.Fatalf("diagnostics = %#v, want invalid target error", check.diagnostics)
+			}
+		})
+	}
+}
+
 func TestDecodeSourceManifestJSONAcceptsOptionalDistributionAndAggregateFields(t *testing.T) {
 	t.Parallel()
 

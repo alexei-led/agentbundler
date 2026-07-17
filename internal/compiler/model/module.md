@@ -39,7 +39,7 @@ PackageMetadata = Map<String, JsonValue>
 DistributionMetadata = Map<String, JsonValue>
 
 SourceKind = bundle | claude-plugin | skills-repository
-TargetID = claude | codex | pi | copilot | grok | cursor
+TargetID = antigravity | claude | codex | pi | copilot | grok | cursor
 AssetKind = skill | agent | hook | resource | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported

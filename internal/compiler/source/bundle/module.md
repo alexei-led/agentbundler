@@ -57,7 +57,7 @@ Unknown or duplicate fields fail. Every other file below the hook directory, exc
 
 Target sidecars use the shared overlay contract. A JSON file patch is either a string shorthand for non-executable UTF-8 bytes or a strict object containing exactly one of `text` or `base64` plus optional `executable`; its origin is the JSON sidecar. A filesystem patch replaces the complete JSON `FileContent` at the same path, observes executable mode, and uses the tree file as origin. Target sidecars may patch content and acknowledgments but may not replace the portable hook descriptor with vendor-private schema.
 
-A native-resource path may be one file or one directory. Its `.agentbundler/asset.json` still requires `capabilities`; Pi extension trees additionally declare `piExtensions`, a sorted list of contained `extensions/*.ts` or `extensions/*.js` entry paths. The importer copies the complete tree, including helper modules, but never infers entries.
+A native-resource path may be one file or one directory. Its target is the exact `src/plugins/<target>/<name>` path segment; it is never inferred from filenames. Its `.agentbundler/asset.json` still requires `capabilities`. Antigravity trees must explicitly declare `asset.native-resource` and copy the complete contained, symlink-free tree without interpreting rules, MCP configuration, hooks, or support files. Pi extension trees additionally declare `piExtensions`, a sorted list of contained `extensions/*.ts` or `extensions/*.js` entry paths. The importer copies complete trees, including helper modules, but never infers entries or claims direct Antigravity plugin-repository import.
 
 ## Subdomain Classification
 
@@ -94,7 +94,7 @@ A hook directory maps to exactly one hook-kind `SourceAsset` with one `HookDescr
 - Source and sidecar symlinks, escapes, duplicate paths, duplicate identities, and unknown fields fail.
 - Interpreter invocation does not imply or require executable mode; observed executable intent is still preserved.
 - A target resource cannot overwrite an adapter-owned generated file.
-- Pi extension entries are explicit native-resource metadata, not inferred from filenames or imports.
+- Pi extension entries and Antigravity native trees are explicit target-owned resources, not inferred from filenames or imports.
 - The importer performs no target serialization, process execution, publication, installation, or network access.
 
 ## Test Specification

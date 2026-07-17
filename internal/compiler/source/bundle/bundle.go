@@ -333,6 +333,18 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		return model.SourceAsset{}, nil, false
 	}
 	target := model.TargetID(parts[targetIndex])
+	if target == model.TargetAntigravity {
+		declared := false
+		for _, capability := range capabilities {
+			if capability.Key == "asset.native-resource" {
+				declared = true
+				break
+			}
+		}
+		if !declared {
+			i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(metadataDir, ".agentbundler/asset.json"))), "Antigravity native resource must explicitly declare capability %q", "asset.native-resource")
+		}
+	}
 	return asset, &model.NativeGap{
 		Component: name,
 		Asset:     &identity,
@@ -1007,7 +1019,7 @@ func decodeAcknowledgment(value acknowledgmentSidecar) (model.Acknowledgment, er
 func parseTarget(value string) (model.TargetID, error) {
 	target := model.TargetID(value)
 	switch target {
-	case model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
+	case model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
 		return target, nil
 	default:
 		return "", fmt.Errorf("target %q is invalid", value)

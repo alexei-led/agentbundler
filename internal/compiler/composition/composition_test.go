@@ -345,6 +345,30 @@ func TestComposeRejectsAmbiguousNativeGapAssetCollision(t *testing.T) {
 	}
 }
 
+func TestNativeAssetSupportedByTargetIsExplicitForPiAndAntigravity(t *testing.T) {
+	piAsset := model.SourceAsset{Kind: model.AssetKindNativeResource, Native: &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/custom.ts"}}}
+	antigravityAsset := model.SourceAsset{Kind: model.AssetKindNativeResource}
+	for _, test := range []struct {
+		name   string
+		asset  model.SourceAsset
+		target model.TargetID
+		want   bool
+	}{
+		{name: "Pi declarative extension", asset: piAsset, target: model.TargetPi, want: true},
+		{name: "Pi rejects undeclared native resource", asset: antigravityAsset, target: model.TargetPi},
+		{name: "Antigravity explicit tree", asset: antigravityAsset, target: model.TargetAntigravity, want: true},
+		{name: "Antigravity rejects Pi declaration", asset: piAsset, target: model.TargetAntigravity},
+		{name: "other target rejects native resource", asset: antigravityAsset, target: model.TargetClaude},
+		{name: "non-native asset rejected", asset: model.SourceAsset{Kind: model.AssetKindResource}, target: model.TargetAntigravity},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := nativeAssetSupportedByTarget(test.asset, test.target); got != test.want {
+				t.Fatalf("nativeAssetSupportedByTarget() = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestComposeIncludesDeclarativePiNativeResourceWithoutGapPolicy(t *testing.T) {
 	asset := model.SourceAsset{
 		Identity: "native-resource/extensions", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetPi},
@@ -359,6 +383,146 @@ func TestComposeIncludesDeclarativePiNativeResourceWithoutGapPolicy(t *testing.T
 	}
 	if len(packages) != 1 || len(packages[0].Assets) != 1 || packages[0].Assets[0].Native == nil {
 		t.Fatalf("Compose() packages = %#v", packages)
+	}
+}
+
+func TestComposeIncludesAntigravityNativeResourceOnlyForItsTargetWithoutAliasing(t *testing.T) {
+	line := 9
+	asset := model.SourceAsset{
+		Identity: "native-resource/conductor", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity},
+		Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{
+			"rules/conductor.md": {Bytes: []byte("rule\n"), Origin: []model.SourceLocation{{Path: "plugins/antigravity/conductor/rules/conductor.md", Line: &line}}},
+			"scripts/check.sh":   {Bytes: []byte("#!/bin/sh\n"), Executable: true, Origin: []model.SourceLocation{{Path: "plugins/antigravity/conductor/scripts/check.sh"}}},
+		}},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.native-resource", Location: model.SourceLocation{Path: "plugins/antigravity/conductor/.agentbundler/asset.json"}}},
+	}
+	inventory := model.SourceInventory{
+		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}},
+		NativeGaps: []model.NativeGap{{Component: "conductor", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetAntigravity), Location: model.SourceLocation{Path: "plugins/antigravity/conductor"}}},
+	}
+	target := model.TargetComposition{Target: model.TargetAntigravity, Capabilities: []model.CapabilityRule{{Key: "asset.native-resource", State: model.CapabilityStateNative}}}
+
+	packages, diagnostics := Compose(inventory, target)
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose() diagnostics = %#v", diagnostics)
+	}
+	second, secondDiagnostics := Compose(inventory, target)
+	if len(secondDiagnostics) != 0 || !reflect.DeepEqual(packages, second) {
+		t.Fatalf("second Compose() = (%#v, %#v), want deterministic clone %#v", second, secondDiagnostics, packages)
+	}
+	if len(packages) != 1 || len(packages[0].Assets) != 1 {
+		t.Fatalf("Compose() packages = %#v", packages)
+	}
+	normalized := packages[0].Assets[0]
+	if normalized.Identity != asset.Identity || normalized.Native != nil {
+		t.Fatalf("normalized asset = %#v", normalized)
+	}
+	if got := normalized.Content.Files["rules/conductor.md"]; string(got.Bytes) != "rule\n" || got.Executable || len(got.Origin) != 1 || got.Origin[0].Path != "plugins/antigravity/conductor/rules/conductor.md" || got.Origin[0].Line == nil || *got.Origin[0].Line != 9 {
+		t.Fatalf("rule file = %#v", got)
+	}
+	if got := normalized.Content.Files["scripts/check.sh"]; string(got.Bytes) != "#!/bin/sh\n" || !got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "plugins/antigravity/conductor/scripts/check.sh"}}) {
+		t.Fatalf("script file = %#v", got)
+	}
+
+	inventory.Packages[0].Assets[0].Base.Files["rules/conductor.md"].Bytes[0] = 'X'
+	*inventory.Packages[0].Assets[0].Base.Files["rules/conductor.md"].Origin[0].Line = 99
+	inventory.Packages[0].Assets[0].CapabilityUses[0].Location.Path = "mutated"
+	got := packages[0].Assets[0]
+	if string(got.Content.Files["rules/conductor.md"].Bytes) != "rule\n" || *got.Content.Files["rules/conductor.md"].Origin[0].Line != 9 || got.CapabilityUses[0].Location.Path != "plugins/antigravity/conductor/.agentbundler/asset.json" {
+		t.Fatalf("normalized asset aliased source = %#v", got)
+	}
+
+	wrongTargetPackages, wrongTargetDiagnostics := Compose(model.SourceInventory{
+		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}},
+		NativeGaps: []model.NativeGap{{Component: "conductor", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetAntigravity), Location: model.SourceLocation{Path: "plugins/antigravity/conductor"}}},
+	}, model.TargetComposition{Target: model.TargetClaude})
+	if len(wrongTargetDiagnostics) != 0 || len(wrongTargetPackages) != 1 || len(wrongTargetPackages[0].Assets) != 0 {
+		t.Fatalf("wrong-target Compose() = (%#v, %#v)", wrongTargetPackages, wrongTargetDiagnostics)
+	}
+}
+
+func TestComposeIncludesEmptyAntigravityNativeResourceForAdapterValidation(t *testing.T) {
+	asset := model.SourceAsset{
+		Identity: "native-resource/empty", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity},
+		Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}},
+	}
+	inventory := model.SourceInventory{
+		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}},
+		NativeGaps: []model.NativeGap{{Component: "empty", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetAntigravity), Location: model.SourceLocation{Path: "plugins/antigravity/empty"}}},
+	}
+
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetAntigravity})
+	if len(diagnostics) != 0 || len(packages) != 1 || len(packages[0].Assets) != 1 || len(packages[0].Assets[0].Content.Files) != 0 {
+		t.Fatalf("Compose() = (%#v, %#v)", packages, diagnostics)
+	}
+}
+
+func TestComposeAntigravityNativeGapPolicies(t *testing.T) {
+	replacement := model.AssetID("skill/replacement")
+	for _, test := range []struct {
+		name        string
+		action      model.NativeGapAction
+		replacement *model.AssetID
+		wantAsset   model.AssetID
+	}{
+		{name: "replace", action: model.NativeGapActionReplace, replacement: &replacement, wantAsset: replacement},
+		{name: "exclude", action: model.NativeGapActionExclude},
+		{name: "source only", action: model.NativeGapActionSourceOnly},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			asset := model.SourceAsset{
+				Identity: "native-resource/conductor", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity},
+				Base:   model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"extensions/pi.ts": {Bytes: []byte("export {}")}}},
+				Native: &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/pi.ts"}},
+			}
+			inventory := model.SourceInventory{
+				Packages: []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{
+					asset,
+					{Identity: replacement, Kind: model.AssetKindSkill, Targets: []model.TargetID{model.TargetAntigravity}, Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}}},
+				}}},
+				NativeGaps: []model.NativeGap{{Component: "conductor", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetAntigravity), Location: model.SourceLocation{Path: "plugins/antigravity/conductor"}}},
+			}
+			packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetAntigravity, NativeGaps: []model.NativeGapPolicy{{Component: "conductor", Action: test.action, Replacement: test.replacement}}})
+			if len(diagnostics) != 0 || len(packages) != 1 {
+				t.Fatalf("Compose() = (%#v, %#v)", packages, diagnostics)
+			}
+			assets := packages[0].Assets
+			if test.wantAsset == "" {
+				if len(assets) != 1 || assets[0].Identity != replacement {
+					t.Fatalf("assets = %#v, want only independently selected replacement", assets)
+				}
+				return
+			}
+			if len(assets) != 1 || assets[0].Identity != test.wantAsset {
+				t.Fatalf("assets = %#v, want %q", assets, test.wantAsset)
+			}
+		})
+	}
+
+	asset := model.SourceAsset{
+		Identity: "native-resource/conductor", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity},
+		Base:   model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"extensions/pi.ts": {Bytes: []byte("export {}")}}},
+		Native: &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/pi.ts"}},
+	}
+	packages, diagnostics := Compose(model.SourceInventory{
+		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}},
+		NativeGaps: []model.NativeGap{{Component: "conductor", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetAntigravity), Location: model.SourceLocation{Path: "plugins/antigravity/conductor"}}},
+	}, model.TargetComposition{Target: model.TargetAntigravity})
+	if packages != nil || !diagnosticsContainText(diagnostics, `native gap "conductor" has no policy`) {
+		t.Fatalf("Compose() = (%#v, %#v), want Pi-declaration gap policy error", packages, diagnostics)
+	}
+}
+
+func TestComposeRejectsDuplicateAntigravityNativeResourceReferences(t *testing.T) {
+	asset := model.SourceAsset{Identity: "native-resource/conductor", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity}, Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{}}}
+	inventory := model.SourceInventory{
+		Packages:   []model.SourcePackage{{Identity: "first", Assets: []model.SourceAsset{asset}}, {Identity: "second", Assets: []model.SourceAsset{asset}}},
+		NativeGaps: []model.NativeGap{{Component: "conductor", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetAntigravity), Location: model.SourceLocation{Path: "plugins/antigravity/conductor"}}},
+	}
+
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetAntigravity})
+	if packages != nil || !diagnosticsContainText(diagnostics, `ambiguous across packages "first", "second"`) {
+		t.Fatalf("Compose() = (%#v, %#v)", packages, diagnostics)
 	}
 }
 

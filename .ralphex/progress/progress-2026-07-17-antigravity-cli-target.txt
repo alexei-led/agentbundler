@@ -1,0 +1,9 @@
+# Plan execution: 2026-07-17-antigravity-cli-target.md
+Run: 33a8a81e-22ed-45af-8c05-5acdfa8dc72d
+Branch: master
+Worktree: /Users/alexei/Workspace/agentbundler
+[2026-07-17T18:40:23.656Z] Progress log initialized.
+[2026-07-17T18:57:40Z] Task 1 complete: pinned AG-D1 through AG-D8; added TargetAntigravity across model, source sidecars, bundle native resources, and provenance; added explicit Antigravity/Pi composition seam and focused regressions; updated module contracts.
+[2026-07-17T18:57:40Z] Verification passed: gofmt; go test ./internal/compiler/model/...; go test ./internal/compiler/source/...; go test ./internal/compiler/composition/...; go test ./internal/artifact/provenance/...; go test ./internal/compiler/... ./internal/artifact/...; archfit check --config .archfit.yaml (PASS, 0 blocking, 13 existing advisory warnings); git diff --check.
+[2026-07-17T18:57:40Z] Impact checks passed after refreshing the stale GitNexus index with gitnexus analyze .: validTargetID upstream impact CRITICAL (88 impacted, 7 direct, 12 processes, 10 modules); nativeAssetSupportedByTarget upstream impact HIGH (20 impacted, 2 direct, 3 processes, 2 modules); unstaged detect-changes reported 17 implementation files, 62 symbols, 9 affected flows, high risk. Focused and module-wide tests cover the reported model/source/composition/provenance blast radius.
+[2026-07-17T18:57:40Z] Manual contract checks passed: official Antigravity and pinned Conductor sources are cited; no importer claims arbitrary Antigravity plugin adoption; native rules/MCP/hooks/support files remain explicit opaque target-owned input.

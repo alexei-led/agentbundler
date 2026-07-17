@@ -157,6 +157,42 @@ func TestInspectClaudePluginImportsExecutableAwareOverlayFilesWithTreePrecedence
 	}
 }
 
+func TestInspectClaudePluginImportsAntigravityTargetSidecar(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+	writeFixture(t, workspace, "source/plugin/skills/alpha/SKILL.md", "Alpha.\n")
+	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/antigravity.json", `{"frontmatterPatch":{"name":"alpha","description":"Alpha skill"},"files":{"guide.md":"Guide\n"}}`)
+	manifest := testManifest()
+	manifest.Targets = []model.TargetID{model.TargetAntigravity}
+
+	inventory, diagnostics := InspectClaudePlugin(manifest, workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectClaudePlugin() diagnostics = %#v", diagnostics)
+	}
+	if len(inventory.Packages) != 1 || len(inventory.Packages[0].Assets) != 1 || len(inventory.Packages[0].Assets[0].Overlays) != 1 {
+		t.Fatalf("inventory = %#v", inventory)
+	}
+	overlay := inventory.Packages[0].Assets[0].Overlays[0]
+	if overlay.Target != model.TargetAntigravity || overlay.FrontmatterPatch == nil || (*overlay.FrontmatterPatch)["name"] != "alpha" || (*overlay.FrontmatterPatch)["description"] != "Alpha skill" {
+		t.Fatalf("overlay = %#v", overlay)
+	}
+	if got := claudeFilePatch(overlay.Files, "guide.md").Content; string(got.Bytes) != "Guide\n" || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/plugin/.agentbundler/assets/skill/alpha/targets/antigravity.json"}}) {
+		t.Fatalf("overlay file = %#v", got)
+	}
+}
+
+func TestInspectClaudePluginRejectsUnknownTargetSidecar(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+	writeFixture(t, workspace, "source/plugin/skills/alpha/SKILL.md", "Alpha.\n")
+	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/skill/alpha/targets/unknown.json", `{}`)
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if !hasErrors(diagnostics) || len(inventory.Packages) != 0 || !containsDiagnostic(diagnostics, "invalid target") {
+		t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+	}
+}
+
 func TestInspectClaudePluginRejectsInvalidExecutableAwareOverlayFileValues(t *testing.T) {
 	for _, value := range []string{
 		`{"text":"one","base64":"dHdv"}`,

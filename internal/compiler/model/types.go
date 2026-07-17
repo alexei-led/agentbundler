@@ -26,12 +26,13 @@ const (
 type TargetID string
 
 const (
-	TargetClaude  TargetID = "claude"
-	TargetCodex   TargetID = "codex"
-	TargetPi      TargetID = "pi"
-	TargetCopilot TargetID = "copilot"
-	TargetGrok    TargetID = "grok"
-	TargetCursor  TargetID = "cursor"
+	TargetAntigravity TargetID = "antigravity"
+	TargetClaude      TargetID = "claude"
+	TargetCodex       TargetID = "codex"
+	TargetPi          TargetID = "pi"
+	TargetCopilot     TargetID = "copilot"
+	TargetGrok        TargetID = "grok"
+	TargetCursor      TargetID = "cursor"
 )
 
 // AssetKind classifies normalized assets.

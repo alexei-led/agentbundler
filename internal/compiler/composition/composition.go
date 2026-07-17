@@ -200,7 +200,17 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 }
 
 func nativeAssetSupportedByTarget(asset model.SourceAsset, target model.TargetID) bool {
-	return target == model.TargetPi && asset.Kind == model.AssetKindNativeResource && asset.Native != nil && len(asset.Native.PiExtensions) != 0
+	if asset.Kind != model.AssetKindNativeResource {
+		return false
+	}
+	switch target {
+	case model.TargetPi:
+		return asset.Native != nil && len(asset.Native.PiExtensions) != 0
+	case model.TargetAntigravity:
+		return asset.Native == nil
+	default:
+		return false
+	}
 }
 
 func policyExists(policies map[string]model.NativeGapPolicy, component string) bool {

@@ -839,7 +839,7 @@ func validSourceKind(kind SourceKind) bool {
 
 func validTargetID(target TargetID) bool {
 	switch target {
-	case TargetClaude, TargetCodex, TargetPi, TargetCopilot, TargetGrok, TargetCursor:
+	case TargetAntigravity, TargetClaude, TargetCodex, TargetPi, TargetCopilot, TargetGrok, TargetCursor:
 		return true
 	default:
 		return false
