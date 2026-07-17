@@ -20,6 +20,9 @@ declare module "node:child_process" {
     encoding: "utf8"; timeout: number;
   }): { status: number | null; stdout: string; stderr: string };
 }
+declare module "node:os" {
+  export function homedir(): string;
+}
 declare module "node:path" {
   export function isAbsolute(path: string): boolean;
   export function resolve(...paths: string[]): string;
