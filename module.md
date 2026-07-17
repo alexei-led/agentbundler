@@ -12,7 +12,7 @@
 
 - Expose the `build` and `check` product operations.
 - Accept clean **Agent Bundler** bundles and low-friction adopted repositories.
-- Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, and Cursor CLI.
+- Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, Cursor CLI, and Antigravity CLI.
 - Preserve native semantics where possible and fail on unsupported or unacknowledged semantic loss.
 - Produce reproducible generated trees, installable package roots, deterministic target catalogs, and provenance outside native package roots.
 - Preserve idempotence: an equivalent `build` or `package` run must not replace, rewrite, chmod, or retimestamp current output.

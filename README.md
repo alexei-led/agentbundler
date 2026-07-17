@@ -26,7 +26,8 @@ drift. Small target or model differences become manual release work.
 **Agent Bundler** keeps one source of truth, then lets you customize the parts that
 actually need to differ: frontmatter, Markdown sections, support files, and
 short target-wide preambles. It renders the result into the directory layout
-expected by Claude Code, Codex, Pi, GitHub Copilot, Grok Build, and Cursor.
+expected by Claude Code, Codex, Pi, GitHub Copilot, Grok Build, Cursor, and
+Antigravity CLI.
 
 ```text
 canonical source + manifest

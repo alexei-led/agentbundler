@@ -208,6 +208,14 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 		if !ok {
 			continue
 		}
+		if nativeGap != nil && (nativeGap.Target == nil || len(entry.Targets) != 1 || entry.Targets[0] != *nativeGap.Target) {
+			target := model.TargetID("")
+			if nativeGap.Target != nil {
+				target = *nativeGap.Target
+			}
+			i.addDiagnostic(packagePath, "native resource path %q must declare an exact target allow-list [%q]", assetPath, target)
+			continue
+		}
 		asset.Targets = append([]model.TargetID(nil), entry.Targets...)
 		if len(asset.Targets) > 0 {
 			sort.Slice(asset.Targets, func(left, right int) bool { return asset.Targets[left] < asset.Targets[right] })

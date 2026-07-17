@@ -15,7 +15,7 @@ import (
 func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "bundle/packages/z.json", `{"id":"zeta","metadata":{"order":2},"assets":["src/skills/example"]}`)
-	writeFixture(t, workspace, "bundle/packages/a.json", `{"id":"alpha","metadata":{"order":1},"assets":["src/skills/example","src/agents/reviewer.md","src/hooks/check.json","src/plugins/pi/resource.bin"]}`)
+	writeFixture(t, workspace, "bundle/packages/a.json", `{"id":"alpha","metadata":{"order":1},"assets":["src/skills/example","src/agents/reviewer.md","src/hooks/check.json",{"path":"src/plugins/pi/resource.bin","targets":["pi"]}]}`)
 	writeFixture(t, workspace, "bundle/src/skills/example/SKILL.md", "---\n{\"name\":\"Example\"}\n---\nUse the skill.\n")
 	writeFixture(t, workspace, "bundle/src/skills/example/references/guide.txt", "guide")
 	writeFixture(t, workspace, "bundle/src/skills/example/__pycache__/guide.pyc", "cache")
@@ -207,6 +207,30 @@ func TestInspectBundleRejectsInvalidAntigravityNativeResourcePathsAndDeclaration
 	}
 }
 
+func TestInspectBundleRejectsNativeResourceTargetAllowListMismatch(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry string
+	}{
+		{name: "missing", entry: `"src/plugins/claude/foo"`},
+		{name: "wrong target", entry: `{"path":"src/plugins/claude/foo","targets":["antigravity"]}`},
+		{name: "additional target", entry: `{"path":"src/plugins/claude/foo","targets":["antigravity","claude"]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[`+test.entry+`]}`)
+			writeFixture(t, workspace, "bundle/src/plugins/claude/foo", "native\n")
+			manifest := bundleManifest("packages/base.json")
+			manifest.Targets = []model.TargetID{model.TargetAntigravity, model.TargetClaude}
+
+			inventory, diagnostics := InspectBundle(manifest, workspace)
+			if !reflect.DeepEqual(inventory, model.SourceInventory{}) || !diagnosticsContainText(diagnostics, `native resource path "src/plugins/claude/foo" must declare an exact target allow-list ["claude"]`) {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+		})
+	}
+}
+
 func TestInspectBundleRejectsAntigravityNativeResourceSymlink(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/plugins/antigravity/conductor","targets":["antigravity"]}]}`)
@@ -226,7 +250,7 @@ func TestInspectBundleRejectsAntigravityNativeResourceSymlink(t *testing.T) {
 
 func TestInspectBundleImportsRootRelativeNativeResourcePath(t *testing.T) {
 	workspace := t.TempDir()
-	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["plugins/pi/custom"]}`)
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"plugins/pi/custom","targets":["pi"]}]}`)
 	writeFixture(t, workspace, "bundle/plugins/pi/custom/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/custom.ts"]}`)
 	writeFixture(t, workspace, "bundle/plugins/pi/custom/extensions/custom.ts", `export default () => {};`)
 	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)

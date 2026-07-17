@@ -386,6 +386,22 @@ func TestComposeIncludesDeclarativePiNativeResourceWithoutGapPolicy(t *testing.T
 	}
 }
 
+func TestComposeRejectsWrongTargetSelectedNativeResource(t *testing.T) {
+	asset := model.SourceAsset{
+		Identity: "native-resource/foo", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetAntigravity},
+		Base: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"rules/foo.md": {Bytes: []byte("rule\n")}}},
+	}
+	inventory := model.SourceInventory{
+		Packages:   []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}},
+		NativeGaps: []model.NativeGap{{Component: "foo", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetClaude), Location: model.SourceLocation{Path: "src/plugins/claude/foo"}}},
+	}
+
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetAntigravity})
+	if packages != nil || !diagnosticsContainText(diagnostics, `native resource asset "native-resource/foo" belongs to target "claude" by path but is selected for target "antigravity"`) {
+		t.Fatalf("Compose() = (%#v, %#v)", packages, diagnostics)
+	}
+}
+
 func TestComposeIncludesAntigravityNativeResourceOnlyForItsTargetWithoutAliasing(t *testing.T) {
 	line := 9
 	asset := model.SourceAsset{

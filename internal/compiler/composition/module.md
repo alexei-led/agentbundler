@@ -66,7 +66,7 @@ Composition clones values before modification. File patches replace both bytes a
 - Executable intent and origins cannot be reset by cloning, overlay, deletion, replacement, or package selection.
 - `advisory` succeeds only with an exact target/asset/key acknowledgment and reason. `unsupported` is always an error. No force flag or global acknowledgment exists.
 - Semantic hook capabilities are checked individually; `asset.hook` alone never authorizes event, matcher, decision, async, shell, or closed-failure behavior.
-- Native resources pass without a gap policy only through an explicit target branch. There is no generic native-resource fallback.
+- Native resources pass without a gap policy only through an explicit target branch. A selected native asset whose path-derived gap names another target fails. There is no generic native-resource fallback.
 - This module imports no source, target, artifact, filesystem, process, network, or environment behavior.
 
 ## Test Specification
