@@ -28,12 +28,34 @@ func Capabilities() []model.CapabilityRule {
 func (Adapter) Capabilities() []model.CapabilityRule { return Capabilities() }
 func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	if packagesHaveProfile(input.Packages, model.TargetProfilePackage) {
-		return packageoutput.RenderWithCodec(input, PackageCodec())
+		return renderPackages(input)
 	}
 	return renderProject(adapter.Target(), input.Packages)
 }
 func Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	return New().Render(input)
+}
+
+func renderPackages(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
+	base := input
+	base.Packages = make([]model.NormalizedPackage, len(input.Packages))
+	agents := make([]model.NormalizedAsset, 0)
+	for packageIndex, pkg := range input.Packages {
+		base.Packages[packageIndex] = pkg
+		base.Packages[packageIndex].Assets = make([]model.NormalizedAsset, 0, len(pkg.Assets))
+		for _, asset := range pkg.Assets {
+			if asset.Kind == model.AssetKindAgent {
+				agents = append(agents, asset)
+				continue
+			}
+			base.Packages[packageIndex].Assets = append(base.Packages[packageIndex].Assets, asset)
+		}
+	}
+	plan, diagnostics := packageoutput.RenderWithCodec(base, PackageCodec())
+	if len(diagnostics) != 0 {
+		return plan, diagnostics
+	}
+	return appendProjectAgents(plan, agents)
 }
 
 func renderProject(target model.TargetID, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
@@ -66,6 +88,10 @@ func renderProject(target model.TargetID, packages []model.NormalizedPackage) (m
 	if len(diagnostics) != 0 {
 		return plan, diagnostics
 	}
+	return appendProjectAgents(plan, agents)
+}
+
+func appendProjectAgents(plan model.TargetPlan, agents []model.NormalizedAsset) (model.TargetPlan, []model.Diagnostic) {
 	sort.Slice(agents, func(i, j int) bool { return agents[i].Identity < agents[j].Identity })
 	paths := make(map[model.RelativePath]struct{}, len(plan.Files)+len(agents))
 	for _, file := range plan.Files {
@@ -74,15 +100,15 @@ func renderProject(target model.TargetID, packages []model.NormalizedPackage) (m
 	for _, asset := range agents {
 		name := strings.TrimPrefix(string(asset.Identity), "agent/")
 		if name == "" || strings.Contains(name, "/") {
-			return model.TargetPlan{Target: target}, []model.Diagnostic{{Code: "invalid-asset-identity", Severity: model.SeverityError, Asset: asset.Identity, Message: fmt.Sprintf("asset identity %q cannot be rendered as a Codex project agent", asset.Identity)}}
+			return model.TargetPlan{Target: plan.Target}, []model.Diagnostic{{Code: "invalid-asset-identity", Severity: model.SeverityError, Asset: asset.Identity, Message: fmt.Sprintf("asset identity %q cannot be rendered as a Codex project agent", asset.Identity)}}
 		}
 		data, extension, err := codexAgent(asset)
 		if err != nil {
-			return model.TargetPlan{Target: target}, []model.Diagnostic{{Code: "invalid-agent", Severity: model.SeverityError, Asset: asset.Identity, Message: err.Error()}}
+			return model.TargetPlan{Target: plan.Target}, []model.Diagnostic{{Code: "invalid-agent", Severity: model.SeverityError, Asset: asset.Identity, Message: err.Error()}}
 		}
 		path := model.RelativePath(".codex/agents/" + name + extension)
 		if _, exists := paths[path]; exists {
-			return model.TargetPlan{Target: target}, []model.Diagnostic{{Code: "duplicate-output-path", Severity: model.SeverityError, Asset: asset.Identity, Message: fmt.Sprintf("generated output path %q is duplicated", path)}}
+			return model.TargetPlan{Target: plan.Target}, []model.Diagnostic{{Code: "duplicate-output-path", Severity: model.SeverityError, Asset: asset.Identity, Message: fmt.Sprintf("generated output path %q is duplicated", path)}}
 		}
 		paths[path] = struct{}{}
 		plan.Files = append(plan.Files, model.PlannedFile{Path: path, Bytes: data})

@@ -45,7 +45,7 @@ hooks/hooks.json
 
 `hooks/hooks.json` is Codex's default plugin hook path. `.codex-plugin/plugin.json#hooks` may override it with a plugin-relative path, path array, inline hook object, or inline-object array; Agent Bundler uses the default unless a future requirement needs an override.
 
-Current official plugin docs do not define a plugin agent component or root. Package-profile `asset.agent` is therefore unsupported and fails explicitly. Existing project-profile agents remain separate at `.codex/agents/<name>.toml`; they are not claimed as plugin contents.
+Current official plugin docs do not define a plugin agent component or root. Package-profile `asset.agent` is therefore removed before plugin serialization and emitted separately at target-root `.codex/agents/<name>.toml`. Existing project-profile agents use the same path. These profiles are not claimed as plugin contents.
 
 Verified initial hook cells:
 
@@ -69,7 +69,7 @@ Primary sources: <https://developers.openai.com/codex/plugins>, <https://develop
 
 ## Constraints and Invariants
 
-- Do not invent plugin-root `agents/` or reuse project `.codex/agents` as an installable component.
+- Do not invent plugin-root `agents/`; keep generated `.codex/agents` profiles separate from installable plugin roots.
 - Do not use the stale root `hooks.json` claim for plugin output; default is `hooks/hooks.json`.
 - Matching command hooks may launch concurrently; portable order is supported only when native behavior preserves it.
 - Non-managed plugin hooks require user trust; generation does not grant or mutate trust.
@@ -78,6 +78,6 @@ Primary sources: <https://developers.openai.com/codex/plugins>, <https://develop
 
 ## Test Specification
 
-- Golden package trees use the verified default hook path and no invented agent root.
+- Golden package trees use the verified default hook path; agent assets render only in the separate target-root project profile.
 - Project agent behavior remains unchanged and separately tested.
 - Trust, concurrency, async, unsupported event/failure, collisions, hook-free regression, catalog, and deterministic cases are covered.

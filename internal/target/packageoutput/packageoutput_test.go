@@ -116,10 +116,18 @@ func TestRenderMultiplePackagesForEveryInstallableTarget(t *testing.T) {
 	}
 }
 
-func TestRenderCodexPackageRejectsProjectOnlyAgent(t *testing.T) {
+func TestRenderCodexPackageEmitsProjectAgentProfileOutsidePluginRoot(t *testing.T) {
 	plan, diagnostics := Render(model.TargetCodex, []model.NormalizedPackage{packageFixture(model.TargetCodex)})
-	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" || len(plan.Files) != 0 {
-		t.Fatalf("Render() = (%#v, %#v)", plan, diagnostics)
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	files := plannedFiles(plan)
+	agent, ok := files[".codex/agents/reviewer.toml"]
+	if !ok || !containsAll(string(agent), `name = "reviewer"`, `description = "Review code"`, "developer_instructions") {
+		t.Fatalf("Codex project agent = %q", agent)
+	}
+	if _, exists := files["agents/reviewer.toml"]; exists {
+		t.Fatal("Codex plugin root contains an invented agent component")
 	}
 }
 

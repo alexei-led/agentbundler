@@ -41,8 +41,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.matcher.tool-category", State: model.CapabilityStateNative},
 }
 
-// PackageCodec owns Codex package manifest and hook serialization. Package-mode
-// agents are intentionally unsupported; project-profile agents use Adapter.Render.
+// PackageCodec owns Codex plugin manifest and hook serialization. Adapter.Render
+// removes agents before package rendering and emits them as separate project profiles.
 func PackageCodec() packageoutput.Codec {
 	return packageoutput.Codec{
 		Target:          Target,
@@ -293,7 +293,7 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 	events := make(map[model.HookEvent][]model.NormalizedAsset)
 	for _, asset := range pkg.Assets {
 		if asset.Kind == model.AssetKindAgent {
-			return []model.Diagnostic{assetDiagnostic(asset, "asset.agent is unsupported in Codex plugins; use the Codex project profile for .codex/agents/*.toml")}
+			return []model.Diagnostic{assetDiagnostic(asset, "asset.agent must be separated from Codex plugin serialization and rendered as .codex/agents/*.toml")}
 		}
 		if asset.Kind != model.AssetKindHook || asset.Hook == nil {
 			continue

@@ -143,18 +143,11 @@ func TestRenderCodexHookFreePackageRegression(t *testing.T) {
 	}
 }
 
-func TestRenderCodexRejectsUnsupportedEventAndPackageAgent(t *testing.T) {
+func TestRenderCodexRejectsUnsupportedHookSemantics(t *testing.T) {
 	t.Run("event", func(t *testing.T) {
 		hook := codexExecHook("notify", model.HookEventNotification, nil, 1_000, false, 0, "true", nil)
 		plan, diagnostics := Render(separate([]model.NormalizedPackage{codexHookPackage("demo", hook)}))
 		if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" || !strings.Contains(diagnostics[0].Message, "hook.event.notification") || len(plan.Files) != 0 {
-			t.Fatalf("Render() = (%#v, %#v)", plan, diagnostics)
-		}
-	})
-	t.Run("package agent", func(t *testing.T) {
-		pkg := codexAgentPackage(model.TargetProfilePackage)
-		plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
-		if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" || !strings.Contains(diagnostics[0].Message, "asset.agent") || len(plan.Files) != 0 {
 			t.Fatalf("Render() = (%#v, %#v)", plan, diagnostics)
 		}
 	})
@@ -226,6 +219,20 @@ func TestRenderCodexRejectsLossyMatcherFailureAndOrdering(t *testing.T) {
 	})
 }
 
+func TestRenderCodexPackageEmitsAgentAsSeparateProjectProfile(t *testing.T) {
+	pkg := codexAgentPackage(model.TargetProfilePackage)
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	if got, want := codexSortedPaths(plan), []model.RelativePath{".codex-plugin/plugin.json", ".codex/agents/reviewer.toml", "README.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("paths = %#v, want %#v", got, want)
+	}
+	if got := string(codexPlannedFiles(plan)[".codex/agents/reviewer.toml"].Bytes); !strings.Contains(got, `description = "Review code"`) || !strings.Contains(got, "developer_instructions") {
+		t.Fatalf("agent = %q", got)
+	}
+}
+
 func TestRenderCodexPreservesProjectAgentPath(t *testing.T) {
 	pkg := codexAgentPackage(model.TargetProfileProject)
 	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
@@ -237,6 +244,17 @@ func TestRenderCodexPreservesProjectAgentPath(t *testing.T) {
 	}
 	if got := string(codexPlannedFiles(plan)[".codex/agents/reviewer.toml"].Bytes); !strings.Contains(got, `description = "Review code"`) || !strings.Contains(got, "developer_instructions") {
 		t.Fatalf("agent = %q", got)
+	}
+}
+
+func TestRenderCodexRejectsDuplicateProjectAgentProfilesAcrossPackages(t *testing.T) {
+	first := codexAgentPackage(model.TargetProfilePackage)
+	first.Identity = "first"
+	second := codexAgentPackage(model.TargetProfilePackage)
+	second.Identity = "second"
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{first, second}))
+	if len(diagnostics) != 1 || diagnostics[0].Code != "duplicate-output-path" || len(plan.Files) != 0 {
+		t.Fatalf("Render() = (%#v, %#v), want duplicate project agent profile rejection", plan, diagnostics)
 	}
 }
 

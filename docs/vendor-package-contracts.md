@@ -36,7 +36,7 @@ install/load smokes are never production native checks.
 
 ## OpenAI Codex
 
-- Native layout: `.codex-plugin/plugin.json` is required. Installable plugins may contain `skills/`, `hooks/`, `.mcp.json`, `.app.json`, and assets. The verified plugin contract does **not** define a plugin agent component; project custom agents remain separate at `.codex/agents/*.toml`.
+- Native layout: `.codex-plugin/plugin.json` is required. Installable plugins may contain `skills/`, `hooks/`, `.mcp.json`, `.app.json`, and assets. The verified plugin contract does **not** define a plugin agent component; Agent Bundler emits agent assets separately at target-root `.codex/agents/*.toml`, outside package plugin roots.
 - Hook path: the default plugin hook file is `hooks/hooks.json`. `plugin.json#hooks` can replace it with one path, several paths, inline hook objects, or an array of inline objects. This corrects the older root-`hooks.json` and plugin-`agents/` assumptions.
 - Package paths: plugin hook commands receive `PLUGIN_ROOT` and `PLUGIN_DATA`, plus Claude-compatible aliases.
 - Portable event candidates: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `PreCompact`, and `PostCompact`. Codex also exposes `PermissionRequest`, `SubagentStart`, and `SubagentStop`, which are not initial portable events. There is no verified `SessionEnd`, `Notification`, or `PostToolUseFailure` equivalent in the current hook list.
