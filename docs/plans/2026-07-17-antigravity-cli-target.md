@@ -625,27 +625,27 @@ Manual checks:
   against a live MCP process.
 - Confirm no adapter code invokes installation or reads user configuration.
 
-- [ ] Create `internal/target/antigravity` with a leaf adapter at format revision
+- [x] Create `internal/target/antigravity` with a leaf adapter at format revision
       1 and the exact package-only dispatch described above.
-- [ ] Implement the strict two-field manifest serializer and table-driven tests
+- [x] Implement the strict two-field manifest serializer and table-driven tests
       for valid names, invalid names, absent/valid/invalid descriptions, and
       deterministic bytes.
-- [ ] Implement the narrow Markdown agent serializer and tests for required
+- [x] Implement the narrow Markdown agent serializer and tests for required
       fields, extra fields, multiline/non-string values, body preservation, and
       `.md` path generation.
-- [ ] Implement sorted exact native-resource passthrough and tests for rules,
+- [x] Implement sorted exact native-resource passthrough and tests for rules,
       MCP JSON, nested shared scripts, executable mode, empty trees,
       Pi-extension rejection, traversal rejection, and path collisions.
-- [ ] Define the complete capability table and prove portable hooks and every
+- [x] Define the complete capability table and prove portable hooks and every
       unverified hook cell fail without acknowledgments or silent omission.
-- [ ] Attach one `agy plugin validate .` native check per flat or package-ID
+- [x] Attach one `agy plugin validate .` native check per flat or package-ID
       root; test working directories, arguments, source location, and stable
       order.
-- [ ] Add a complete golden fixture and byte-compare test covering manifest,
+- [x] Add a complete golden fixture and byte-compare test covering manifest,
       skill, agent, portable resource, native rule, and benign MCP file.
-- [ ] Register the adapter and extend shared target/package-output tests without
+- [x] Register the adapter and extend shared target/package-output tests without
       changing existing adapter revisions or output bytes.
-- [ ] Run the Task 2 verification and impact commands, including real local
+- [x] Run the Task 2 verification and impact commands, including real local
       `agy` validation; all checks must pass before Task 3.
 
 ### Task 3: Integrate compiler, CLI, archives, acceptance fixture, and Conductor example

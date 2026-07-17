@@ -12,6 +12,7 @@ func TestResolveBuiltInAdapters(t *testing.T) {
 	t.Parallel()
 
 	targets := []model.TargetID{
+		model.TargetAntigravity,
 		model.TargetClaude,
 		model.TargetCodex,
 		model.TargetPi,
@@ -47,12 +48,13 @@ func TestTargetsAdvertisePortableDecisionSupport(t *testing.T) {
 	t.Parallel()
 
 	want := map[model.TargetID]map[model.CapabilityKey]model.CapabilityState{
-		model.TargetClaude:  {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
-		model.TargetCodex:   {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateUnsupported},
-		model.TargetCopilot: {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
-		model.TargetCursor:  {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
-		model.TargetGrok:    {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateUnsupported},
-		model.TargetPi:      {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
+		model.TargetAntigravity: {"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported},
+		model.TargetClaude:      {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
+		model.TargetCodex:       {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateUnsupported},
+		model.TargetCopilot:     {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
+		model.TargetCursor:      {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
+		model.TargetGrok:        {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateUnsupported},
+		model.TargetPi:          {"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative},
 	}
 	for targetID, statesWant := range want {
 		adapter, diagnostics := Resolve(targetID)
@@ -75,8 +77,9 @@ func TestTargetsRejectUnsupportedDecisionCellsBeforeOutput(t *testing.T) {
 	t.Parallel()
 
 	wantUnsupported := map[model.TargetID][]model.CapabilityKey{
-		model.TargetCodex: {"hook.decision.rewrite-input"},
-		model.TargetGrok:  {"hook.decision.rewrite-input"},
+		model.TargetAntigravity: {"hook.decision.block", "hook.decision.rewrite-input"},
+		model.TargetCodex:       {"hook.decision.rewrite-input"},
+		model.TargetGrok:        {"hook.decision.rewrite-input"},
 	}
 	for targetID, keys := range wantUnsupported {
 		for _, key := range keys {
