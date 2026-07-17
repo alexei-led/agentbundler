@@ -39,14 +39,15 @@ func TestWrapPOSIXTranslatesCanonicalDecisions(t *testing.T) {
 }
 
 func TestWrapPOSIXDistinguishesIntentionalDenyFromFailure(t *testing.T) {
+	vendorInput := `{"padding":"` + strings.Repeat("x", 1<<20) + `"}`
 	deny := exec.Command("/bin/sh", "-c", WrapPOSIX(`printf intentional >&2; exit 2`, ProtocolCopilot, "hook/guard"))
-	deny.Stdin = strings.NewReader("{}")
+	deny.Stdin = strings.NewReader(vendorInput)
 	output, err := deny.CombinedOutput()
 	if err != nil || !strings.Contains(string(output), `"permissionDecision":"deny"`) {
 		t.Fatalf("deny = (%v, %s)", err, output)
 	}
 	failure := exec.Command("/bin/sh", "-c", WrapPOSIX(`printf broken >&2; exit 7`, ProtocolCopilot, "hook/guard"))
-	failure.Stdin = strings.NewReader("{}")
+	failure.Stdin = strings.NewReader(vendorInput)
 	output, err = failure.CombinedOutput()
 	if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 7 || !strings.Contains(string(output), "broken") {
 		t.Fatalf("failure = (%v, %s)", err, output)
