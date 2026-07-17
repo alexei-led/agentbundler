@@ -100,6 +100,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 				Kind:           sourceAsset.Kind,
 				Content:        content,
 				Hook:           cloneHookDescriptor(sourceAsset.Hook),
+				Native:         model.CloneNativeResourceOptions(sourceAsset.Native),
 				CapabilityUses: cloneCapabilityUses(sourceAsset.CapabilityUses),
 			})
 		}
@@ -139,6 +140,11 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 	for _, gap := range gaps {
 		if gap.Target != nil && *gap.Target != target.Target {
 			continue
+		}
+		if gap.Asset != nil {
+			if references := assets[*gap.Asset]; len(references) == 1 && nativeAssetSupportedByTarget(references[0].asset, target.Target) {
+				continue
+			}
 		}
 		if gap.Asset != nil {
 			references := assets[*gap.Asset]
@@ -191,6 +197,10 @@ func resolveNativeGaps(gaps []model.NativeGap, target model.TargetComposition, a
 		}
 	}
 	return excluded, diagnostics
+}
+
+func nativeAssetSupportedByTarget(asset model.SourceAsset, target model.TargetID) bool {
+	return target == model.TargetPi && asset.Kind == model.AssetKindNativeResource && asset.Native != nil && len(asset.Native.PiExtensions) != 0
 }
 
 func policyExists(policies map[string]model.NativeGapPolicy, component string) bool {

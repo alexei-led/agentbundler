@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/hookdecision"
 	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
@@ -24,7 +25,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateUnsupported},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.block", State: model.CapabilityStateNative},
 	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.notification", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
@@ -36,7 +37,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.event.session-end", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.session-start", State: model.CapabilityStateNative},
 	{Key: "hook.event.stop", State: model.CapabilityStateNative},
-	{Key: "hook.failure.closed", State: model.CapabilityStateUnsupported},
+	{Key: "hook.failure.closed", State: model.CapabilityStateAdvisory},
 	{Key: "hook.matcher.tool-category", State: model.CapabilityStateNative},
 }
 
@@ -177,6 +178,9 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
+		if descriptor.Event == model.HookEventPreTool && (descriptor.FailurePolicy == model.HookFailurePolicyClosed || hookdecision.UsesDecisionCapability(hook.CapabilityUses())) {
+			command = hookdecision.WrapPOSIX(command, hookdecision.ProtocolCodex, string(descriptor.Identity))
+		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookGroup{
 			Matcher: matcher,
 			Hooks: []nativeHookHandler{{
@@ -260,6 +264,8 @@ func codexMatcher(descriptor model.HookDescriptor) (string, error) {
 		switch tool {
 		case model.HookToolCategoryCommand:
 			names = append(names, "^Bash$")
+		case model.HookToolCategoryWrite, model.HookToolCategoryEdit:
+			names = appendUnique(names, "^apply_patch$", "^Edit$", "^Write$")
 		case model.HookToolCategoryMCP:
 			names = append(names, "^mcp__.*$")
 		default:
@@ -267,6 +273,20 @@ func codexMatcher(descriptor model.HookDescriptor) (string, error) {
 		}
 	}
 	return strings.Join(names, "|"), nil
+}
+
+func appendUnique(values []string, additions ...string) []string {
+	seen := make(map[string]bool, len(values)+len(additions))
+	for _, value := range values {
+		seen[value] = true
+	}
+	for _, value := range additions {
+		if !seen[value] {
+			values = append(values, value)
+			seen[value] = true
+		}
+	}
+	return values
 }
 
 func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
@@ -282,6 +302,9 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		if _, ok := codexEvent(descriptor.Event); !ok {
 			return []model.Diagnostic{assetDiagnostic(asset, fmt.Sprintf("hook event %q is unsupported by Codex", descriptor.Event))}
 		}
+		if descriptor.FailurePolicy == model.HookFailurePolicyClosed && descriptor.Event != model.HookEventPreTool {
+			return []model.Diagnostic{assetDiagnostic(asset, fmt.Sprintf("hook.failure.closed is equivalent only for Codex pre-tool hooks, not %q", descriptor.Event))}
+		}
 		for _, previous := range events[descriptor.Event] {
 			if codexHooksCanMatchTogether(*previous.Hook, *descriptor) {
 				return []model.Diagnostic{assetDiagnostic(asset, fmt.Sprintf("Codex launches matching %q hooks concurrently and cannot preserve portable order between %q and %q", descriptor.Event, previous.Identity, asset.Identity))}
@@ -293,9 +316,6 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		}
 		if _, err := codexMatcher(*descriptor); err != nil {
 			return []model.Diagnostic{assetDiagnostic(asset, err.Error())}
-		}
-		if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
-			return []model.Diagnostic{assetDiagnostic(asset, "hook.failure.closed is unsupported because Codex command failures do not preserve portable fail-closed behavior")}
 		}
 		if descriptor.Asynchronous {
 			return []model.Diagnostic{assetDiagnostic(asset, "hook.async is unsupported because Codex currently skips async command hooks")}

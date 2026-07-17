@@ -21,7 +21,7 @@ func TestCursorCapabilitiesAndFormatRevision(t *testing.T) {
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateUnsupported,
 		"hook.command.exec": model.CapabilityStateAdvisory, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
+		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative,
 		"hook.event.notification": model.CapabilityStateUnsupported, "hook.event.post-compact": model.CapabilityStateUnsupported,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateNative,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateNative,
@@ -60,8 +60,8 @@ func TestRenderCursorHookGolden(t *testing.T) {
 	if pre["matcher"] != "Shell" || pre["timeout"] != 5.0 || pre["failClosed"] != true {
 		t.Fatalf("pre-tool hook = %#v", pre)
 	}
-	if got, want := pre["command"], `'bash' '-eu' './hooks/guard/scripts/guard.sh'`; got != want {
-		t.Fatalf("command = %#v, want %#v", got, want)
+	if got := pre["command"].(string); !strings.Contains(got, "'node' '-e'") || !strings.Contains(got, "'cursor' 'hook/guard'") {
+		t.Fatalf("translated command = %#v", got)
 	}
 	if !files["hooks/guard/scripts/guard.sh"].Executable {
 		t.Fatal("hook payload lost executable intent")
@@ -140,12 +140,6 @@ func TestRenderCursorRejectsDecisionAndFailureGaps(t *testing.T) {
 			a.Hook.FailurePolicy = model.HookFailurePolicyClosed
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.failure.closed", Location: a.Hook.Location})
 		}, wantCode: "unsupported-hook-semantics", wantText: "pre-tool and prompt-submit"},
-		{name: "block decision", asset: cursorShellHook("block", model.HookEventPreTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
-			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: a.Hook.Location})
-		}, wantCode: "unsupported-capability", wantText: "hook.decision.block"},
-		{name: "rewrite decision", asset: cursorShellHook("rewrite", model.HookEventPreTool, nil, 1_000, 0, "true"), mutate: func(a *model.NormalizedAsset) {
-			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: a.Hook.Location})
-		}, wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			test.mutate(&test.asset)

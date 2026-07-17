@@ -18,6 +18,9 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	writeFixture(t, workspace, "bundle/packages/a.json", `{"id":"alpha","metadata":{"order":1},"assets":["src/skills/example","src/agents/reviewer.md","src/hooks/check.json","src/plugins/pi/resource.bin"]}`)
 	writeFixture(t, workspace, "bundle/src/skills/example/SKILL.md", "---\n{\"name\":\"Example\"}\n---\nUse the skill.\n")
 	writeFixture(t, workspace, "bundle/src/skills/example/references/guide.txt", "guide")
+	writeFixture(t, workspace, "bundle/src/skills/example/__pycache__/guide.pyc", "cache")
+	writeFixture(t, workspace, "bundle/src/skills/example/.DS_Store", "editor")
+	writeFixture(t, workspace, "bundle/src/skills/example/references/guide.txt~", "backup")
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/asset.json", `{"capabilities":["tool-use"]}`)
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi.json", `{"frontmatterPatch":{"model":"pi"},"bodyPatch":{"mode":"replace","text":"target body"},"files":{"README.md":{"text":"from JSON","executable":true},"binary":{"base64":"AQI=","executable":true}},"deletedFiles":["obsolete.txt"],"acknowledgments":[{"asset":"skill/example","target":"pi","key":"tool-use","reason":"native support"}]}`)
 	writeFixture(t, workspace, "bundle/src/skills/example/.agentbundler/targets/pi/files/README.md", "from tree")
@@ -43,6 +46,11 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	}
 	if got := string(skill.Base.Files["references/guide.txt"].Bytes); got != "guide" {
 		t.Fatalf("skill support file = %q, want guide", got)
+	}
+	for _, ignored := range []model.RelativePath{"__pycache__/guide.pyc", ".DS_Store", "references/guide.txt~"} {
+		if _, exists := skill.Base.Files[ignored]; exists {
+			t.Fatalf("ignored support file %q was imported", ignored)
+		}
 	}
 	if got, want := skill.CapabilityUses, []model.CapabilityUse{{Key: "tool-use", Location: model.SourceLocation{Path: "src/skills/example/.agentbundler/asset.json"}}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("capabilities = %#v, want %#v", got, want)
@@ -83,6 +91,56 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	}
 	if !inputsAreSortedAndHashed(inventory) {
 		t.Fatalf("inputs are not sorted and hashed: %#v", inventory.Inputs)
+	}
+}
+
+func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/plugins/pi/cc-thingz","targets":["pi"]}]}`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/custom.ts"]}`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/custom.ts", `export default () => {};`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/shared/util.ts", `export const value = 1;`)
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	asset := inventory.Packages[0].Assets[0]
+	if asset.Kind != model.AssetKindNativeResource || asset.Native == nil || !reflect.DeepEqual(asset.Native.PiExtensions, []model.RelativePath{"extensions/custom.ts"}) {
+		t.Fatalf("native extension asset = %#v", asset)
+	}
+	if got := string(asset.Base.Files["extensions/shared/util.ts"].Bytes); got != "export const value = 1;" {
+		t.Fatalf("nested native resource = %q", got)
+	}
+	if len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Target == nil || *inventory.NativeGaps[0].Target != model.TargetPi {
+		t.Fatalf("native gaps = %#v", inventory.NativeGaps)
+	}
+}
+
+func TestInspectBundleUsesIndependentOverlaysForFlatAgents(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/agents/reviewer.md","src/agents/runner.md"]}`)
+	writeFixture(t, workspace, "bundle/src/agents/reviewer.md", "Review changes.\n")
+	writeFixture(t, workspace, "bundle/src/agents/runner.md", "Run changes.\n")
+	writeFixture(t, workspace, "bundle/src/agents/reviewer.md.agentbundler/targets/claude.json", `{"frontmatterPatch":{"tools":["Read","Grep"]}}`)
+	writeFixture(t, workspace, "bundle/src/agents/runner.md.agentbundler/targets/claude.json", `{"frontmatterPatch":{"tools":["Read","Bash"],"model":"haiku"}}`)
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	if len(inventory.Packages) != 1 || len(inventory.Packages[0].Assets) != 2 {
+		t.Fatalf("assets = %#v", inventory.Packages)
+	}
+	assets := map[model.AssetID]model.SourceAsset{}
+	for _, asset := range inventory.Packages[0].Assets {
+		assets[asset.Identity] = asset
+	}
+	if got := assets["agent/reviewer"].Overlays[0].FrontmatterPatch; got == nil || (*got)["tools"] == nil || (*got)["model"] != nil {
+		t.Fatalf("reviewer overlay = %#v", got)
+	}
+	if got := assets["agent/runner"].Overlays[0].FrontmatterPatch; got == nil || (*got)["model"] != "haiku" {
+		t.Fatalf("runner overlay = %#v", got)
 	}
 }
 

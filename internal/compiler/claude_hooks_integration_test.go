@@ -73,7 +73,7 @@ func TestCompileClaudeHooksEndToEndIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestCompileClaudeRejectsDecisionHooksWithoutPortableTranslation(t *testing.T) {
+func TestCompileClaudeTranslatesDecisionHooks(t *testing.T) {
 	workspace := t.TempDir()
 	if err := os.CopyFS(workspace, os.DirFS(filepath.Join("testdata", "hooks-claude"))); err != nil {
 		t.Fatalf("copy fixture: %v", err)
@@ -92,17 +92,25 @@ func TestCompileClaudeRejectsDecisionHooksWithoutPortableTranslation(t *testing.
 		t.Fatalf("DecodeSourceManifestJSON() diagnostics = %#v", diagnostics)
 	}
 	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
-	if len(result.Diagnostics) != 2 {
-		t.Fatalf("Compile() diagnostics = %#v, want two decision-capability errors", result.Diagnostics)
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
 	}
-	for index, capability := range []string{"hook.decision.block", "hook.decision.rewrite-input"} {
-		diagnostic := result.Diagnostics[index]
-		if diagnostic.Code != "invalid-composition" || !strings.Contains(diagnostic.Message, capability) {
-			t.Fatalf("Compile() diagnostics[%d] = %#v, want %q rejection", index, diagnostic, capability)
+	if len(result.Plan.Targets) != 1 {
+		t.Fatalf("Compile() targets = %#v", result.Plan.Targets)
+	}
+	hooks := ""
+	for _, file := range result.Plan.Targets[0].Files {
+		if file.Path == "hooks/hooks.json" {
+			hooks = string(file.Bytes)
 		}
 	}
-	if len(result.Plan.Targets) != 0 || len(result.Plan.CompilerFiles) != 0 {
-		t.Fatalf("rejected decision hooks produced partial plan: %#v", result.Plan)
+	for _, identity := range []string{"hook/deny", "hook/rewrite"} {
+		if !strings.Contains(hooks, identity) {
+			t.Fatalf("translated hooks missing %q: %s", identity, hooks)
+		}
+	}
+	if !strings.Contains(hooks, "node") || !strings.Contains(hooks, "permissionDecision") {
+		t.Fatalf("translated hooks do not contain Claude decision adapter: %s", hooks)
 	}
 }
 

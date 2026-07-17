@@ -3,6 +3,7 @@ package pi
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -10,11 +11,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var piSubagentDependencies = map[string]string{
+	"@earendil-works/pi-tui": "0.74.0",
+	"@types/mime-types":      "2.1.4",
+	"chalk":                  "5.6.2",
+	"get-east-asian-width":   "1.6.0",
+	"jiti":                   "2.7.0",
+	"marked":                 "15.0.12",
+	"mime-db":                "1.54.0",
+	"mime-types":             "3.0.2",
+	"pi-subagents":           "0.34.0",
+	"typebox":                "1.1.24",
+}
+
 var capabilityRules = []model.CapabilityRule{
 	{Key: "asset.agent", State: model.CapabilityStateEquivalent},
 	{Key: "asset.hook", State: model.CapabilityStateNative},
 	{Key: "asset.resource", State: model.CapabilityStateNative},
-	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
+	{Key: "asset.native-resource", State: model.CapabilityStateNative},
 	{Key: "asset.skill", State: model.CapabilityStateNative},
 	{Key: "hook.async", State: model.CapabilityStateNative},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
@@ -64,6 +78,7 @@ func aggregatePackageCodec() packageoutput.Codec {
 		Capabilities:    append([]model.CapabilityRule(nil), capabilityRules...),
 		Manifest:        aggregateManifest,
 		Agent:           subagent,
+		NativeResource:  nativeResource,
 		Hooks:           hookManifest,
 		ValidatePackage: validateHookSemantics,
 	}
@@ -93,6 +108,34 @@ func subagent(asset model.NormalizedAsset) ([]byte, string, error) {
 		return nil, "", err
 	}
 	return append(append(append([]byte("---\n"), encoded...), []byte("---\n")...), []byte(asset.Content.Body)...), ".md", nil
+}
+
+func nativeResource(asset model.NormalizedAsset) ([]packageoutput.NativeResourceFile, error) {
+	if asset.Native == nil || len(asset.Native.PiExtensions) == 0 {
+		return nil, fmt.Errorf("Pi native resource %q must declare one or more piExtensions", asset.Identity)
+	}
+	resources := make([]packageoutput.NativeResourceFile, 0, len(asset.Content.Files))
+	for _, path := range sortedNativeResourcePaths(asset.Content.Files) {
+		resources = append(resources, packageoutput.NativeResourceFile{Path: path, Content: asset.Content.Files[path]})
+	}
+	if len(resources) == 0 {
+		return nil, fmt.Errorf("Pi native resource %q has no files", asset.Identity)
+	}
+	for _, extension := range asset.Native.PiExtensions {
+		if _, exists := asset.Content.Files[extension]; !exists {
+			return nil, fmt.Errorf("Pi native resource %q extension %q does not name a resource file", asset.Identity, extension)
+		}
+	}
+	return resources, nil
+}
+
+func sortedNativeResourcePaths(files map[model.RelativePath]model.FileContent) []model.RelativePath {
+	paths := make([]model.RelativePath, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Slice(paths, func(left, right int) bool { return paths[left] < paths[right] })
+	return paths
 }
 
 func validSubagentKey(value string) bool {
@@ -132,15 +175,34 @@ func packageManifest(pkg model.NormalizedPackage, registerHooks bool) ([]byte, e
 	}
 	values["keywords"] = keywords(values["keywords"])
 	pi := map[string]any{"skills": []string{"./skills"}}
+	extensions, err := piNativeExtensions(pkg)
+	if err != nil {
+		return nil, err
+	}
 	if registerHooks {
-		pi["extensions"] = []string{"./extensions/agentbundler-hooks.ts"}
+		extensions = append(extensions, "./extensions/agentbundler-hooks.ts")
 	}
 	if packageoutput.PackageHasAsset(pkg, model.AssetKindAgent) {
-		dependencies, ok := values["dependencies"].(map[string]string)
-		if !ok || dependencies["pi-subagents"] == "" {
-			return nil, fmt.Errorf("pi packages with agents require a non-empty pi-subagents dependency")
+		dependencies, _ := values["dependencies"].(map[string]string)
+		if dependencies == nil {
+			dependencies = make(map[string]string)
 		}
+		bundled := make([]string, 0, len(piSubagentDependencies))
+		for name, version := range piSubagentDependencies {
+			if existing := dependencies[name]; name != "pi-subagents" && existing != "" && existing != "*" && existing != version {
+				return nil, fmt.Errorf("dependency %q must be %q for the bundled Pi agent runtime, got %q", name, version, existing)
+			}
+			dependencies[name] = version
+			bundled = append(bundled, name)
+		}
+		sort.Strings(bundled)
+		values["dependencies"] = dependencies
+		values["bundledDependencies"] = bundled
+		extensions = append(extensions, "./node_modules/pi-subagents/src/extension/index.ts")
 		pi["subagents"] = map[string]any{"agents": []string{"./agents"}}
+	}
+	if len(extensions) != 0 {
+		pi["extensions"] = extensions
 	}
 	values["pi"] = pi
 	return packageoutput.ManifestJSON(values)
@@ -149,6 +211,32 @@ func packageManifest(pkg model.NormalizedPackage, registerHooks bool) ([]byte, e
 type hookConfigV1 struct {
 	Version int                    `json:"version"`
 	Hooks   []model.HookDescriptor `json:"hooks"`
+}
+
+func piNativeExtensions(pkg model.NormalizedPackage) ([]string, error) {
+	extensions := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, asset := range pkg.Assets {
+		if asset.Kind != model.AssetKindNativeResource {
+			continue
+		}
+		if asset.Native == nil || len(asset.Native.PiExtensions) == 0 {
+			return nil, fmt.Errorf("Pi native resource %q must declare one or more piExtensions", asset.Identity)
+		}
+		for _, path := range asset.Native.PiExtensions {
+			if _, exists := asset.Content.Files[path]; !exists {
+				return nil, fmt.Errorf("Pi native resource %q extension %q does not name a resource file", asset.Identity, path)
+			}
+			value := "./" + string(path)
+			if _, exists := seen[value]; exists {
+				return nil, fmt.Errorf("Pi native extension %q is declared more than once", path)
+			}
+			seen[value] = struct{}{}
+			extensions = append(extensions, value)
+		}
+	}
+	sort.Strings(extensions)
+	return extensions, nil
 }
 
 func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManifest, error) {

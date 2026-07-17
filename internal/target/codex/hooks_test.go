@@ -22,13 +22,13 @@ func TestCodexCapabilitiesAndFormatRevision(t *testing.T) {
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateUnsupported,
 		"hook.command.exec": model.CapabilityStateNative, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
+		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
 		"hook.event.notification": model.CapabilityStateUnsupported, "hook.event.post-compact": model.CapabilityStateNative,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateUnsupported,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateNative,
 		"hook.event.prompt-submit": model.CapabilityStateNative, "hook.event.session-end": model.CapabilityStateUnsupported,
 		"hook.event.session-start": model.CapabilityStateNative, "hook.event.stop": model.CapabilityStateNative,
-		"hook.failure.closed": model.CapabilityStateUnsupported, "hook.matcher.tool-category": model.CapabilityStateNative,
+		"hook.failure.closed": model.CapabilityStateAdvisory, "hook.matcher.tool-category": model.CapabilityStateNative,
 	}
 	got := make(map[model.CapabilityKey]model.CapabilityState)
 	for _, rule := range Capabilities() {

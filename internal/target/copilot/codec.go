@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/hookdecision"
 	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
@@ -24,8 +25,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateNative},
 	{Key: "hook.command.exec", State: model.CapabilityStateAdvisory},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
-	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.block", State: model.CapabilityStateNative},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateNative},
 	{Key: "hook.event.notification", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
@@ -36,7 +37,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.event.session-end", State: model.CapabilityStateNative},
 	{Key: "hook.event.session-start", State: model.CapabilityStateNative},
 	{Key: "hook.event.stop", State: model.CapabilityStateNative},
-	{Key: "hook.failure.closed", State: model.CapabilityStateUnsupported},
+	{Key: "hook.failure.closed", State: model.CapabilityStateAdvisory},
 	{Key: "hook.matcher.tool-category", State: model.CapabilityStateNative},
 }
 
@@ -164,6 +165,14 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
+		if descriptor.Event == model.HookEventPreTool && (descriptor.FailurePolicy == model.HookFailurePolicyClosed || hookdecision.UsesDecisionCapability(hook.CapabilityUses())) {
+			original := bash
+			if original == "" {
+				original = command
+			}
+			command = ""
+			bash = hookdecision.WrapPOSIX(original, hookdecision.ProtocolCopilot, string(descriptor.Identity))
+		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookHandler{
 			Type: "command", Command: command, Bash: bash, Matcher: matcher,
 			TimeoutSec: copilotTimeout(descriptor.TimeoutMilliseconds),
@@ -282,8 +291,8 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		if _, ok := copilotEvent(descriptor.Event); !ok {
 			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("event %q is unsupported by Copilot CLI", descriptor.Event))}
 		}
-		if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
-			return []model.Diagnostic{hookDiagnostic(asset, "hook.failure.closed is unsupported because Copilot command timeouts fail open, including for pre-tool hooks")}
+		if descriptor.FailurePolicy == model.HookFailurePolicyClosed && descriptor.Event != model.HookEventPreTool {
+			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("hook.failure.closed is equivalent only for Copilot pre-tool hooks, not %q", descriptor.Event))}
 		}
 		if descriptor.Event == model.HookEventNotification && !descriptor.Asynchronous {
 			return []model.Diagnostic{hookDiagnostic(asset, "Copilot notification hooks are inherently asynchronous and cannot preserve synchronous portable execution")}

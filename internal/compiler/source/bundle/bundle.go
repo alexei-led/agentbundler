@@ -59,6 +59,7 @@ func (entry *assetEntry) UnmarshalJSON(data []byte) error {
 
 type assetSidecar struct {
 	Capabilities *[]string `json:"capabilities"`
+	PiExtensions *[]string `json:"piExtensions"`
 }
 
 type overlaySidecar struct {
@@ -238,8 +239,34 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 	}
 
 	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath]model.FileContent)}
+	metadataDir := assetDir
 	if kind == model.AssetKindResource {
 		i.readSupportFiles(assetDir, &content)
+	} else if kind == model.AssetKindNativeResource {
+		mainPath := model.RelativePath(mainFile)
+		info, err := i.lstat(filepath.Join(i.root, filepath.FromSlash(mainFile)))
+		if err != nil {
+			i.addDiagnostic(mainPath, "inspect native resource: %v", err)
+			return model.SourceAsset{}, nil, false
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			i.addDiagnostic(mainPath, "native resource must not be a symlink")
+			return model.SourceAsset{}, nil, false
+		}
+		if info.IsDir() {
+			i.readSupportFiles(assetDir, &content)
+		} else {
+			metadataDir = filepath.ToSlash(filepath.Dir(string(assetPath)))
+			data, ok := i.readRegular(mainPath)
+			if !ok {
+				return model.SourceAsset{}, nil, false
+			}
+			content.Files[model.RelativePath(filepath.Base(mainFile))] = model.FileContent{
+				Bytes:      append([]byte(nil), data...),
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: mainPath}},
+			}
+		}
 	} else {
 		mainPath := model.RelativePath(mainFile)
 		data, ok := i.readRegular(mainPath)
@@ -254,17 +281,6 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 			}
 			content.Frontmatter = frontmatter
 			content.Body = body
-		} else if kind == model.AssetKindNativeResource {
-			info, err := i.lstat(filepath.Join(i.root, filepath.FromSlash(mainFile)))
-			if err != nil {
-				i.addDiagnostic(mainPath, "inspect native resource: %v", err)
-				return model.SourceAsset{}, nil, false
-			}
-			content.Files[model.RelativePath(filepath.Base(mainFile))] = model.FileContent{
-				Bytes:      append([]byte(nil), data...),
-				Executable: info.Mode().Perm()&0o111 != 0,
-				Origin:     []model.SourceLocation{{Path: mainPath}},
-			}
 		} else {
 			content.Body = string(data)
 		}
@@ -276,7 +292,11 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		}
 	}
 
-	capabilities := i.readCapabilities(assetDir)
+	overlayDir := metadataDir
+	if kind == model.AssetKindAgent && strings.HasSuffix(string(assetPath), ".md") {
+		overlayDir = string(assetPath)
+	}
+	capabilities, native := i.readAssetMetadata(metadataDir, kind)
 	var hook *model.HookDescriptor
 	if kind == model.AssetKindHook {
 		descriptorPath := model.RelativePath(mainFile)
@@ -295,8 +315,9 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		Kind:           kind,
 		Base:           content,
 		Hook:           hook,
+		Native:         native,
 		CapabilityUses: capabilities,
-		Overlays:       i.readOverlays(assetDir, identity),
+		Overlays:       i.readOverlays(overlayDir, identity),
 	}
 	if kind != model.AssetKindNativeResource {
 		return asset, nil, true
@@ -331,7 +352,7 @@ func classifyAsset(assetPath string) (model.AssetKind, string, string, string, b
 		if _, err := parseTarget(parts[1]); err != nil {
 			return "", "", "", "", false, false, err
 		}
-		return model.AssetKindNativeResource, parts[2], assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, false, nil
+		return model.AssetKindNativeResource, parts[2], assetPath, assetPath, false, false, nil
 	default:
 		return "", "", "", "", false, false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
 	}
@@ -356,6 +377,12 @@ func (i *inspector) readSupportFiles(assetDir string, content *model.AssetConten
 				return fmt.Errorf("sidecar path must be a non-symlink directory")
 			}
 			return filepath.SkipDir
+		}
+		if ignoredSupportPath(rel, entry.IsDir()) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("support file %q is a symlink", rel)
@@ -412,6 +439,12 @@ func (i *inspector) readHookPayloads(assetDir string, content *model.AssetConten
 			}
 			return filepath.SkipDir
 		}
+		if ignoredSupportPath(rel, entry.IsDir()) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("hook payload %q is a symlink", rel)
 		}
@@ -442,6 +475,20 @@ func (i *inspector) readHookPayloads(assetDir string, content *model.AssetConten
 	if err != nil {
 		i.addDiagnostic(model.RelativePath(assetDir), "%v", err)
 	}
+}
+
+func ignoredSupportPath(path string, directory bool) bool {
+	parts := strings.Split(path, "/")
+	name := parts[len(parts)-1]
+	if name == ".git" || name == "__pycache__" || name == ".DS_Store" {
+		return true
+	}
+	if directory {
+		return strings.HasPrefix(name, ".cache") || name == "node_modules"
+	}
+	return strings.HasSuffix(name, ".pyc") || strings.HasSuffix(name, "~") ||
+		strings.HasPrefix(name, ".#") || strings.HasSuffix(name, ".swp") ||
+		strings.HasSuffix(name, ".swo") || strings.HasSuffix(name, ".bak")
 }
 
 func (i *inspector) validateHookPayloadReferences(descriptor model.HookDescriptor, files map[model.RelativePath]model.FileContent) {
@@ -504,23 +551,45 @@ func mergeCapabilityUses(groups ...[]model.CapabilityUse) []model.CapabilityUse 
 	return uses
 }
 
-func (i *inspector) readCapabilities(assetDir string) []model.CapabilityUse {
+func (i *inspector) readAssetMetadata(assetDir string, kind model.AssetKind) ([]model.CapabilityUse, *model.NativeResourceOptions) {
 	path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/asset.json")))
 	data, exists, ok := i.readOptionalRegular(path)
 	if !exists {
-		return nil
+		return nil, nil
 	}
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	var sidecar assetSidecar
 	if err := decodeStrictJSON(data, &sidecar); err != nil {
 		i.addDiagnostic(path, "asset sidecar: %v", err)
-		return nil
+		return nil, nil
 	}
 	if sidecar.Capabilities == nil {
 		i.addDiagnostic(path, "asset sidecar requires capabilities")
-		return nil
+		return nil, nil
+	}
+	if kind != model.AssetKindNativeResource && sidecar.PiExtensions != nil {
+		i.addDiagnostic(path, "piExtensions is valid only for native resources")
+	}
+	var native *model.NativeResourceOptions
+	if sidecar.PiExtensions != nil {
+		native = &model.NativeResourceOptions{PiExtensions: make([]model.RelativePath, 0, len(*sidecar.PiExtensions))}
+		seen := make(map[model.RelativePath]struct{}, len(*sidecar.PiExtensions))
+		for _, value := range *sidecar.PiExtensions {
+			resourcePath, err := model.NewRelativePath(value)
+			if err != nil {
+				i.addDiagnostic(path, "Pi extension path %q: %v", value, err)
+				continue
+			}
+			if _, exists := seen[resourcePath]; exists {
+				i.addDiagnostic(path, "Pi extension path %q is duplicated", resourcePath)
+				continue
+			}
+			seen[resourcePath] = struct{}{}
+			native.PiExtensions = append(native.PiExtensions, resourcePath)
+		}
+		sort.Slice(native.PiExtensions, func(left, right int) bool { return native.PiExtensions[left] < native.PiExtensions[right] })
 	}
 	uses := make([]model.CapabilityUse, 0, len(*sidecar.Capabilities))
 	seen := make(map[model.CapabilityKey]struct{}, len(*sidecar.Capabilities))
@@ -538,11 +607,19 @@ func (i *inspector) readCapabilities(assetDir string) []model.CapabilityUse {
 		uses = append(uses, model.CapabilityUse{Key: key, Location: model.SourceLocation{Path: path}})
 	}
 	sort.Slice(uses, func(a, b int) bool { return uses[a].Key < uses[b].Key })
-	return uses
+	return uses, native
+}
+
+func overlaySidecarRoot(assetDir string) string {
+	if strings.HasSuffix(assetDir, ".md") {
+		return assetDir + ".agentbundler"
+	}
+	return filepath.ToSlash(filepath.Join(assetDir, ".agentbundler"))
 }
 
 func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []model.TargetOverlay {
-	targetsPath := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets")))
+	sidecarRoot := overlaySidecarRoot(assetDir)
+	targetsPath := model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets")))
 	targetsRoot := filepath.Join(i.root, filepath.FromSlash(string(targetsPath)))
 	info, err := i.lstat(targetsRoot)
 	if err != nil {
@@ -569,7 +646,7 @@ func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []mode
 	targets := make(map[string]struct{})
 	for _, entry := range entries {
 		if entry.Type()&os.ModeSymlink != 0 {
-			i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", entry.Name()))), "target sidecar path is a symlink")
+			i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", entry.Name()))), "target sidecar path is a symlink")
 			continue
 		}
 		if entry.IsDir() {
@@ -580,7 +657,7 @@ func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []mode
 			targets[strings.TrimSuffix(entry.Name(), ".json")] = struct{}{}
 			continue
 		}
-		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", entry.Name()))), "target sidecar path must be a target JSON file or directory")
+		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", entry.Name()))), "target sidecar path must be a target JSON file or directory")
 	}
 	names := make([]string, 0, len(targets))
 	for target := range targets {
@@ -591,7 +668,7 @@ func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []mode
 	for _, name := range names {
 		target, err := parseTarget(name)
 		if err != nil {
-			i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", name))), "%v", err)
+			i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", name))), "%v", err)
 			continue
 		}
 		overlay, ok := i.readOverlay(assetDir, target, identity)
@@ -603,7 +680,8 @@ func (i *inspector) readOverlays(assetDir string, identity model.AssetID) []mode
 }
 
 func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity model.AssetID) (model.TargetOverlay, bool) {
-	jsonPath := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target)+".json")))
+	sidecarRoot := overlaySidecarRoot(assetDir)
+	jsonPath := model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", string(target)+".json")))
 	data, jsonExists, jsonOK := i.readOptionalRegular(jsonPath)
 	if jsonExists && !jsonOK {
 		return model.TargetOverlay{}, false
@@ -668,7 +746,7 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 		}
 	}
 
-	filesDir := filepath.Join(i.root, filepath.FromSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target), "files")))
+	filesDir := filepath.Join(i.root, filepath.FromSlash(filepath.Join(sidecarRoot, "targets", string(target), "files")))
 	if !i.readOverlayFiles(filesDir, assetDir, target, files) {
 		return model.TargetOverlay{}, false
 	}
@@ -684,16 +762,17 @@ func (i *inspector) readOverlay(assetDir string, target model.TargetID, identity
 }
 
 func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.TargetID, files map[model.RelativePath]model.FileContent) bool {
+	sidecarRoot := overlaySidecarRoot(assetDir)
 	info, err := i.lstat(filesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return true
 		}
-		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target), "files"))), "overlay files: %v", err)
+		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", string(target), "files"))), "overlay files: %v", err)
 		return false
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target), "files"))), "overlay files must be a non-symlink directory")
+		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", string(target), "files"))), "overlay files must be a non-symlink directory")
 		return false
 	}
 	valid := true
@@ -722,7 +801,7 @@ func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.Tar
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("overlay file %q is not regular", rel)
 		}
-		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target), "files", rel)))
+		path := model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", string(target), "files", rel)))
 		data, ok := i.readRegular(path)
 		if !ok {
 			valid = false
@@ -736,7 +815,7 @@ func (i *inspector) readOverlayFiles(filesDir, assetDir string, target model.Tar
 		return nil
 	})
 	if err != nil {
-		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/targets", string(target), "files"))), "%v", err)
+		i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(sidecarRoot, "targets", string(target), "files"))), "%v", err)
 		return false
 	}
 	return valid

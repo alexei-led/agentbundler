@@ -75,12 +75,43 @@ func renderAggregate(input model.TargetRenderInput) (model.TargetPlan, []model.D
 	}
 	for _, file := range runtime {
 		path := model.RelativePath(embeddedRuntimeRoot + "/" + file.name)
-		if err := addAggregateFile(&plan, paths, path, file.bytes); err != nil {
+		if err := addAggregateRuntimeFile(&plan, paths, path, file); err != nil {
+			return emptyPlan(), []model.Diagnostic{piDiagnostic("invalid-package-output", err.Error())}
+		}
+	}
+	if assetsHaveKind(pkg.Assets, model.AssetKindAgent) {
+		if err := addPiSubagentRuntime(&plan, paths, ""); err != nil {
 			return emptyPlan(), []model.Diagnostic{piDiagnostic("invalid-package-output", err.Error())}
 		}
 	}
 	sort.Slice(plan.Files, func(left, right int) bool { return plan.Files[left].Path < plan.Files[right].Path })
 	return plan, nil
+}
+
+func addPiSubagentRuntime(plan *model.TargetPlan, paths map[model.RelativePath]struct{}, root string) error {
+	runtime, err := piSubagentRuntimeFiles()
+	if err != nil {
+		return fmt.Errorf("read bundled Pi agent runtime: %w", err)
+	}
+	for _, file := range runtime {
+		path := model.RelativePath(file.name)
+		if root != "" {
+			path = model.RelativePath(root + "/" + file.name)
+		}
+		if err := addAggregateRuntimeFile(plan, paths, path, file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addAggregateRuntimeFile(plan *model.TargetPlan, paths map[model.RelativePath]struct{}, path model.RelativePath, file runtimeFile) error {
+	if _, exists := paths[path]; exists {
+		return fmt.Errorf("aggregate file %q collides with generated output", path)
+	}
+	paths[path] = struct{}{}
+	plan.Files = append(plan.Files, model.PlannedFile{Path: path, Bytes: append([]byte(nil), file.bytes...), Executable: file.executable})
+	return nil
 }
 
 func mergeAggregatePackage(input model.TargetRenderInput) (model.NormalizedPackage, error) {
@@ -213,6 +244,13 @@ func validateAggregateOutputPaths(packages []model.NormalizedPackage) []model.Di
 			case model.AssetKindAgent:
 				if diagnostics := add(model.RelativePath("agents/"+name+".md"), aggregatePathOwner{description: description, locations: assetOrigins}); len(diagnostics) != 0 {
 					return diagnostics
+				}
+			case model.AssetKindNativeResource:
+				for _, path := range sortedNativeResourcePaths(asset.Content.Files) {
+					content := asset.Content.Files[path]
+					if diagnostics := add(path, aggregatePathOwner{description: fmt.Sprintf("%s payload %q", description, path), locations: content.Origin}); len(diagnostics) != 0 {
+						return diagnostics
+					}
 				}
 			}
 			var root string

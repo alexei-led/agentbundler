@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/hookdecision"
 	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
@@ -21,8 +22,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateUnsupported},
 	{Key: "hook.command.exec", State: model.CapabilityStateAdvisory},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
-	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.block", State: model.CapabilityStateNative},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateNative},
 	{Key: "hook.event.notification", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
@@ -159,6 +160,9 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		command, err := cursorCommand(descriptor, hook)
 		if err != nil {
 			return packageoutput.HookManifest{}, err
+		}
+		if descriptor.Event == model.HookEventPreTool && (descriptor.FailurePolicy == model.HookFailurePolicyClosed || hookdecision.UsesDecisionCapability(hook.CapabilityUses())) {
+			command = hookdecision.WrapPOSIX(command, hookdecision.ProtocolCursor, string(descriptor.Identity))
 		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookHandler{
 			Command: command, Matcher: matcher, Timeout: cursorTimeout(descriptor.TimeoutMilliseconds),

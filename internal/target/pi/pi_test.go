@@ -49,12 +49,15 @@ func TestPackageRenderIncludesPiSubagent(t *testing.T) {
 	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
+	paths := make(map[model.RelativePath]bool, len(plan.Files))
 	for _, file := range plan.Files {
-		if file.Path == "agents/reviewer.md" {
-			return
+		paths[file.Path] = true
+	}
+	for _, path := range []model.RelativePath{"agents/reviewer.md", "node_modules/pi-subagents/src/extension/index.ts"} {
+		if !paths[path] {
+			t.Fatalf("plan files missing %q", path)
 		}
 	}
-	t.Fatalf("plan files = %#v, want Pi subagent", plan.Files)
 }
 
 func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
@@ -191,6 +194,7 @@ func TestCapabilitiesExposeAggregatePiHooksAndSubagents(t *testing.T) {
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent":                 model.CapabilityStateEquivalent,
 		"asset.hook":                  model.CapabilityStateNative,
+		"asset.native-resource":       model.CapabilityStateNative,
 		"hook.command.exec":           model.CapabilityStateNative,
 		"hook.command.shell":          model.CapabilityStateNative,
 		"hook.decision.block":         model.CapabilityStateNative,

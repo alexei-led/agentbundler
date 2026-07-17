@@ -45,8 +45,8 @@ func TestClaudeCapabilitiesAndFormatRevision(t *testing.T) {
 		"hook.async":                   model.CapabilityStateNative,
 		"hook.command.exec":            model.CapabilityStateNative,
 		"hook.command.shell":           model.CapabilityStateNative,
-		"hook.decision.block":          model.CapabilityStateUnsupported,
-		"hook.decision.rewrite-input":  model.CapabilityStateUnsupported,
+		"hook.decision.block":          model.CapabilityStateNative,
+		"hook.decision.rewrite-input":  model.CapabilityStateNative,
 		"hook.event.notification":      model.CapabilityStateNative,
 		"hook.event.post-compact":      model.CapabilityStateNative,
 		"hook.event.post-tool":         model.CapabilityStateNative,
@@ -57,7 +57,7 @@ func TestClaudeCapabilitiesAndFormatRevision(t *testing.T) {
 		"hook.event.session-end":       model.CapabilityStateNative,
 		"hook.event.session-start":     model.CapabilityStateNative,
 		"hook.event.stop":              model.CapabilityStateNative,
-		"hook.failure.closed":          model.CapabilityStateUnsupported,
+		"hook.failure.closed":          model.CapabilityStateAdvisory,
 		"hook.matcher.tool-category":   model.CapabilityStateNative,
 	}
 	got := make(map[model.CapabilityKey]model.CapabilityState)
@@ -172,21 +172,7 @@ func TestRenderClaudeRejectsUnsupportedHookCells(t *testing.T) {
 				asset.Hook.FailurePolicy = model.HookFailurePolicyClosed
 				asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.failure.closed", Location: asset.Hook.Location})
 			},
-			wantCode: "unsupported-capability", wantText: "hook.failure.closed",
-		},
-		{
-			name: "block decision",
-			mutate: func(asset *model.NormalizedAsset) {
-				asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.decision.block", Location: asset.Hook.Location})
-			},
-			wantCode: "unsupported-capability", wantText: "hook.decision.block",
-		},
-		{
-			name: "input rewrite decision",
-			mutate: func(asset *model.NormalizedAsset) {
-				asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: asset.Hook.Location})
-			},
-			wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input",
+			wantCode: "missing-capability-acknowledgment", wantText: "hook.failure.closed",
 		},
 		{
 			name: "other tool category",
@@ -216,6 +202,23 @@ func TestRenderClaudeRejectsUnsupportedHookCells(t *testing.T) {
 				t.Fatalf("unsupported hook produced a partial plan: %#v", plan)
 			}
 		})
+	}
+}
+
+func TestRenderClaudeTranslatesAcknowledgedPreToolDecisions(t *testing.T) {
+	asset := execHook("guard", model.HookEventPreTool, []model.HookToolCategory{model.HookToolCategoryCommand}, 1_000, false, 1, "bash", nil)
+	asset.Hook.FailurePolicy = model.HookFailurePolicyClosed
+	asset.CapabilityUses = append(asset.CapabilityUses, model.CapabilityUse{Key: "hook.failure.closed", Location: asset.Hook.Location}, model.CapabilityUse{Key: "hook.decision.block", Location: asset.Hook.Location})
+	pkg := model.NormalizedPackage{Identity: "demo", Target: Target, Profile: model.TargetProfilePackage, Assets: []model.NormalizedAsset{asset}, Acknowledgments: []model.Acknowledgment{{Asset: asset.Identity, Target: Target, Key: "hook.failure.closed", Reason: "timeouts fail open but explicit canonical deny is translated"}}}
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	command := decodeJSONObject(t, plannedFiles(plan)["hooks/hooks.json"].Bytes)["hooks"].(map[string]any)["PreToolUse"].([]any)[0].(map[string]any)["hooks"].([]any)[0].(map[string]any)["command"].(string)
+	for _, value := range []string{"node", "claude", "hook/guard"} {
+		if !strings.Contains(command, value) {
+			t.Fatalf("translated command %q is missing %q", command, value)
+		}
 	}
 }
 

@@ -23,23 +23,13 @@ func TestRenderAggregateEmitsOneInstallablePiPackage(t *testing.T) {
 		t.Fatalf("packages = %#v, want %#v", got, want)
 	}
 
-	wantPaths := []model.RelativePath{
-		"README.md",
-		"agents/reviewer.md",
-		"extensions/_agentbundler-hooks/index.ts",
-		"extensions/_agentbundler-hooks/matcher.ts",
-		"extensions/_agentbundler-hooks/process.ts",
-		"extensions/_agentbundler-hooks/runtime.ts",
-		"extensions/_agentbundler-hooks/schema.ts",
-		"extensions/agentbundler-hooks.ts",
-		"hooks/hooks.v1.json",
-		"hooks/payloads/pre-tool/pre-tool.js",
-		"package.json",
-		"skills/guide/SKILL.md",
-		"skills/guide/docs/readme.md",
-	}
-	if got := aggregatePaths(plan); !reflect.DeepEqual(got, wantPaths) {
-		t.Fatalf("paths = %#v, want %#v", got, wantPaths)
+	for _, path := range []model.RelativePath{
+		"README.md", "agents/reviewer.md", "extensions/_agentbundler-hooks/index.ts",
+		"extensions/agentbundler-hooks.ts", "hooks/hooks.v1.json",
+		"hooks/payloads/pre-tool/pre-tool.js", "package.json", "skills/guide/SKILL.md",
+		"node_modules/pi-subagents/src/extension/index.ts",
+	} {
+		_ = aggregateFile(t, plan, path)
 	}
 
 	var manifest map[string]any
@@ -50,14 +40,14 @@ func TestRenderAggregateEmitsOneInstallablePiPackage(t *testing.T) {
 		t.Fatalf("aggregate manifest metadata = %#v", manifest)
 	}
 	dependencies, ok := manifest["dependencies"].(map[string]any)
-	if !ok || !reflect.DeepEqual(dependencies, map[string]any{"aggregate-runtime": "1.0.0", "pi-subagents": "^1.0.0", "shared": "2.0.0"}) {
+	if !ok || dependencies["aggregate-runtime"] != "1.0.0" || dependencies["shared"] != "2.0.0" || dependencies["pi-subagents"] != "0.34.0" {
 		t.Fatalf("dependencies = %#v", manifest["dependencies"])
 	}
 	piManifest, ok := manifest["pi"].(map[string]any)
 	if !ok {
 		t.Fatalf("pi manifest = %#v", manifest["pi"])
 	}
-	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts"}; !reflect.DeepEqual(got, want) {
+	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pi.extensions = %#v, want %#v", got, want)
 	}
 	if got, want := piManifest["skills"], []any{"./skills"}; !reflect.DeepEqual(got, want) {
@@ -76,6 +66,47 @@ func TestRenderAggregateEmitsOneInstallablePiPackage(t *testing.T) {
 		if !strings.Contains(adapter, text) {
 			t.Fatalf("thin adapter does not contain %q:\n%s", text, adapter)
 		}
+	}
+}
+
+func TestRenderAggregateRegistersDeclarativeNativeExtension(t *testing.T) {
+	input := aggregateFixture()
+	input.Packages[0].Assets = append(input.Packages[0].Assets, model.NormalizedAsset{
+		Identity: "native-resource/custom-extension", Kind: model.AssetKindNativeResource,
+		Content: model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{
+			"extensions/custom.ts": {Bytes: []byte("export default function custom() {}\n")},
+		}},
+		Native:         &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/custom.ts"}},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.native-resource", Location: model.SourceLocation{Path: "source/plugins/pi/custom-extension/.agentbundler/asset.json"}}},
+	})
+	plan, diagnostics := Render(input)
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	if got := string(aggregateFile(t, plan, "extensions/custom.ts").Bytes); got != "export default function custom() {}\n" {
+		t.Fatalf("native extension = %q", got)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(aggregateFile(t, plan, "package.json").Bytes, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	piManifest := manifest["pi"].(map[string]any)
+	if got, want := piManifest["extensions"], []any{"./extensions/custom.ts", "./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("pi.extensions = %#v, want %#v", got, want)
+	}
+}
+
+func TestRenderAggregateRejectsNativeExtensionNotInResourceTree(t *testing.T) {
+	input := aggregateFixture()
+	input.Packages[0].Assets = append(input.Packages[0].Assets, model.NormalizedAsset{
+		Identity: "native-resource/custom-extension", Kind: model.AssetKindNativeResource,
+		Content:        model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"extensions/custom.ts": {Bytes: []byte("export default function custom() {}\n")}}},
+		Native:         &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/missing.ts"}},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.native-resource", Location: model.SourceLocation{Path: "source/plugins/pi/custom-extension/.agentbundler/asset.json"}}},
+	})
+	plan, diagnostics := Render(input)
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !strings.Contains(diagnostics[0].Message, "does not name a resource file") {
+		t.Fatalf("Render() = (%#v, %#v), want invalid native extension diagnostic", plan, diagnostics)
 	}
 }
 
@@ -99,7 +130,7 @@ func TestAggregateRuntimeBytesAreEmbeddedDeterministically(t *testing.T) {
 		hash.Write([]byte{0})
 		hash.Write(source.bytes)
 	}
-	if got, want := hex.EncodeToString(hash.Sum(nil)), "633a6950ab711590ada9bcf3d8bb844b1432a9506cc2427bf47fb46a6c1fa1b4"; got != want {
+	if got, want := hex.EncodeToString(hash.Sum(nil)), "4c7b39d79ed4a61b87ad4f5a10888e99187bc5bf034b41fbaedfa03015ccffa9"; got != want {
 		t.Fatalf("embedded runtime hash = %q, want %q", got, want)
 	}
 
@@ -159,18 +190,19 @@ func TestAggregateWithoutHooksStillRegistersOneThinAdapterAndEmptyDescriptor(t *
 		t.Fatal(err)
 	}
 	piManifest := manifest["pi"].(map[string]any)
-	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts"}; !reflect.DeepEqual(got, want) {
+	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pi.extensions = %#v, want %#v", got, want)
 	}
 }
 
-func TestAggregateRequiresPiSubagentsDependencyForAgents(t *testing.T) {
+func TestAggregateBundlesPiSubagentsWithoutSourceDependency(t *testing.T) {
 	input := aggregateFixture()
 	delete(input.Aggregate.Metadata["dependencies"].(map[string]any), "pi-subagents")
-	_, diagnostics := Render(input)
-	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-manifest" || !strings.Contains(diagnostics[0].Message, "require a non-empty pi-subagents dependency") {
+	plan, diagnostics := Render(input)
+	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
+	_ = aggregateFile(t, plan, "node_modules/pi-subagents/src/extension/index.ts")
 }
 
 func TestAggregateRejectsFailClosedOutsidePreTool(t *testing.T) {

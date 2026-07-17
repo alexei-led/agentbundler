@@ -37,7 +37,7 @@ CompilationResult = { plan: BuildPlan, diagnostics: [Diagnostic], drift: Boolean
 compile(CompileRequest) -> CompilationResult
 ```
 
-For each selected target, the compiler passes the adapter an explicit `TargetRenderInput` containing ordered normalized packages, common distribution metadata, explicit `separate` or `aggregate` mode, and explicit aggregate identity/metadata when applicable. It never infers aggregate mode from package count or takes distribution metadata from an arbitrary package.
+For each selected target, the compiler passes the adapter an explicit `TargetRenderInput` containing ordered normalized packages, common distribution metadata, explicit `separate` or `aggregate` mode, and explicit aggregate identity/metadata when applicable. When `distribution.version` is present, it is the generated version for every package and aggregate manifest; source package versions remain import evidence, not competing output ownership. The compiler never infers aggregate mode from package count or takes distribution metadata from an arbitrary package.
 
 ### Go API
 

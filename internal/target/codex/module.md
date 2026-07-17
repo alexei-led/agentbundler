@@ -50,9 +50,9 @@ Current official plugin docs do not define a plugin agent component or root. Pac
 Verified initial hook cells:
 
 - native/equivalent where exact payload behavior matches: command exec/shell, events `session-start`, `prompt-submit`, `pre-tool`, `post-tool`, `stop`, `pre-compact`, `post-compact`, and tool-category matcher;
-- unsupported until a target-owned translator exists: `hook.decision.block` and `hook.decision.rewrite-input`; Codex's native decision output is not the portable author-payload protocol;
+- `hook.decision.block` is native through the target-owned pre-tool translator; `hook.decision.rewrite-input` remains unsupported because Codex has no lossless input-rewrite result;
 - unsupported: `session-end`, `notification`, `post-tool-failure` unless current docs add an exact event, and async (`async` is parsed but command handlers are skipped);
-- `hook.failure.closed` and ordering/concurrency-dependent behavior are unsupported unless Codex's trust, timeout, crash, and concurrent-launch behavior preserves the requested contract.
+- `hook.failure.closed` is advisory for pre-tool hooks through the translator and requires an exact acknowledgment; other events reject it. Ordering/concurrency-dependent behavior remains unsupported unless Codex preserves the requested contract.
 
 No stable official offline non-mutating validator covers required plugin/hook behavior, so production `NativeCheck` is empty. Marketplace add/list and hook trust/load smoke tests are test-only, opt-in, and use temporary `CODEX_HOME`.
 

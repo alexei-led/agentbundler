@@ -33,13 +33,13 @@ func TestCopilotCapabilitiesAndFormatRevision(t *testing.T) {
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateNative,
 		"hook.command.exec": model.CapabilityStateAdvisory, "hook.command.shell": model.CapabilityStateNative,
-		"hook.decision.block": model.CapabilityStateUnsupported, "hook.decision.rewrite-input": model.CapabilityStateUnsupported,
+		"hook.decision.block": model.CapabilityStateNative, "hook.decision.rewrite-input": model.CapabilityStateNative,
 		"hook.event.notification": model.CapabilityStateNative, "hook.event.post-compact": model.CapabilityStateUnsupported,
 		"hook.event.post-tool": model.CapabilityStateNative, "hook.event.post-tool-failure": model.CapabilityStateNative,
 		"hook.event.pre-compact": model.CapabilityStateNative, "hook.event.pre-tool": model.CapabilityStateAdvisory,
 		"hook.event.prompt-submit": model.CapabilityStateNative, "hook.event.session-end": model.CapabilityStateNative,
 		"hook.event.session-start": model.CapabilityStateNative, "hook.event.stop": model.CapabilityStateNative,
-		"hook.failure.closed": model.CapabilityStateUnsupported, "hook.matcher.tool-category": model.CapabilityStateNative,
+		"hook.failure.closed": model.CapabilityStateAdvisory, "hook.matcher.tool-category": model.CapabilityStateNative,
 	}
 	got := make(map[model.CapabilityKey]model.CapabilityState)
 	for _, rule := range Capabilities() {
@@ -283,15 +283,12 @@ func TestRenderCopilotRejectsFailureTimeoutAndDecisionMismatches(t *testing.T) {
 		{name: "closed policy", asset: shellHook("closed", model.HookEventPostTool, nil, 1_000, false, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.Hook.FailurePolicy = model.HookFailurePolicyClosed
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.failure.closed", Location: a.Hook.Location})
-		}, wantCode: "unsupported-capability", wantText: "hook.failure.closed"},
+		}, wantCode: "missing-capability-acknowledgment", wantText: "hook.failure.closed"},
 		{name: "async post tool", asset: shellHook("async", model.HookEventPostTool, nil, 1_000, false, 0, "true"), mutate: func(a *model.NormalizedAsset) {
 			a.Hook.Asynchronous = true
 			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.async", Location: a.Hook.Location})
 		}, wantCode: "unsupported-hook-semantics", wantText: "hook.async"},
 		{name: "synchronous notification", asset: shellHook("notify", model.HookEventNotification, nil, 1_000, false, 0, "true"), mutate: func(*model.NormalizedAsset) {}, wantCode: "unsupported-hook-semantics", wantText: "inherently asynchronous"},
-		{name: "rewrite decision", asset: shellHook("stop", model.HookEventStop, nil, 1_000, false, 0, "true"), mutate: func(a *model.NormalizedAsset) {
-			a.CapabilityUses = append(a.CapabilityUses, model.CapabilityUse{Key: "hook.decision.rewrite-input", Location: a.Hook.Location})
-		}, wantCode: "unsupported-capability", wantText: "hook.decision.rewrite-input"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			test.mutate(&test.asset)

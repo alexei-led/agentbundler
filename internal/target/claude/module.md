@@ -53,8 +53,8 @@ Verified initial semantic cells:
 
 - native/equivalent: `asset.hook`, `hook.command.exec`, explicit adopted `hook.command.shell`, events `session-start`, `session-end`, `prompt-submit`, `pre-tool`, `post-tool`, `post-tool-failure`, `stop`, `notification`, `pre-compact`, `post-compact`, and tool-category matchers;
 - native only for passive compatible events: `hook.async`;
-- unsupported until a target-owned translator exists: `hook.decision.block` and `hook.decision.rewrite-input`; Claude's native decision output is not the portable author-payload protocol;
-- unsupported unless a concrete mapping proves crash and timeout behavior: `hook.failure.closed`;
+- native through the target-owned pre-tool translator: `hook.decision.block` and `hook.decision.rewrite-input`;
+- advisory through the target-owned pre-tool translator: `hook.failure.closed`; exact acknowledgments are required because wrapper failures still follow Claude's process behavior;
 - unsupported: HTTP, prompt, agent, and MCP-tool handlers in the initial portable command-hook contract.
 
 A similarly named event is not enough: unsupported matcher, mutation, async, timeout, or failure semantics fail through exact capability diagnostics.

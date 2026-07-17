@@ -29,6 +29,30 @@ func TestNewRelativePathRejectsEscapes(t *testing.T) {
 	}
 }
 
+func TestValidateNativeResourceOptions(t *testing.T) {
+	t.Parallel()
+
+	valid := SourceAsset{
+		Identity: "native-resource/extensions", Kind: AssetKindNativeResource,
+		Base:   AssetContent{Frontmatter: map[string]any{}, Files: map[RelativePath]FileContent{"extensions/custom.ts": {Bytes: []byte("export default {}")}}},
+		Native: &NativeResourceOptions{PiExtensions: []RelativePath{"extensions/custom.ts"}},
+	}
+	if diagnostics := validateSourceAsset(valid); len(diagnostics) != 0 {
+		t.Fatalf("valid native resource diagnostics = %#v", diagnostics)
+	}
+	valid.Kind = AssetKindResource
+	valid.Identity = "resource/extensions"
+	if diagnostics := validateSourceAsset(valid); !hasError(diagnostics) {
+		t.Fatalf("non-native resource diagnostics = %#v, want error", diagnostics)
+	}
+	valid.Kind = AssetKindNativeResource
+	valid.Identity = "native-resource/extensions"
+	valid.Native = &NativeResourceOptions{PiExtensions: []RelativePath{"tools/custom.ts"}}
+	if diagnostics := validateSourceAsset(valid); !hasError(diagnostics) {
+		t.Fatalf("non-extension path diagnostics = %#v, want error", diagnostics)
+	}
+}
+
 func TestDecodeSourceManifestJSONRejectsStrictInvalidInput(t *testing.T) {
 	t.Parallel()
 
@@ -579,6 +603,8 @@ func TestValidateNormalizedPackageRejectsMalformedHookDescriptors(t *testing.T) 
 		{name: "timeout over maximum", mutate: func(asset *NormalizedAsset) { asset.Hook.TimeoutMilliseconds = MaxHookTimeoutMilliseconds + 1 }},
 		{name: "negative order", mutate: func(asset *NormalizedAsset) { asset.Hook.Order = -1 }},
 		{name: "invalid failure policy", mutate: func(asset *NormalizedAsset) { asset.Hook.FailurePolicy = "retry" }},
+		{name: "invalid environment name", mutate: func(asset *NormalizedAsset) { asset.Hook.Environment = []string{"BAD-NAME"} }},
+		{name: "duplicate environment name", mutate: func(asset *NormalizedAsset) { asset.Hook.Environment = []string{"HOME", "HOME"} }},
 		{name: "async blocking event", mutate: func(asset *NormalizedAsset) { asset.Hook.Asynchronous = true }},
 		{name: "async closed failure", mutate: func(asset *NormalizedAsset) { asset.Hook.Event = HookEventPostTool; asset.Hook.Asynchronous = true }},
 		{name: "async block capability", mutate: func(asset *NormalizedAsset) {
@@ -619,7 +645,7 @@ func TestValidateNormalizedPackageRejectsMalformedHookDescriptors(t *testing.T) 
 func TestDecodeHookDescriptorJSONIsStrict(t *testing.T) {
 	t.Parallel()
 
-	valid := `{"event":"stop","handler":{"mode":"shell","arguments":[],"shellCommand":"done"},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"open","order":0}`
+	valid := `{"event":"stop","handler":{"mode":"shell","arguments":[],"shellCommand":"done"},"timeoutMilliseconds":1000,"asynchronous":false,"failurePolicy":"open","environment":["HOME","CLAUDE_HOOK_CONFIG"],"order":0}`
 	for _, test := range []struct {
 		name string
 		data string
@@ -649,6 +675,9 @@ func TestDecodeHookDescriptorJSONIsStrict(t *testing.T) {
 	}
 	if descriptor.Identity != "hook/check" || descriptor.Location.Path != "src/hooks/check.json" || descriptor.Handler.Mode != HookHandlerModeShell {
 		t.Fatalf("DecodeHookDescriptorJSON() = %#v", descriptor)
+	}
+	if !reflect.DeepEqual(descriptor.Environment, []string{"HOME", "CLAUDE_HOOK_CONFIG"}) {
+		t.Fatalf("DecodeHookDescriptorJSON() environment = %#v", descriptor.Environment)
 	}
 }
 

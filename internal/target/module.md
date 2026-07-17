@@ -62,7 +62,7 @@ hook.async
 hook.failure.closed
 ```
 
-A leaf may mark only proven cells native/equivalent; advisory needs exact acknowledgment, unsupported fails. Decision capabilities also require a canonical author-payload process protocol and a target-owned vendor translator. Only Pi currently owns that boundary, so every other built-in target rejects `hook.decision.block` and `hook.decision.rewrite-input` even when the vendor has a similar native result. Adapters defensively reject any asset or semantic cell composition should have blocked. No hook, executable intent, package, catalog entry, or security decision is silently omitted or weakened.
+A leaf may mark only proven cells native/equivalent; advisory needs exact acknowledgment, unsupported fails. Decision capabilities require a canonical author-payload process protocol and a target-owned vendor translator. Claude, Copilot, Cursor, and Pi translate the supported decision cells; Codex and Grok reject input rewrite because their documented protocols have no lossless mapping. Adapters defensively reject any asset or semantic cell composition should have blocked. No hook, executable intent, package, catalog entry, or security decision is silently omitted or weakened.
 
 `separate` renders stable independent package roots and is the compatibility default. In source version 1, `aggregate` is accepted only by Pi package profile. Pi aggregation produces one explicitly named installable package; it is not inferred and is not a global singleton claim.
 

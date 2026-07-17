@@ -152,7 +152,7 @@ or changing package responsibilities.
 The portable contract covers command hooks with typed event, matcher, arguments,
 timeout, async, failure-policy, order, decision capabilities, payload bytes, and
 executable intent. HTTP, prompt-handler, agent-handler, and MCP-tool-handler
-hooks remain outside it. Target-native resources remain explicit gaps.
+hooks remain outside it. Pi-native extension trees are supported only through explicit declarative entries; other target-native resources remain explicit gaps.
 
 Pi's runtime is the only generated runtime shim. It stays cohesive inside the Pi
 adapter, scans no global package roots, and loads only the generated descriptor

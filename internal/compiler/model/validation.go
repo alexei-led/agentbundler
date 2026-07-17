@@ -299,6 +299,31 @@ func validateBundleSourceConfig(config BundleSourceConfig) []Diagnostic {
 	return diagnostics
 }
 
+func validateNativeResourceOptions(identity AssetID, kind AssetKind, options *NativeResourceOptions) []Diagnostic {
+	if options == nil {
+		return nil
+	}
+	if kind != AssetKindNativeResource {
+		return []Diagnostic{{Code: diagnosticCodeInvalidModel, Severity: SeverityError, Message: fmt.Sprintf("asset %q declares native resource options but is %q", identity, kind)}}
+	}
+	seen := make(map[RelativePath]struct{}, len(options.PiExtensions))
+	var diagnostics []Diagnostic
+	for _, path := range options.PiExtensions {
+		if err := validateRelativePath(string(path)); err != nil {
+			diagnostics = append(diagnostics, Diagnostic{Code: diagnosticCodeInvalidModel, Severity: SeverityError, Message: fmt.Sprintf("asset %q Pi extension path: %v", identity, err)})
+			continue
+		}
+		if _, exists := seen[path]; exists {
+			diagnostics = append(diagnostics, Diagnostic{Code: diagnosticCodeInvalidModel, Severity: SeverityError, Message: fmt.Sprintf("asset %q Pi extension path %q is duplicated", identity, path)})
+		}
+		seen[path] = struct{}{}
+		if !strings.HasPrefix(string(path), "extensions/") || (!strings.HasSuffix(string(path), ".ts") && !strings.HasSuffix(string(path), ".js")) {
+			diagnostics = append(diagnostics, Diagnostic{Code: diagnosticCodeInvalidModel, Severity: SeverityError, Message: fmt.Sprintf("asset %q Pi extension path %q must be an extensions/*.ts or extensions/*.js file", identity, path)})
+		}
+	}
+	return diagnostics
+}
+
 func validateSkillsRepositorySourceConfig(config SkillsRepositorySourceConfig) []Diagnostic {
 	var diagnostics []Diagnostic
 	if err := validateIdentifier(string(config.Package), "package ID"); err != nil {
@@ -328,6 +353,7 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Base)...)
 	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Base, asset.CapabilityUses)...)
+	diagnostics = append(diagnostics, validateNativeResourceOptions(asset.Identity, asset.Kind, asset.Native)...)
 	if len(asset.Targets) > 0 {
 		targets := make(map[TargetID]struct{}, len(asset.Targets))
 		for _, target := range asset.Targets {
@@ -404,6 +430,7 @@ func validateNormalizedAsset(asset NormalizedAsset) []Diagnostic {
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Content)...)
 	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Content, asset.CapabilityUses)...)
+	diagnostics = append(diagnostics, validateNativeResourceOptions(asset.Identity, asset.Kind, asset.Native)...)
 	diagnostics = append(diagnostics, validateCapabilityUses(asset.Identity, asset.CapabilityUses)...)
 	return diagnostics
 }
@@ -512,6 +539,18 @@ func validateHookAsset(identity AssetID, kind AssetKind, hook *HookDescriptor, c
 	}
 	if !validHookFailurePolicy(hook.FailurePolicy) {
 		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q failure policy %q is invalid", identity, hook.FailurePolicy))
+	}
+	environment := make(map[string]struct{}, len(hook.Environment))
+	for _, name := range hook.Environment {
+		if !validHookEnvironmentName(name) {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q environment variable %q is invalid", identity, name))
+			continue
+		}
+		if _, exists := environment[name]; exists {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("hook %q environment variable %q is duplicated", identity, name))
+			continue
+		}
+		environment[name] = struct{}{}
 	}
 	if hook.Asynchronous {
 		if !hookEventAllowsAsync(hook.Event) {
@@ -862,4 +901,20 @@ func validHookToolCategory(category HookToolCategory) bool {
 
 func validHookFailurePolicy(policy HookFailurePolicy) bool {
 	return policy == HookFailurePolicyOpen || policy == HookFailurePolicyClosed
+}
+
+func validHookEnvironmentName(name string) bool {
+	if len(name) == 0 {
+		return false
+	}
+	for index, character := range name {
+		valid := character == '_' || (character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')
+		if index > 0 {
+			valid = valid || (character >= '0' && character <= '9')
+		}
+		if !valid {
+			return false
+		}
+	}
+	return true
 }

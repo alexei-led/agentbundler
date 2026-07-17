@@ -17,9 +17,16 @@ type Codec struct {
 	Capabilities    []model.CapabilityRule
 	Manifest        func(model.NormalizedPackage) ([]byte, error)
 	Agent           func(model.NormalizedAsset) ([]byte, string, error)
+	NativeResource  func(model.NormalizedAsset) ([]NativeResourceFile, error)
 	Hooks           func(HookRenderInput) (HookManifest, error)
 	Catalog         func(marketplace.Catalog) (CatalogManifest, error)
 	ValidatePackage func(model.NormalizedPackage) []model.Diagnostic
+}
+
+// NativeResourceFile is one package-relative native-resource output file.
+type NativeResourceFile struct {
+	Path    model.RelativePath
+	Content model.FileContent
 }
 
 // HookRenderInput is an immutable package hook view for target-owned serialization.
@@ -38,14 +45,20 @@ func (input HookRenderInput) Hooks() []HookInput {
 
 // HookInput is an immutable hook descriptor and payload view.
 type HookInput struct {
-	descriptor  model.HookDescriptor
-	payloadRoot model.RelativePath
-	payload     []HookPayloadFile
+	descriptor   model.HookDescriptor
+	capabilities []model.CapabilityUse
+	payloadRoot  model.RelativePath
+	payload      []HookPayloadFile
 }
 
 // Descriptor returns a detached copy of the portable hook descriptor.
 func (input HookInput) Descriptor() model.HookDescriptor {
 	return cloneHookDescriptor(input.descriptor)
+}
+
+// CapabilityUses returns the detached capability uses declared by this hook.
+func (input HookInput) CapabilityUses() []model.CapabilityUse {
+	return model.CloneCapabilityUses(input.capabilities)
 }
 
 // PayloadRoot returns the package-relative directory containing this hook's payload.
@@ -101,9 +114,10 @@ func cloneHookInputs(inputs []HookInput) []HookInput {
 	clones := make([]HookInput, len(inputs))
 	for index, input := range inputs {
 		clones[index] = HookInput{
-			descriptor:  cloneHookDescriptor(input.descriptor),
-			payloadRoot: input.payloadRoot,
-			payload:     cloneHookPayloadFiles(input.payload),
+			descriptor:   cloneHookDescriptor(input.descriptor),
+			capabilities: model.CloneCapabilityUses(input.capabilities),
+			payloadRoot:  input.payloadRoot,
+			payload:      cloneHookPayloadFiles(input.payload),
 		}
 	}
 	return clones

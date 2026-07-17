@@ -29,6 +29,7 @@ func DecodeHookDescriptorJSON(data []byte, identity AssetID, location SourceLoca
 		TimeoutMilliseconds *int               `json:"timeoutMilliseconds"`
 		Asynchronous        *bool              `json:"asynchronous"`
 		FailurePolicy       *HookFailurePolicy `json:"failurePolicy"`
+		Environment         []string           `json:"environment"`
 		Order               *int               `json:"order"`
 	}
 	if err := DecodeStrictJSONObject(data, &raw); err != nil {
@@ -61,6 +62,7 @@ func DecodeHookDescriptorJSON(data []byte, identity AssetID, location SourceLoca
 		TimeoutMilliseconds: *raw.TimeoutMilliseconds,
 		Asynchronous:        *raw.Asynchronous,
 		FailurePolicy:       *raw.FailurePolicy,
+		Environment:         append([]string(nil), raw.Environment...),
 		Order:               *raw.Order,
 	}, nil
 }

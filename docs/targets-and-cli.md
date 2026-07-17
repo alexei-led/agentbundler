@@ -27,11 +27,12 @@ Pi uses `.pi/skills`; Copilot uses `.github/skills`; Grok uses
 `.grok/{skills,resources}`; and Cursor keeps its project layout. The Grok
 package profile is distinct from `.grok/skills`.
 
-The Pi aggregate package contains exactly one extension registration. Its thin
-adapter imports a dependency-free TypeScript runtime embedded in `agbun`; the
-generated package needs neither Bun, TypeScript, npm dependencies, nor the
-`agbun` executable at load time. `pi-subagents` is required in package metadata
-only when generated agents are present.
+The Pi aggregate package contains one generated hook-adapter registration plus
+any declared native extension entries and the bundled subagent entry when agents
+are present. Its thin adapter imports a dependency-free TypeScript runtime
+embedded in `agbun`; the generated package needs neither Bun, TypeScript, npm
+dependencies, nor the `agbun` executable at load time. `pi-subagents` is
+bundled when generated agents are present.
 
 ## Portable hook cells
 
@@ -39,23 +40,23 @@ Support is semantic. Similar vendor event names are not enough. An unsupported
 cell fails before output is written; an advisory cell requires a source
 acknowledgment.
 
-| Cell             | Claude                     | Codex                           | Pi aggregate                      | Copilot CLI                | Cursor                          | Grok              |
-| ---------------- | -------------------------- | ------------------------------- | --------------------------------- | -------------------------- | ------------------------------- | ----------------- |
-| Command `exec`   | native                     | native                          | native                            | advisory: Bash form only   | advisory: quoted command string | native            |
-| Explicit `shell` | native                     | native                          | native                            | native                     | native                          | native            |
-| Tool matcher     | native categories          | Bash/MCP subset                 | native categories                 | native categories          | documented native-name subset   | native categories |
-| Async            | passive hooks              | unsupported                     | passive hooks                     | notification only          | unsupported                     | unsupported       |
-| Block            | unsupported                | unsupported                     | pre-tool                          | unsupported                | unsupported                     | unsupported       |
-| Rewrite input    | unsupported                | unsupported                     | pre-tool                          | unsupported                | unsupported                     | unsupported       |
-| Fail closed      | unsupported general policy | unsupported                     | runtime-enforced                  | unsupported general policy | pre-tool/prompt-submit only     | unsupported       |
-| Package agents   | native                     | unsupported; use project agents | equivalent through `pi-subagents` | native                     | native                          | native            |
+| Cell             | Claude              | Codex                           | Pi aggregate                      | Copilot CLI              | Cursor                          | Grok                |
+| ---------------- | ------------------- | ------------------------------- | --------------------------------- | ------------------------ | ------------------------------- | ------------------- |
+| Command `exec`   | native              | native                          | native                            | advisory: Bash form only | advisory: quoted command string | native              |
+| Explicit `shell` | native              | native                          | native                            | native                   | native                          | native              |
+| Tool matcher     | native categories   | Bash/MCP subset                 | native categories                 | native categories        | documented native-name subset   | native categories   |
+| Async            | passive hooks       | unsupported                     | passive hooks                     | notification only        | unsupported                     | unsupported         |
+| Block            | pre-tool translator | pre-tool translator             | pre-tool                          | pre-tool translator      | pre-tool translator             | pre-tool translator |
+| Rewrite input    | pre-tool translator | unsupported                     | pre-tool                          | pre-tool translator      | pre-tool translator             | unsupported         |
+| Fail closed      | advisory pre-tool   | advisory pre-tool               | runtime-enforced                  | advisory pre-tool        | pre-tool/prompt-submit only     | advisory pre-tool   |
+| Package agents   | native              | unsupported; use project agents | equivalent through `pi-subagents` | native                   | native                          | native              |
 
-Decision-bearing hooks need a canonical subprocess stdin/stdout protocol plus a
-target-owned translator for each vendor protocol. Only the generated Pi runtime
-currently supplies that boundary. Claude, Codex, Copilot, Cursor, and Grok may
-have native decision features, but Agent Bundler rejects portable block and
-rewrite capabilities for them rather than invoke an author payload with an
-incompatible vendor protocol.
+Decision-bearing hooks use a canonical subprocess stdin/stdout protocol and a
+target-owned translator. Claude, Copilot, Cursor, and Pi translate block and
+rewrite input. Codex and Grok translate block but reject rewrite input because
+their documented protocol has no lossless rewrite result. Advisory pre-tool
+fail-closed mappings require a source acknowledgment; no target claims a
+blanket failure-policy equivalence.
 
 Event subsets also differ. Codex does not provide the required portable
 `session-end`, `notification`, or `post-tool-failure` equivalents. Copilot has no
@@ -66,8 +67,10 @@ failure behavior are accepted. Target validators return exact per-hook
 diagnostics for narrower cases.
 
 HTTP, prompt-handler, agent-handler, and MCP-tool-handler hooks are not part of
-the initial portable command-hook contract. Target-native resources also remain
-explicit gaps. Hooks execute trusted package code; validation is not a sandbox.
+the initial portable command-hook contract. Pi-native extension trees are
+supported only with an explicit `piExtensions` resource declaration; other
+target-native resources remain explicit gaps. Hooks and extensions execute
+trusted package code; validation is not a sandbox.
 
 ## Build and check
 

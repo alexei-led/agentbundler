@@ -160,12 +160,20 @@ func TestRenderCursorPackageIncludesMarkdownAgent(t *testing.T) {
 	}
 }
 
-func TestRenderPiPackageRequiresSubagentsDependencyForAgents(t *testing.T) {
+func TestRenderPiPackageBundlesSubagentsWithoutSourceDependency(t *testing.T) {
 	pkg := packageFixture(model.TargetPi)
 	delete(pkg.Metadata, "dependencies")
-	_, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{pkg})
-	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-manifest" || !contains(diagnostics[0].Message, "pi-subagents") {
+	plan, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(plannedFiles(plan)["package.json"], &manifest); err != nil {
+		t.Fatal(err)
+	}
+	dependencies := manifest["dependencies"].(map[string]any)
+	if dependencies["pi-subagents"] != "0.34.0" {
+		t.Fatalf("Pi dependencies = %#v", dependencies)
 	}
 }
 
@@ -243,7 +251,8 @@ func TestRenderPiPackageRegistersSubagents(t *testing.T) {
 	if !ok || !reflect.DeepEqual(subagents["agents"], []any{"./agents"}) {
 		t.Fatalf("Pi subagent registration = %#v", pi)
 	}
-	if !reflect.DeepEqual(manifest["dependencies"], map[string]any{"pi-subagents": "0.34.0"}) {
+	dependencies, ok := manifest["dependencies"].(map[string]any)
+	if !ok || dependencies["pi-subagents"] != "0.34.0" || dependencies["@earendil-works/pi-tui"] != "0.74.0" || dependencies["jiti"] != "2.7.0" || dependencies["typebox"] != "1.1.24" {
 		t.Fatalf("Pi dependencies = %#v", manifest["dependencies"])
 	}
 }

@@ -61,7 +61,7 @@ func TestRunVersionDoesNotNeedManifest(t *testing.T) {
 }
 
 func TestRunHelpTopicsDoNotNeedManifest(t *testing.T) {
-	for _, topic := range []string{"build", "check", "targets", "version"} {
+	for _, topic := range []string{"build", "check", "package", "targets", "version"} {
 		t.Run(topic, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if status := run([]string{"help", topic}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
@@ -75,7 +75,7 @@ func TestRunHelpTopicsDoNotNeedManifest(t *testing.T) {
 }
 
 func TestRunCommandHelpDoesNotNeedManifest(t *testing.T) {
-	for _, command := range []string{"build", "check"} {
+	for _, command := range []string{"build", "check", "package"} {
 		t.Run(command, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			if status := run([]string{command, "--help"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
@@ -88,6 +88,9 @@ func TestRunCommandHelpDoesNotNeedManifest(t *testing.T) {
 			}
 			if command == "check" && !strings.Contains(stdout.String(), "--native") {
 				t.Errorf("check help missing --native: %q", stdout.String())
+			}
+			if command == "package" && !strings.Contains(stdout.String(), "--out DIR") {
+				t.Errorf("package help missing --out: %q", stdout.String())
 			}
 			if stderr.Len() != 0 {
 				t.Fatalf("help stderr=%q", stderr.String())
@@ -109,6 +112,27 @@ func TestRunRejectsUnknownCommandWithDiscoveryHint(t *testing.T) {
 	status := run([]string{"unknown"}, t.TempDir(), &stdout, &stderr, compiler.Compile)
 	if status != 1 || !strings.Contains(stderr.String(), "expected a command") || !strings.Contains(stderr.String(), `Run "agbun help"`) {
 		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunPackageArchivesCurrentTargetRootWithoutRebuilding(t *testing.T) {
+	root := t.TempDir()
+	writeCLIFile(t, root, "agentbundle.json", `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","distribution":{"name":"demo"},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`)
+	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := run([]string{"package", "--out", "release"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("package status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "demo-claude.tar.gz") || !strings.Contains(stdout.String(), "package: ok") || stderr.Len() != 0 {
+		t.Fatalf("package stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "release", "demo-claude.tar.gz")); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -9,6 +9,7 @@ func CloneHookDescriptor(descriptor HookDescriptor) HookDescriptor {
 	}
 	clone.Handler.Program = cloneStringPointer(descriptor.Handler.Program)
 	clone.Handler.ShellCommand = cloneStringPointer(descriptor.Handler.ShellCommand)
+	clone.Environment = append([]string(nil), descriptor.Environment...)
 	if descriptor.Handler.Arguments != nil {
 		clone.Handler.Arguments = make([]HookArgument, len(descriptor.Handler.Arguments))
 		for index, argument := range descriptor.Handler.Arguments {
@@ -19,6 +20,26 @@ func CloneHookDescriptor(descriptor HookDescriptor) HookDescriptor {
 		}
 	}
 	return clone
+}
+
+// CloneNativeResourceOptions returns a detached native resource configuration.
+func CloneNativeResourceOptions(options *NativeResourceOptions) *NativeResourceOptions {
+	if options == nil {
+		return nil
+	}
+	return &NativeResourceOptions{PiExtensions: append([]RelativePath(nil), options.PiExtensions...)}
+}
+
+// CloneCapabilityUses returns detached capability use values.
+func CloneCapabilityUses(uses []CapabilityUse) []CapabilityUse {
+	if uses == nil {
+		return nil
+	}
+	clones := make([]CapabilityUse, len(uses))
+	for index, use := range uses {
+		clones[index] = CapabilityUse{Key: use.Key, Location: CloneSourceLocation(use.Location)}
+	}
+	return clones
 }
 
 // CloneSourceLocations returns detached source location values.

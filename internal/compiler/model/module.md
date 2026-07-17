@@ -53,6 +53,7 @@ BodyMode = replace | sections
 SectionPatch = { headingPath: [String], body: String }
 BodyPatch = { mode: BodyMode, text: String?, sections: [SectionPatch] }
 FilePatch = { path: RelativePath, content: FileContent }
+NativeResourceOptions = { piExtensions: [RelativePath] }
 
 HookEvent = session-start | session-end | prompt-submit | pre-tool | post-tool | post-tool-failure | stop | notification | pre-compact | post-compact
 HookToolCategory = command | read | write | edit | search | web | task | mcp | other
@@ -70,6 +71,7 @@ HookDescriptor = {
   timeoutMilliseconds: Integer,
   asynchronous: Boolean,
   failurePolicy: HookFailurePolicy,
+  environment: [String],
   order: Integer
 }
 
@@ -89,7 +91,7 @@ SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targe
 SourceAsset = { identity: AssetID, kind: AssetKind, targets: [TargetID]?, base: AssetContent, hook: HookDescriptor?, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, hook: HookDescriptor?, capabilityUses: [CapabilityUse] }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, hook: HookDescriptor?, native: NativeResourceOptions?, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, profile: TargetProfile?, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
 TargetRenderInput = { packages: [NormalizedPackage], distribution: DistributionMetadata, packageMode: TargetPackageMode, aggregate: AggregatePackage? }
 
@@ -100,7 +102,7 @@ TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], na
 BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 
-The canonical hook JSON uses the exact field spellings `event`, `matcher.tools`, `handler.mode`, `handler.program`, `handler.arguments`, `literal`, `packageFile`, `handler.shellCommand`, `timeoutMilliseconds`, `asynchronous`, `failurePolicy`, and `order`. `identity` and `location` are importer-assigned and are not author JSON fields. Unknown and duplicate JSON fields fail.
+The canonical hook JSON uses the exact field spellings `event`, `matcher.tools`, `handler.mode`, `handler.program`, `handler.arguments`, `literal`, `packageFile`, `handler.shellCommand`, `timeoutMilliseconds`, `asynchronous`, `failurePolicy`, `environment`, and `order`. `environment` is an optional allowlist of environment variable names; the runtime still supplies only its safe baseline. `identity` and `location` are importer-assigned and are not author JSON fields. Unknown and duplicate JSON fields fail.
 
 ### Go API
 

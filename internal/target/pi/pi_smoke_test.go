@@ -50,6 +50,41 @@ func TestInstalledPiDiscoversAggregatePackageWithoutRealConfigChanges(t *testing
 	}
 }
 
+func TestInstalledPiLoadsBundledSubagentToolAndDiscoversGeneratedAgents(t *testing.T) {
+	pi := vendorsmoke.RequireExecutable(t, "pi")
+	node := vendorsmoke.RequireExecutable(t, "node")
+	loader, ok := installedPiLoader(pi)
+	if !ok {
+		t.Skip("vendor smoke unavailable: installed pi is not a Node package with the documented extension loader")
+	}
+	workspace, packageRoot := compilePiSmokeFixture(t)
+	isolatedRoot := t.TempDir()
+	environment := vendorsmoke.Environment(map[string]string{
+		"HOME": filepath.Join(isolatedRoot, "home"), "PI_CODING_AGENT_DIR": filepath.Join(isolatedRoot, "pi-agent"),
+		"XDG_CONFIG_HOME": filepath.Join(isolatedRoot, "config"), "XDG_CACHE_HOME": filepath.Join(isolatedRoot, "cache"),
+		"PI_OFFLINE": "1", "HTTP_PROXY": "http://127.0.0.1:9", "HTTPS_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
+	})
+	vendorsmoke.Run(t, vendorsmoke.Command{Name: "pi install -l", Path: pi, Args: []string{"install", packageRoot, "-l", "--approve"}, Dir: workspace, Env: environment, Timeout: 30 * time.Second})
+
+	hookExtension := filepath.Join(packageRoot, "extensions", "agentbundler-hooks.ts")
+	subagentExtension := filepath.Join(packageRoot, "node_modules", "pi-subagents", "src", "extension", "index.ts")
+	loadScript := `const {loadExtensions}=await import(process.argv[1]);const result=await loadExtensions(process.argv.slice(2),process.cwd());console.log(JSON.stringify({errors:result.errors.map(value=>String(value.error)),tools:result.extensions.flatMap(value=>[...value.tools.keys()]).sort()}));`
+	loaded := vendorsmoke.Run(t, vendorsmoke.Command{Name: "Pi bundled extension loader", Path: node, Args: []string{"--input-type=module", "--eval", loadScript, fileURL(loader), hookExtension, subagentExtension}, Dir: workspace, Env: environment, Timeout: 30 * time.Second})
+	if !strings.Contains(loaded, `"subagent"`) || !strings.Contains(loaded, `"wait"`) || !strings.Contains(loaded, `"errors":[]`) {
+		t.Fatalf("bundled extension load = %s", loaded)
+	}
+
+	discoveryScript := `const {createJiti}=await import(process.argv[1]);const jiti=createJiti(import.meta.url);const {discoverAgentsAll}=await jiti.import(process.argv[2]);console.log(JSON.stringify(discoverAgentsAll(process.cwd()).package.map(value=>value.name).sort()));`
+	jiti := fileURL(filepath.Join(packageRoot, "node_modules", "jiti", "lib", "jiti.mjs"))
+	agentsModule := filepath.Join(packageRoot, "node_modules", "pi-subagents", "src", "agents", "agents.ts")
+	discovered := vendorsmoke.Run(t, vendorsmoke.Command{Name: "Pi bundled agent discovery", Path: node, Args: []string{"--input-type=module", "--eval", discoveryScript, jiti, agentsModule}, Dir: workspace, Env: environment, Timeout: 30 * time.Second})
+	for _, name := range []string{"reviewer"} {
+		if !strings.Contains(discovered, name) {
+			t.Fatalf("generated agent %q was not discovered: %s", name, discovered)
+		}
+	}
+}
+
 func TestInstalledPiLoaderImportsGeneratedAdapterOnceAndReportsSchemaMismatch(t *testing.T) {
 	pi := vendorsmoke.RequireExecutable(t, "pi")
 	node := vendorsmoke.RequireExecutable(t, "node")

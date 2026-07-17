@@ -4,6 +4,7 @@ import { readFileSync, rmSync } from "node:fs";
 import {
   createPiHookRuntime,
   decodeConfig,
+  hookEnvironment,
   resolvePackageFile,
   runProcess,
   type HookConfigV1,
@@ -260,7 +261,7 @@ describe("decision translation and failure policy", () => {
 
     const closedPi = new FakePi();
     createPiHookRuntime(closedPi, config(hook("closed", "pre-tool", { failurePolicy: "closed" })), { packageRoot: "/tmp/package", runner: failing });
-    expect(await closedPi.emit("tool_call", { toolName: "bash", input: {} })).toEqual({ block: true, reason: "hook exited with code 7: boom" });
+    expect(await closedPi.emit("tool_call", { toolName: "bash", input: {} })).toEqual({ block: true, reason: "hook execution failed: hook exited with code 7: boom" });
 
     const errors: Error[] = [];
     const passivePi = new FakePi();
@@ -296,6 +297,24 @@ describe("process dispatch", () => {
       packageRoot: "/tmp", input: {}, timeoutMilliseconds: 2_000,
     });
     expect(JSON.parse(shell.stdout)).toEqual({ decision: "allow" });
+  });
+
+  test("preserves safe baseline and explicitly requested environment while excluding secrets", async () => {
+    const parent = {
+      PATH: "/safe/bin",
+      HOME: "/safe/home",
+      TMPDIR: "/safe/tmp",
+      LANG: "C.UTF-8",
+      CLAUDE_HOOK_CONFIG: "/safe/config.json",
+      AGENTBUNDLER_PI_HOOK_SECRET_SENTINEL: "must-not-reach-hook",
+    };
+    expect(hookEnvironment(["CLAUDE_HOOK_CONFIG"], parent)).toEqual({
+      PATH: "/safe/bin",
+      HOME: "/safe/home",
+      TMPDIR: "/safe/tmp",
+      LANG: "C.UTF-8",
+      CLAUDE_HOOK_CONFIG: "/safe/config.json",
+    });
   });
 
   test("does not inherit parent secrets while preserving command lookup", async () => {

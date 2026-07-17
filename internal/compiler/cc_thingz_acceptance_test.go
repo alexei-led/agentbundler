@@ -2,13 +2,76 @@ package compiler
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
+
+func TestCCThingzDistributionVersionOwnsEveryGeneratedManifestAndCatalog(t *testing.T) {
+	workspace := t.TempDir()
+	fixture := filepath.Join("..", "..", "testdata", "cc-thingz-hooks")
+	if err := os.CopyFS(workspace, os.DirFS(fixture)); err != nil {
+		t.Fatalf("copy cc-thingz acceptance fixture: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "agentbundle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, diagnostics := model.DecodeSourceManifestJSON(data)
+	if len(diagnostics) != 0 {
+		t.Fatalf("decode cc-thingz acceptance manifest: %#v", diagnostics)
+	}
+	manifest.Distribution["version"] = "7.2.1"
+	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("compile cc-thingz acceptance fixture: %#v", result.Diagnostics)
+	}
+	for _, target := range result.Plan.Targets {
+		for _, file := range target.Files {
+			if filepath.Ext(string(file.Path)) != ".json" || strings.HasPrefix(string(file.Path), "node_modules/") || strings.Contains(string(file.Path), "/node_modules/") {
+				continue
+			}
+			var document any
+			if err := json.Unmarshal(file.Bytes, &document); err != nil {
+				t.Fatalf("decode %s %q: %v", target.Target, file.Path, err)
+			}
+			for _, version := range stringVersionFields(document) {
+				if version != "7.2.1" {
+					t.Fatalf("%s %q version = %q, want distribution version", target.Target, file.Path, version)
+				}
+			}
+		}
+	}
+}
+
+func stringVersionFields(value any) []string {
+	var versions []string
+	var visit func(any)
+	visit = func(value any) {
+		switch value := value.(type) {
+		case map[string]any:
+			for key, child := range value {
+				if key == "version" {
+					if version, ok := child.(string); ok {
+						versions = append(versions, version)
+					}
+				}
+				visit(child)
+			}
+		case []any:
+			for _, child := range value {
+				visit(child)
+			}
+		}
+	}
+	visit(value)
+	return versions
+}
 
 func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testing.T) {
 	firstRoot, manifest, first := compileCCThingzFixture(t, nil, nil)

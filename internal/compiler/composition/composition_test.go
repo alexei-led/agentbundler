@@ -345,6 +345,23 @@ func TestComposeRejectsAmbiguousNativeGapAssetCollision(t *testing.T) {
 	}
 }
 
+func TestComposeIncludesDeclarativePiNativeResourceWithoutGapPolicy(t *testing.T) {
+	asset := model.SourceAsset{
+		Identity: "native-resource/extensions", Kind: model.AssetKindNativeResource, Targets: []model.TargetID{model.TargetPi},
+		Base:           model.AssetContent{Frontmatter: map[string]any{}, Files: map[model.RelativePath]model.FileContent{"extensions/custom.ts": {Bytes: []byte("export default {}")}}},
+		Native:         &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extensions/custom.ts"}},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.native-resource", Location: model.SourceLocation{Path: "plugins/pi/extensions/.agentbundler/asset.json"}}},
+	}
+	inventory := model.SourceInventory{Packages: []model.SourcePackage{{Identity: "bundle", Assets: []model.SourceAsset{asset}}}, NativeGaps: []model.NativeGap{{Component: "extensions", Asset: assetPointer(asset.Identity), Target: targetPointer(model.TargetPi), Location: model.SourceLocation{Path: "plugins/pi/extensions"}}}}
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetPi, Capabilities: []model.CapabilityRule{{Key: "asset.native-resource", State: model.CapabilityStateNative}}})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose() diagnostics = %#v", diagnostics)
+	}
+	if len(packages) != 1 || len(packages[0].Assets) != 1 || packages[0].Assets[0].Native == nil {
+		t.Fatalf("Compose() packages = %#v", packages)
+	}
+}
+
 func TestComposeNativeGapPolicies(t *testing.T) {
 	replacement := model.AssetID("skill/replacement")
 	self := model.AssetID("native-resource/tool")
@@ -457,6 +474,10 @@ func oneAssetInventory(body string, patch model.BodyPatch) model.SourceInventory
 			Overlays: []model.TargetOverlay{{Target: model.TargetPi, BodyPatch: &patch}},
 		}},
 	}}}
+}
+
+func targetPointer(value model.TargetID) *model.TargetID {
+	return &value
 }
 
 func assetPointer(value model.AssetID) *model.AssetID {

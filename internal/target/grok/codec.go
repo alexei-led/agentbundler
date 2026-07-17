@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/hookdecision"
 	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
@@ -24,7 +25,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateUnsupported},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.block", State: model.CapabilityStateNative},
 	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
 	{Key: "hook.event.notification", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
@@ -36,7 +37,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.event.session-end", State: model.CapabilityStateNative},
 	{Key: "hook.event.session-start", State: model.CapabilityStateNative},
 	{Key: "hook.event.stop", State: model.CapabilityStateNative},
-	{Key: "hook.failure.closed", State: model.CapabilityStateUnsupported},
+	{Key: "hook.failure.closed", State: model.CapabilityStateAdvisory},
 	{Key: "hook.matcher.tool-category", State: model.CapabilityStateNative},
 }
 
@@ -159,6 +160,10 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
+		if descriptor.Event == model.HookEventPreTool && (descriptor.FailurePolicy == model.HookFailurePolicyClosed || hookdecision.UsesDecisionCapability(hook.CapabilityUses())) {
+			handler.Command = hookdecision.WrapPOSIX(grokShellCommand(handler), hookdecision.ProtocolGrok, string(descriptor.Identity))
+			handler.Args = nil
+		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookGroup{Matcher: matcher, Hooks: []nativeHookHandler{handler}})
 	}
 	data, err := json.Marshal(manifest)
@@ -201,6 +206,25 @@ func grokCommand(descriptor model.HookDescriptor, hook packageoutput.HookInput) 
 		return nativeHookHandler{}, fmt.Errorf("hook %q handler mode %q is unsupported by Grok", descriptor.Identity, descriptor.Handler.Mode)
 	}
 	return handler, nil
+}
+
+func grokShellCommand(handler nativeHookHandler) string {
+	if handler.Args == nil {
+		return handler.Command
+	}
+	parts := []string{shellQuote(handler.Command)}
+	for _, argument := range *handler.Args {
+		if strings.HasPrefix(argument, grokPluginRoot+"/") {
+			parts = append(parts, `"`+grokPluginRoot+`"`+shellQuote(strings.TrimPrefix(argument, grokPluginRoot)))
+			continue
+		}
+		parts = append(parts, shellQuote(argument))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func packageFilePath(hook packageoutput.HookInput, path model.RelativePath) (model.RelativePath, bool) {
@@ -274,11 +298,11 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 		if _, ok := grokEvent(descriptor.Event); !ok {
 			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("event %q is unsupported by Grok", descriptor.Event))}
 		}
+		if descriptor.FailurePolicy == model.HookFailurePolicyClosed && descriptor.Event != model.HookEventPreTool {
+			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("hook.failure.closed is equivalent only for Grok pre-tool hooks, not %q", descriptor.Event))}
+		}
 		if descriptor.Asynchronous {
 			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("hook.async is unsupported for Grok event %q", descriptor.Event))}
-		}
-		if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
-			return []model.Diagnostic{hookDiagnostic(asset, "hook.failure.closed is unsupported because Grok hook timeouts, crashes, and malformed output fail open")}
 		}
 		if descriptor.Matcher != nil {
 			if _, err := grokMatcher(*descriptor); err != nil {

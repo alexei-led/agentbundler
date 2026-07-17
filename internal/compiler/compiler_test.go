@@ -178,6 +178,26 @@ func TestNativeChecksPrefixTargetRelativeWorkingDirectories(t *testing.T) {
 	}
 }
 
+func TestDistributionVersionOverridesAllGeneratedPackageAndAggregateVersions(t *testing.T) {
+	packages := []model.NormalizedPackage{
+		{Identity: "alpha", Metadata: model.PackageMetadata{"version": "1.0.0"}},
+		{Identity: "beta", Metadata: model.PackageMetadata{}},
+	}
+	policy := model.TargetComposition{Aggregate: &model.AggregatePackage{Identity: "all", Metadata: model.PackageMetadata{"version": "2.0.0"}}}
+	gotPolicy, gotPackages := applyDistributionVersion(model.DistributionMetadata{"version": "6.8.0"}, policy, packages)
+	for _, pkg := range gotPackages {
+		if pkg.Metadata["version"] != "6.8.0" {
+			t.Fatalf("package %q version = %#v", pkg.Identity, pkg.Metadata["version"])
+		}
+	}
+	if gotPolicy.Aggregate == nil || gotPolicy.Aggregate.Metadata["version"] != "6.8.0" {
+		t.Fatalf("aggregate = %#v", gotPolicy.Aggregate)
+	}
+	if packages[0].Metadata["version"] != "1.0.0" || policy.Aggregate.Metadata["version"] != "2.0.0" {
+		t.Fatal("version ownership mutated source input")
+	}
+}
+
 func TestTargetRenderInputUsesManifestDistributionAndExplicitPackageMode(t *testing.T) {
 	packages := []model.NormalizedPackage{
 		{Identity: "zeta", Target: model.TargetPi, Profile: model.TargetProfilePackage},

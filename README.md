@@ -36,7 +36,7 @@ canonical source + manifest
           │
           ├── Claude Code   .claude-plugin/ + hooks/ + skills/ + agents/
           ├── Codex         .codex-plugin/ + hooks/ + skills/
-          ├── Pi            package.json + one TypeScript hook extension
+          ├── Pi            package.json + typed hook runtime + declared TypeScript extensions
           ├── Copilot CLI   plugin.json + hooks.json + skills/ + agents/
           ├── Grok Build    Claude-compatible plugin + Grok hook roots
           └── Cursor        .cursor-plugin/ + hooks/ + skills/ + agents/
@@ -47,8 +47,8 @@ canonical source + manifest
 Package profiles produce **skills, agents, portable resources, command hooks,
 payload files, and deterministic catalogs** in each vendor's native layout.
 Claude, Codex, Copilot CLI, Cursor, and Grok use separate plugin roots. Pi can
-merge several logical packages into one explicit aggregate package with one
-registered TypeScript extension and one embedded, dependency-free hook runtime.
+merge several logical packages into one explicit aggregate package with its
+typed hook runtime and explicitly declared native TypeScript extensions.
 Project profiles remain available for their narrower target layouts.
 
 Hook portability is semantic, not name-based. An unsupported event, matcher,

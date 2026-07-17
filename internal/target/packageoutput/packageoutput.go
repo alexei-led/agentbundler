@@ -161,6 +161,20 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]output
 			return err
 		}
 		return addGenerated(files, paths, rootedPath(root, codec.AgentRoot+"/"+name+extension), data, nil, fmt.Sprintf("agent %q", asset.Identity))
+	case model.AssetKindNativeResource:
+		if codec.NativeResource == nil {
+			return fmt.Errorf("target %q does not support target-native resources in installable packages", codec.Target)
+		}
+		resources, err := codec.NativeResource(asset)
+		if err != nil {
+			return err
+		}
+		for _, resource := range resources {
+			if err := addContent(files, paths, rootedPath(root, string(resource.Path)), resource.Content, fmt.Sprintf("native resource %q payload %q", asset.Identity, resource.Path)); err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("asset kind %q is not supported in package output", asset.Kind)
 	}
@@ -211,7 +225,7 @@ func renderHookPayloads(files *[]model.PlannedFile, paths map[model.RelativePath
 		if previous, exists := hooksByIdentity[descriptor.Identity]; exists {
 			return nil, fmt.Errorf("hook ID %q is duplicated between %s and %s", descriptor.Identity, formatLocation(previous.descriptor.Location), formatLocation(descriptor.Location))
 		}
-		hooksByIdentity[descriptor.Identity] = HookInput{descriptor: descriptor, payloadRoot: payloadRoot, payload: payload}
+		hooksByIdentity[descriptor.Identity] = HookInput{descriptor: descriptor, capabilities: model.CloneCapabilityUses(asset.CapabilityUses), payloadRoot: payloadRoot, payload: payload}
 		descriptors = append(descriptors, descriptor)
 	}
 	model.SortHookDescriptors(descriptors)

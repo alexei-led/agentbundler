@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/hookdecision"
 	"github.com/alexei-led/agentbundler/internal/target/marketplace"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 )
@@ -24,8 +25,8 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.async", State: model.CapabilityStateNative},
 	{Key: "hook.command.exec", State: model.CapabilityStateNative},
 	{Key: "hook.command.shell", State: model.CapabilityStateNative},
-	{Key: "hook.decision.block", State: model.CapabilityStateUnsupported},
-	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateUnsupported},
+	{Key: "hook.decision.block", State: model.CapabilityStateNative},
+	{Key: "hook.decision.rewrite-input", State: model.CapabilityStateNative},
 	{Key: "hook.event.notification", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-compact", State: model.CapabilityStateNative},
 	{Key: "hook.event.post-tool", State: model.CapabilityStateNative},
@@ -36,7 +37,7 @@ var capabilityRules = []model.CapabilityRule{
 	{Key: "hook.event.session-end", State: model.CapabilityStateNative},
 	{Key: "hook.event.session-start", State: model.CapabilityStateNative},
 	{Key: "hook.event.stop", State: model.CapabilityStateNative},
-	{Key: "hook.failure.closed", State: model.CapabilityStateUnsupported},
+	{Key: "hook.failure.closed", State: model.CapabilityStateAdvisory},
 	{Key: "hook.matcher.tool-category", State: model.CapabilityStateNative},
 }
 
@@ -160,6 +161,10 @@ func hookManifest(input packageoutput.HookRenderInput) (packageoutput.HookManife
 		if err != nil {
 			return packageoutput.HookManifest{}, err
 		}
+		if descriptor.Event == model.HookEventPreTool && (descriptor.FailurePolicy == model.HookFailurePolicyClosed || hookdecision.UsesDecisionCapability(hook.CapabilityUses())) {
+			handler.Command = hookdecision.WrapPOSIX(claudeShellCommand(handler), hookdecision.ProtocolClaude, string(descriptor.Identity))
+			handler.Args = nil
+		}
 		manifest.Hooks[event] = append(manifest.Hooks[event], nativeHookGroup{
 			Matcher: matcher,
 			Hooks:   []nativeHookHandler{handler},
@@ -209,6 +214,25 @@ func claudeCommand(descriptor model.HookDescriptor, hook packageoutput.HookInput
 		return nativeHookHandler{}, fmt.Errorf("hook %q handler mode %q is unsupported by Claude", descriptor.Identity, descriptor.Handler.Mode)
 	}
 	return handler, nil
+}
+
+func claudeShellCommand(handler nativeHookHandler) string {
+	if handler.Args == nil {
+		return handler.Command
+	}
+	parts := []string{shellQuote(handler.Command)}
+	for _, argument := range *handler.Args {
+		if strings.HasPrefix(argument, claudePluginRoot+"/") {
+			parts = append(parts, `"`+claudePluginRoot+`"`+shellQuote(strings.TrimPrefix(argument, claudePluginRoot)))
+			continue
+		}
+		parts = append(parts, shellQuote(argument))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 func packageFilePath(hook packageoutput.HookInput, path model.RelativePath) (model.RelativePath, bool) {
@@ -280,8 +304,8 @@ func validatePackage(pkg model.NormalizedPackage) []model.Diagnostic {
 			continue
 		}
 		descriptor := asset.Hook
-		if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
-			return []model.Diagnostic{hookDiagnostic(asset, "hook.failure.closed is unsupported because Claude command failures do not preserve portable fail-closed behavior")}
+		if descriptor.FailurePolicy == model.HookFailurePolicyClosed && descriptor.Event != model.HookEventPreTool {
+			return []model.Diagnostic{hookDiagnostic(asset, fmt.Sprintf("hook.failure.closed is equivalent only for Claude pre-tool hooks, not %q", descriptor.Event))}
 		}
 		if descriptor.Matcher != nil {
 			if _, err := claudeMatcher(*descriptor); err != nil {

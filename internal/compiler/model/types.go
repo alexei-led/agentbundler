@@ -212,6 +212,7 @@ type HookDescriptor struct {
 	TimeoutMilliseconds int               `json:"timeoutMilliseconds"`
 	Asynchronous        bool              `json:"asynchronous"`
 	FailurePolicy       HookFailurePolicy `json:"failurePolicy"`
+	Environment         []string          `json:"environment,omitempty"`
 	Order               int               `json:"order"`
 }
 
@@ -223,6 +224,12 @@ type TargetOverlay struct {
 	Files            []FilePatch      `json:"files"`
 	DeletedFiles     []RelativePath   `json:"deletedFiles"`
 	Acknowledgments  []Acknowledgment `json:"acknowledgments"`
+}
+
+// NativeResourceOptions declares target-native resource behavior that cannot be
+// inferred from the copied file tree. Pi extension paths are package-relative.
+type NativeResourceOptions struct {
+	PiExtensions []RelativePath `json:"piExtensions,omitempty"`
 }
 
 // NativeGap identifies a source component with target-native behavior.
@@ -326,13 +333,14 @@ type SourceManifest struct {
 
 // SourceAsset is an uncomposed source asset.
 type SourceAsset struct {
-	Identity       AssetID         `json:"identity"`
-	Kind           AssetKind       `json:"kind"`
-	Targets        []TargetID      `json:"targets,omitempty"`
-	Base           AssetContent    `json:"base"`
-	Hook           *HookDescriptor `json:"hook,omitempty"`
-	CapabilityUses []CapabilityUse `json:"capabilityUses"`
-	Overlays       []TargetOverlay `json:"overlays"`
+	Identity       AssetID                `json:"identity"`
+	Kind           AssetKind              `json:"kind"`
+	Targets        []TargetID             `json:"targets,omitempty"`
+	Base           AssetContent           `json:"base"`
+	Hook           *HookDescriptor        `json:"hook,omitempty"`
+	Native         *NativeResourceOptions `json:"native,omitempty"`
+	CapabilityUses []CapabilityUse        `json:"capabilityUses"`
+	Overlays       []TargetOverlay        `json:"overlays"`
 }
 
 // SourcePackage is an uncomposed source package.
@@ -351,11 +359,12 @@ type SourceInventory struct {
 
 // NormalizedAsset is a composed target-neutral asset.
 type NormalizedAsset struct {
-	Identity       AssetID         `json:"identity"`
-	Kind           AssetKind       `json:"kind"`
-	Content        AssetContent    `json:"content"`
-	Hook           *HookDescriptor `json:"hook,omitempty"`
-	CapabilityUses []CapabilityUse `json:"capabilityUses"`
+	Identity       AssetID                `json:"identity"`
+	Kind           AssetKind              `json:"kind"`
+	Content        AssetContent           `json:"content"`
+	Hook           *HookDescriptor        `json:"hook,omitempty"`
+	Native         *NativeResourceOptions `json:"native,omitempty"`
+	CapabilityUses []CapabilityUse        `json:"capabilityUses"`
 }
 
 // NormalizedPackage is a target-specific composed package.

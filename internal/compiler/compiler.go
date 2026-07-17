@@ -94,6 +94,7 @@ func Compile(request CompileRequest) CompilationResult {
 		if hasErrors(composeDiagnostics) {
 			continue
 		}
+		policy, packages = applyDistributionVersion(request.Manifest.Distribution, policy, packages)
 		renderInput := targetRenderInput(request.Manifest, policy, packages)
 		targetPlan, renderDiagnostics := target.Render(adapter, renderInput)
 		result.Diagnostics = append(result.Diagnostics, renderDiagnostics...)
@@ -222,6 +223,34 @@ func selectPackages(inventory model.SourceInventory, requested []model.PackageID
 		}
 	}
 	return filtered
+}
+
+func applyDistributionVersion(distribution model.DistributionMetadata, policy model.TargetComposition, packages []model.NormalizedPackage) (model.TargetComposition, []model.NormalizedPackage) {
+	version, ok := distribution["version"].(string)
+	if !ok || version == "" {
+		return policy, packages
+	}
+	packages = append([]model.NormalizedPackage(nil), packages...)
+	for index := range packages {
+		metadata := cloneMetadata(packages[index].Metadata)
+		metadata["version"] = version
+		packages[index].Metadata = metadata
+	}
+	if policy.Aggregate != nil {
+		aggregate := *policy.Aggregate
+		aggregate.Metadata = cloneMetadata(aggregate.Metadata)
+		aggregate.Metadata["version"] = version
+		policy.Aggregate = &aggregate
+	}
+	return policy, packages
+}
+
+func cloneMetadata(input model.PackageMetadata) model.PackageMetadata {
+	clone := make(model.PackageMetadata, len(input)+1)
+	for key, value := range input {
+		clone[key] = value
+	}
+	return clone
 }
 
 func targetRenderInput(manifest model.SourceManifest, policy model.TargetComposition, packages []model.NormalizedPackage) model.TargetRenderInput {

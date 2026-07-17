@@ -10,7 +10,7 @@ This module renders Pi package-profile output and owns the one approved embedded
 
 ## Functional Responsibilities
 
-- Render one explicit aggregate Pi package with package metadata, skills, agents, and dependencies.
+- Render one explicit aggregate Pi package with package metadata, skills, agents, dependencies, and declared native extension trees.
 - Own, test, embed, and copy a dependency-free TypeScript hook runtime.
 - Emit one versioned hook descriptor and one thin package adapter registered once in `package.json#pi.extensions`.
 - Map portable hook events, matchers, decisions, timeouts, cancellation, ordering, and failure policy to the Pi extension API.
@@ -47,7 +47,7 @@ hooks/hooks.v1.json
 <hook payload files>
 ```
 
-`package.json#pi.extensions` contains exactly the thin adapter path. Runtime helper modules are imported by that adapter, not independently registered. The adapter may preserve existing `pi.subagents` metadata where required by the supported agent form.
+`package.json#pi.extensions` contains the generated thin adapter, bundled subagent adapter when agents exist, and explicit entries from native-resource `piExtensions`. A declared entry must name a copied `extensions/*.ts` or `extensions/*.js` file; entries are never inferred. Runtime helper modules are imported by the thin adapter, not independently registered. The adapter may preserve existing `pi.subagents` metadata where required by the supported agent form.
 
 Portable mappings use Pi extension events including `session_start`, idempotent `session_shutdown`, `input`/`before_agent_start`, `tool_call`, `tool_result`, `turn_end`/`agent_end`, and compaction events. `tool_call` preflight is sequential even when sibling tools later execute concurrently. Input rewrite mutates `event.input` only after runtime validation because Pi does not revalidate it.
 
@@ -73,7 +73,7 @@ Aggregation merges dependency maps only when equal values agree. Duplicate depen
 ## Constraints and Invariants
 
 - Aggregate identity/metadata are explicit; separate mode does not silently become aggregate mode.
-- Exactly one extension entry, descriptor, and runtime copy exist in one aggregate artifact.
+- Exactly one generated hook-adapter entry, descriptor, and runtime copy exist in one aggregate artifact; explicit native extension entries are deterministic, validated, and collision-checked.
 - Generated output does not scan Pi install directories or require a global runner singleton.
 - Generated output does not require Bun, TypeScript, `agbun`, network access, or a separately installed Agent Bundler runtime.
 - Embedded runtime bytes are deterministic compiler inputs. Installed Pi versions, absolute source paths, time, environment, and network are not.
@@ -82,6 +82,6 @@ Aggregation merges dependency maps only when equal values agree. Duplicate depen
 ## Test Specification
 
 - Aggregate identity, metadata, dependencies, skills, agents, hooks, and paths merge deterministically or fail with complete collision evidence.
-- Package JSON registers exactly one thin adapter and its bytes import the one embedded runtime.
+- Package JSON registers the thin adapter plus deterministic declared native extension entries; thin-adapter bytes import the one embedded runtime.
 - Cross-language fixtures keep Go descriptor serialization and TypeScript schema-v1 decoding aligned.
 - Runtime tests cover every supported event, blocking, rewrite validation, order, fail policy, path containment, environment filtering, broken stdin pipes, timeout, cancellation, output bounds, and idempotent shutdown with no active child process.

@@ -111,16 +111,40 @@ Package file:
 
 Bundle package assets use exact forms such as `src/skills/<name>`,
 `src/agents/<name>.md`, `src/resources/<name>`, `src/hooks/<name>`, and
-`src/plugins/<target>/<file>`. The `src/` prefix is optional. Asset target
-lists are exact allow-lists. Portable resource directories render under
-`resources/` in package profiles; target-native resources remain explicit gaps.
-The old exact `src/hooks/<name>.json` form remains compatible only for a
-payload-free descriptor.
+`src/plugins/<target>/<file-or-directory>`. The `src/` prefix is optional.
+Asset target lists are exact allow-lists. Portable resource directories render
+under `resources/` in package profiles. Pi-native extension trees require an
+explicit `piExtensions` declaration; other target-native resources remain
+explicit gaps. The old exact `src/hooks/<name>.json` form remains compatible
+only for a payload-free descriptor.
 
 Pi package metadata may include a `dependencies` object with package-name keys
 and non-empty string versions. **Agent Bundler** writes it only to Pi
 `package.json`; use it to ship runtime package prerequisites such as
 `pi-subagents` alongside generated subagents.
+
+### Declarative Pi-native extension
+
+```text
+src/plugins/pi/team-tools/
+├── .agentbundler/asset.json
+└── extensions/
+    ├── team-tools.ts
+    └── shared.ts
+```
+
+```json
+{
+  "capabilities": ["asset.native-resource"],
+  "piExtensions": ["extensions/team-tools.ts"]
+}
+```
+
+List the directory as an asset in a Pi-eligible package. Every registered entry
+must be a contained `extensions/*.ts` or `extensions/*.js` file. Agent Bundler
+copies the complete tree so relative imports remain valid, then registers only
+listed entries in `package.json#pi.extensions`. It does not infer entrypoints,
+install dependencies, or register unlisted files.
 
 ### Canonical command hook
 

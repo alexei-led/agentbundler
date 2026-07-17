@@ -59,7 +59,7 @@ func TestCompilePiAggregateHooksEndToEndIsDeterministicAndCheckIsReadOnly(t *tes
 	if err := json.Unmarshal(manifestFile.Bytes, &packageManifest); err != nil {
 		t.Fatal(err)
 	}
-	if packageManifest.Name != "pi-hook-suite" || !reflect.DeepEqual(packageManifest.Pi.Extensions, []string{"./extensions/agentbundler-hooks.ts"}) || !reflect.DeepEqual(packageManifest.Pi.Skills, []string{"./skills"}) || !reflect.DeepEqual(packageManifest.Pi.Subagents.Agents, []string{"./agents"}) {
+	if packageManifest.Name != "pi-hook-suite" || !reflect.DeepEqual(packageManifest.Pi.Extensions, []string{"./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}) || !reflect.DeepEqual(packageManifest.Pi.Skills, []string{"./skills"}) || !reflect.DeepEqual(packageManifest.Pi.Subagents.Agents, []string{"./agents"}) {
 		t.Fatalf("generated package.json = %s", manifestFile.Bytes)
 	}
 

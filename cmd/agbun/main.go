@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/alexei-led/agentbundler/internal/artifact/archive"
 	"github.com/alexei-led/agentbundler/internal/buildinfo"
 	"github.com/alexei-led/agentbundler/internal/compiler"
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -23,6 +24,8 @@ type options struct {
 	packages   []model.PackageID
 	jsonOutput bool
 	native     bool
+	archiveOut string
+	archives   []string
 }
 
 type jsonResult struct {
@@ -31,6 +34,7 @@ type jsonResult struct {
 	Diagnostics              []jsonDiagnostic `json:"diagnostics"`
 	Drift                    bool             `json:"drift"`
 	NativeVerificationFailed bool             `json:"nativeVerificationFailed"`
+	Archives                 []string         `json:"archives,omitempty"`
 }
 
 type jsonDiagnostic struct {
@@ -78,20 +82,41 @@ func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Wri
 	if len(diagnostics) != 0 {
 		return renderFailure(parsed, stderr, stdout, diagnostics...)
 	}
+	mode := compiler.BuildMode(parsed.command)
+	if parsed.command == "package" {
+		mode = compiler.BuildModeCheck
+	}
 	result := compile(compiler.CompileRequest{
 		WorkspaceRoot: manifestDirectory,
 		Manifest:      manifest,
 		Targets:       parsed.targets,
 		Packages:      parsed.packages,
-		Mode:          compiler.BuildMode(parsed.command),
+		Mode:          mode,
 		NativeVerify:  parsed.native,
 	})
+	if parsed.command == "package" && !hasError(result.Diagnostics) && !result.Drift && !result.NativeVerificationFailed {
+		output := parsed.archiveOut
+		if !filepath.IsAbs(output) {
+			output = filepath.Join(manifestDirectory, output)
+		}
+		paths, err := archive.WriteTargetRoots(manifestDirectory, manifest, result.Plan, filepath.Clean(output))
+		if err != nil {
+			result.Diagnostics = append(result.Diagnostics, model.Diagnostic{Code: "archive-write-failed", Severity: model.SeverityError, Message: err.Error()})
+		} else {
+			parsed.archives = paths
+			if !parsed.jsonOutput {
+				for _, path := range paths {
+					_, _ = fmt.Fprintf(stdout, "archive: %s\n", path)
+				}
+			}
+		}
+	}
 	return renderResult(parsed, stdout, stderr, result)
 }
 
 func parseArgs(args []string) (options, error) {
-	if len(args) == 0 || (args[0] != "build" && args[0] != "check") {
-		return options{}, errors.New("expected a command: build or check")
+	if len(args) == 0 || (args[0] != "build" && args[0] != "check" && args[0] != "package") {
+		return options{}, errors.New("expected a command: build, check, or package")
 	}
 	result := options{command: args[0]}
 	seenRoot := false
@@ -112,13 +137,21 @@ func parseArgs(args []string) (options, error) {
 				return options{}, errors.New("--native may not be repeated")
 			}
 			result.native = true
-		case "--root", "--target", "--package":
+		case "--root", "--target", "--package", "--out":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
 				return options{}, fmt.Errorf("%s requires a value", args[i])
 			}
 			value := args[i+1]
 			i++
 			switch args[i-1] {
+			case "--out":
+				if result.command != "package" {
+					return options{}, errors.New("--out is valid only for package")
+				}
+				if result.archiveOut != "" {
+					return options{}, errors.New("--out may not be repeated")
+				}
+				result.archiveOut = value
 			case "--root":
 				if seenRoot {
 					return options{}, errors.New("--root may not be repeated")
@@ -141,6 +174,9 @@ func parseArgs(args []string) (options, error) {
 		default:
 			return options{}, fmt.Errorf("unknown flag or positional argument %q", args[i])
 		}
+	}
+	if result.command == "package" && result.archiveOut == "" {
+		return options{}, errors.New("package requires --out <directory>")
 	}
 	return result, nil
 }
@@ -190,7 +226,7 @@ func renderFailure(parsed options, stderr, stdout io.Writer, diagnostics ...mode
 
 func renderResult(parsed options, stdout, stderr io.Writer, result compiler.CompilationResult) int {
 	if parsed.jsonOutput {
-		output := jsonResult{Version: 1, Command: parsed.command, Diagnostics: make([]jsonDiagnostic, len(result.Diagnostics)), Drift: result.Drift, NativeVerificationFailed: result.NativeVerificationFailed}
+		output := jsonResult{Version: 1, Command: parsed.command, Diagnostics: make([]jsonDiagnostic, len(result.Diagnostics)), Drift: result.Drift, NativeVerificationFailed: result.NativeVerificationFailed, Archives: parsed.archives}
 		for i, diagnostic := range result.Diagnostics {
 			output.Diagnostics[i] = jsonDiagnostic{
 				Code: diagnostic.Code, Severity: diagnostic.Severity,
@@ -208,10 +244,13 @@ func renderResult(parsed options, stdout, stderr io.Writer, result compiler.Comp
 			_, _ = fmt.Fprintln(stderr, formatDiagnostic(diagnostic))
 		}
 		if !hasError(result.Diagnostics) && !result.Drift && !result.NativeVerificationFailed {
-			if parsed.command == "build" {
+			switch parsed.command {
+			case "build":
 				_, _ = fmt.Fprintln(stdout, "build: ok")
-			} else {
+			case "check":
 				_, _ = fmt.Fprintln(stdout, "check: current")
+			case "package":
+				_, _ = fmt.Fprintln(stdout, "package: ok")
 			}
 		}
 	}
@@ -280,6 +319,8 @@ func helpText(args []string) (string, bool, error) {
 			return buildHelp(), true, nil
 		case "check":
 			return checkHelp(), true, nil
+		case "package":
+			return packageHelp(), true, nil
 		case "targets":
 			return targetsHelp(), true, nil
 		case "version":
@@ -294,6 +335,8 @@ func helpText(args []string) (string, bool, error) {
 			return buildHelp(), true, nil
 		case "check":
 			return checkHelp(), true, nil
+		case "package":
+			return packageHelp(), true, nil
 		case "version":
 			return versionHelp(), true, nil
 		}
@@ -310,12 +353,14 @@ Usage:
 Start here:
   agbun check             Check whether generated output is current.
   agbun build             Regenerate the configured output directory.
+  agbun package --out DIR Archive current target roots for release.
   agbun help build        Explore build options and safety notes.
 
 Commands:
   build                   Compile and replace the configured output directory.
   check                   Compare the build plan with output without writing.
-  help [topic]            Show help: build, check, targets, or version.
+  package                 Archive current target roots without rewriting output.
+  help [topic]            Show help: build, check, package, targets, or version.
   version                 Print the installed Agent Bundler version.
 
 Global options:
@@ -376,6 +421,31 @@ Examples:
   agbun build
   agbun build --root ./plugin --target pi
   agbun build --target codex --package team-skills --json
+`
+}
+
+func packageHelp() string {
+	return `Usage:
+  agbun package --out DIR [options]
+
+Verify that generated output is current, then create deterministic target-root release archives.
+The archive root is the native target package/marketplace root. This command never rebuilds output.
+
+Options:
+  --out DIR        Write release archives to DIR. Required.
+  --root DIR       Read agentbundle.json from DIR instead of searching the current directory and its parents.
+  --target TARGET  Package one declared target. Repeat for multiple targets.
+  --package ID     Package one imported package. Repeat for multiple packages.
+  --json           Write one machine-readable result object to stdout.
+  -h, --help       Show this help.
+
+Archive names:
+  <distribution.name>-claude.tar.gz
+  <distribution.name>-pi.tgz
+  <distribution.name>-codex.tar.gz
+  <distribution.name>-cursor.tar.gz
+  <distribution.name>-grok.tar.gz
+  <distribution.name>-copilot.tar.gz
 `
 }
 
