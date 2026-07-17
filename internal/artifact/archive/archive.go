@@ -82,13 +82,13 @@ func writeTarGzip(destination, root string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	gzipWriter, err := gzip.NewWriterLevel(file, gzip.BestCompression)
 	if err != nil {
 		return err
 	}
-	gzipWriter.Header.ModTime = time.Unix(0, 0)
-	gzipWriter.Header.OS = 255
+	gzipWriter.ModTime = time.Unix(0, 0)
+	gzipWriter.OS = 255
 	tarWriter := tar.NewWriter(gzipWriter)
 	for _, path := range files {
 		info, statErr := os.Stat(path)

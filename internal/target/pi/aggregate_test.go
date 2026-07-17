@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 
@@ -385,15 +384,6 @@ func aggregateFixture() model.TargetRenderInput {
 			},
 		},
 	}
-}
-
-func aggregatePaths(plan model.TargetPlan) []model.RelativePath {
-	paths := make([]model.RelativePath, len(plan.Files))
-	for index, file := range plan.Files {
-		paths[index] = file.Path
-	}
-	sort.Slice(paths, func(left, right int) bool { return paths[left] < paths[right] })
-	return paths
 }
 
 func aggregateFile(t *testing.T, plan model.TargetPlan, path model.RelativePath) model.PlannedFile {

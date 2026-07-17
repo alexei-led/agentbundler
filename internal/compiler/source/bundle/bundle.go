@@ -240,9 +240,10 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 
 	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath]model.FileContent)}
 	metadataDir := assetDir
-	if kind == model.AssetKindResource {
+	switch kind {
+	case model.AssetKindResource:
 		i.readSupportFiles(assetDir, &content)
-	} else if kind == model.AssetKindNativeResource {
+	case model.AssetKindNativeResource:
 		mainPath := model.RelativePath(mainFile)
 		info, err := i.lstat(filepath.Join(i.root, filepath.FromSlash(mainFile)))
 		if err != nil {
@@ -267,7 +268,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 				Origin:     []model.SourceLocation{{Path: mainPath}},
 			}
 		}
-	} else {
+	default:
 		mainPath := model.RelativePath(mainFile)
 		data, ok := i.readRegular(mainPath)
 		if !ok {

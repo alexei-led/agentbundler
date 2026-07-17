@@ -53,7 +53,7 @@ func piSubagentRuntimeFiles() ([]runtimeFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer compressed.Close()
+	defer func() { _ = compressed.Close() }()
 	reader := tar.NewReader(compressed)
 	var files []runtimeFile
 	for {
@@ -67,7 +67,7 @@ func piSubagentRuntimeFiles() ([]runtimeFile, error) {
 		if header.Typeflag == tar.TypeDir || strings.HasPrefix(header.Name, "node_modules/.bin/") || header.Name == "node_modules/.package-lock.json" {
 			continue
 		}
-		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
+		if header.Typeflag != tar.TypeReg {
 			return nil, fmt.Errorf("vendored Pi runtime contains unsupported entry %q", header.Name)
 		}
 		name := filepath.ToSlash(filepath.Clean(header.Name))

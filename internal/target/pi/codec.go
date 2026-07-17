@@ -112,18 +112,18 @@ func subagent(asset model.NormalizedAsset) ([]byte, string, error) {
 
 func nativeResource(asset model.NormalizedAsset) ([]packageoutput.NativeResourceFile, error) {
 	if asset.Native == nil || len(asset.Native.PiExtensions) == 0 {
-		return nil, fmt.Errorf("Pi native resource %q must declare one or more piExtensions", asset.Identity)
+		return nil, fmt.Errorf("pi native resource %q must declare one or more piExtensions", asset.Identity)
 	}
 	resources := make([]packageoutput.NativeResourceFile, 0, len(asset.Content.Files))
 	for _, path := range sortedNativeResourcePaths(asset.Content.Files) {
 		resources = append(resources, packageoutput.NativeResourceFile{Path: path, Content: asset.Content.Files[path]})
 	}
 	if len(resources) == 0 {
-		return nil, fmt.Errorf("Pi native resource %q has no files", asset.Identity)
+		return nil, fmt.Errorf("pi native resource %q has no files", asset.Identity)
 	}
 	for _, extension := range asset.Native.PiExtensions {
 		if _, exists := asset.Content.Files[extension]; !exists {
-			return nil, fmt.Errorf("Pi native resource %q extension %q does not name a resource file", asset.Identity, extension)
+			return nil, fmt.Errorf("pi native resource %q extension %q does not name a resource file", asset.Identity, extension)
 		}
 	}
 	return resources, nil
@@ -221,15 +221,15 @@ func piNativeExtensions(pkg model.NormalizedPackage) ([]string, error) {
 			continue
 		}
 		if asset.Native == nil || len(asset.Native.PiExtensions) == 0 {
-			return nil, fmt.Errorf("Pi native resource %q must declare one or more piExtensions", asset.Identity)
+			return nil, fmt.Errorf("pi native resource %q must declare one or more piExtensions", asset.Identity)
 		}
 		for _, path := range asset.Native.PiExtensions {
 			if _, exists := asset.Content.Files[path]; !exists {
-				return nil, fmt.Errorf("Pi native resource %q extension %q does not name a resource file", asset.Identity, path)
+				return nil, fmt.Errorf("pi native resource %q extension %q does not name a resource file", asset.Identity, path)
 			}
 			value := "./" + string(path)
 			if _, exists := seen[value]; exists {
-				return nil, fmt.Errorf("Pi native extension %q is declared more than once", path)
+				return nil, fmt.Errorf("pi native extension %q is declared more than once", path)
 			}
 			seen[value] = struct{}{}
 			extensions = append(extensions, value)
