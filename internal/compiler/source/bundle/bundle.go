@@ -255,7 +255,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 			return model.SourceAsset{}, nil, false
 		}
 		if info.IsDir() {
-			i.readSupportFiles(assetDir, &content)
+			i.readNativeResourceFiles(assetDir, &content)
 		} else {
 			metadataDir = filepath.ToSlash(filepath.Dir(string(assetPath)))
 			data, ok := i.readRegular(mainPath)
@@ -376,6 +376,55 @@ func classifyAsset(assetPath string) (model.AssetKind, string, string, string, b
 		return model.AssetKindNativeResource, parts[2], assetPath, assetPath, false, false, nil
 	default:
 		return "", "", "", "", false, false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
+	}
+}
+
+func (i *inspector) readNativeResourceFiles(assetDir string, content *model.AssetContent) {
+	root := filepath.Join(i.root, filepath.FromSlash(assetDir))
+	err := i.walkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, fullPath)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".agentbundler" {
+			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+				return fmt.Errorf("sidecar path must be a non-symlink directory")
+			}
+			return filepath.SkipDir
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("native resource path %q is a symlink", rel)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect native resource path %q: %w", rel, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("native resource path %q is not a regular file", rel)
+		}
+		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, rel)))
+		data, ok := i.readRegular(path)
+		if ok {
+			content.Files[model.RelativePath(rel)] = model.FileContent{
+				Bytes:      data,
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: path}},
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		i.addDiagnostic(model.RelativePath(assetDir), "%v", err)
 	}
 }
 

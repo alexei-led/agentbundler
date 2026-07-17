@@ -123,7 +123,9 @@ func TestInspectBundleImportsExplicitAntigravityNativeResourceTree(t *testing.T)
 	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
 	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/rules/conductor.md", "# Conductor rule\n")
 	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/mcp_config.json", "{}\n")
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/node_modules/hook-helper/index.js", "module.exports = {};\n")
 	writeFixtureMode(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/scripts/check.sh", "#!/bin/sh\n", 0o755)
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/scripts/check.sh.bak", "backup\n")
 	manifest := bundleManifest("packages/base.json")
 	manifest.Targets = []model.TargetID{model.TargetAntigravity}
 
@@ -147,6 +149,14 @@ func TestInspectBundleImportsExplicitAntigravityNativeResourceTree(t *testing.T)
 	if got := asset.Base.Files["scripts/check.sh"]; string(got.Bytes) != "#!/bin/sh\n" || (runtime.GOOS != "windows" && !got.Executable) || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "src/plugins/antigravity/conductor-ux/scripts/check.sh"}}) {
 		t.Fatalf("script file = %#v", got)
 	}
+	for path, want := range map[model.RelativePath]string{
+		"node_modules/hook-helper/index.js": "module.exports = {};\n",
+		"scripts/check.sh.bak":              "backup\n",
+	} {
+		if got := string(asset.Base.Files[path].Bytes); got != want {
+			t.Fatalf("native resource file %q = %q, want %q", path, got, want)
+		}
+	}
 	if got := inventory.NativeGaps; len(got) != 1 || got[0].Component != "conductor-ux" || got[0].Asset == nil || *got[0].Asset != asset.Identity || got[0].Target == nil || *got[0].Target != model.TargetAntigravity {
 		t.Fatalf("native gaps = %#v", got)
 	}
@@ -154,8 +164,10 @@ func TestInspectBundleImportsExplicitAntigravityNativeResourceTree(t *testing.T)
 		"packages/base.json",
 		"src/plugins/antigravity/conductor-ux/.agentbundler/asset.json",
 		"src/plugins/antigravity/conductor-ux/mcp_config.json",
+		"src/plugins/antigravity/conductor-ux/node_modules/hook-helper/index.js",
 		"src/plugins/antigravity/conductor-ux/rules/conductor.md",
 		"src/plugins/antigravity/conductor-ux/scripts/check.sh",
+		"src/plugins/antigravity/conductor-ux/scripts/check.sh.bak",
 	} {
 		if !containsInput(inventory, path) {
 			t.Fatalf("input %q was not recorded: %#v", path, inventory.Inputs)
