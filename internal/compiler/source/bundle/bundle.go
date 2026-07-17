@@ -324,7 +324,15 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		return asset, nil, true
 	}
 	parts := strings.Split(string(assetPath), "/")
-	target := model.TargetID(parts[2])
+	targetIndex := 1
+	if len(parts) > 0 && parts[0] == "src" {
+		targetIndex = 2
+	}
+	if len(parts) <= targetIndex {
+		i.addDiagnostic(assetPath, "native resource path is missing its target")
+		return model.SourceAsset{}, nil, false
+	}
+	target := model.TargetID(parts[targetIndex])
 	return asset, &model.NativeGap{
 		Component: name,
 		Asset:     &identity,

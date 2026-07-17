@@ -117,6 +117,20 @@ func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
 	}
 }
 
+func TestInspectBundleImportsRootRelativeNativeResourcePath(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["plugins/pi/custom"]}`)
+	writeFixture(t, workspace, "bundle/plugins/pi/custom/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/custom.ts"]}`)
+	writeFixture(t, workspace, "bundle/plugins/pi/custom/extensions/custom.ts", `export default () => {};`)
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	if len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Target == nil || *inventory.NativeGaps[0].Target != model.TargetPi {
+		t.Fatalf("native gaps = %#v", inventory.NativeGaps)
+	}
+}
+
 func TestInspectBundleUsesIndependentOverlaysForFlatAgents(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/agents/reviewer.md","src/agents/runner.md"]}`)
