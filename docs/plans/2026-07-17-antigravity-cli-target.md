@@ -933,17 +933,17 @@ Manual checks:
 - Confirm release workflow behavior remains unchanged except any necessary
   target-count wording.
 
-- [ ] Add the isolated `vendor_smoke` validator test using only shared bounded
+- [x] Add the isolated `vendor_smoke` validator test using only shared bounded
       subprocess helpers and `agy plugin validate`.
-- [ ] Add tests or assertions proving normal `~/.gemini` state is unchanged and
+- [x] Add tests or assertions proving normal `~/.gemini` state is unchanged and
       validator output is handled without depending on ANSI bytes.
-- [ ] Pin Antigravity CLI 1.1.3 and the verified Linux x64 digest in CI; download,
+- [x] Pin Antigravity CLI 1.1.3 and the verified Linux x64 digest in CI; download,
       checksum, extract, install as `agy`, and verify its version.
-- [ ] Update CI target-count wording and validate both generated Antigravity
+- [x] Update CI target-count wording and validate both generated Antigravity
       package roots with temporary config and blocked proxies.
-- [ ] Update `docs/release.md` with pinned evidence, isolation, seven-target
+- [x] Update `docs/release.md` with pinned evidence, isolation, seven-target
       inspection, and the explicit no-install/no-model boundary.
-- [ ] Run smoke compilation, the real local smoke, Actionlint, acceptance,
+- [x] Run smoke compilation, the real local smoke, Actionlint, acceptance,
       architecture, and diff checks; all must pass before Task 5.
 
 ### Task 5: Final documentation, repository metadata handoff, and release verification
