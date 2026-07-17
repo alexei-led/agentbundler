@@ -20,8 +20,9 @@ Repository vendor smokes are opt-in under the `vendor_smoke` build tag. A shared
 test-only harness requires exact CLI names, uses positive subprocess deadlines,
 bounds combined output to 32 KiB, supplies temporary HOME/config/cache roots,
 and verifies normal configuration digests after mutating tests. CI runs only the
-safe local-tree validators, pinned to Claude Code 2.1.210 and Grok Build 0.2.101;
-the Grok Linux binary is checksum-pinned. Codex, Pi, Copilot, and Cursor
+safe local-tree validators, pinned to Claude Code 2.1.210, Grok Build 0.2.101,
+and Antigravity CLI 1.1.3; the Grok and Antigravity Linux binaries are
+checksum-pinned. Codex, Pi, Copilot, and Cursor
 install/load smokes are never production native checks.
 
 ## Antigravity CLI
@@ -34,7 +35,7 @@ install/load smokes are never production native checks.
 - Portable assets: skills retain their normal directories, support files, and frontmatter. Portable agents render only when their frontmatter consists exactly of non-empty string `name` and `description`; model, tool-policy, skill-inheritance, Pi `sandbox_mode`, and all other fields are unsupported.
 - Native resources: an explicit bundle `asset.native-resource` under `src/plugins/antigravity/<component>/` is copied as a complete symlink-free tree at the plugin root without parsing rules, MCP configuration, hooks, or support files. The asset must be Antigravity-owned, non-empty, and must not declare Pi extensions. Existing target allow-lists, paths, collisions, hashes, executable modes, and native-gap actions remain authoritative.
 - Hook limit: portable `asset.hook` and all portable `hook.*` semantics are unsupported. A target-native `hooks.json` may pass through only as the explicit raw native resource above. Agent Bundler does not claim portable event, matcher, timeout, decision, async, ordering, or failure-policy equivalence.
-- Validation: each rendered plugin root declares `agy plugin validate .`, executed by the isolated native-verification subsystem with temporary home, config, and cache roots. Validation is offline and non-mutating. Production and tests never install, link, enable, disable, uninstall, authenticate, or access the network.
+- Validation: each rendered plugin root declares `agy plugin validate .`, executed by the isolated native-verification subsystem with temporary home, config, and cache roots. CI verifies Antigravity CLI 1.1.3 with the pinned Linux x64 digest above and validates both acceptance-fixture plugin roots. Validation is offline and non-mutating, but it is not a sandbox for raw MCP configuration, hooks, or scripts. Production and tests never install, link, enable, disable, uninstall, authenticate, or access the network.
 
 ## Claude Code
 

@@ -61,6 +61,13 @@ advisory conversion is acceptable, add the exact key/reason acknowledgment to
 the target sidecar. Never acknowledge an unsupported security decision; change
 the hook or target instead.
 
+## Invalid Antigravity plugin name or description
+
+Antigravity package IDs become `plugin.json#name` and must match
+`^[A-Za-z0-9_-]+$`. Use only letters, digits, hyphen, and underscore. If package
+metadata includes `description`, it must be a string. The generated manifest has
+no version, catalog, or extra metadata fields.
+
 ## `unsupported-agent-field`
 
 Security-sensitive agent fields are target-specific. For example,
@@ -77,7 +84,9 @@ frontmatter. Put it in the agent's Codex sidecar:
 
 For a bundle agent file, save this as
 `<agent-directory>/.agentbundler/targets/codex.json`. Alternatively, exclude the
-agent from targets that cannot preserve the field's semantics.
+agent from targets that cannot preserve the field's semantics. Antigravity
+agents are narrower: frontmatter must contain exactly non-empty string `name`
+and `description`, with no additional fields.
 
 ## Frontmatter parse errors
 
@@ -131,8 +140,26 @@ Selectors must match values declared or imported by the manifest:
 agbun build --target pi --package team-skills
 ```
 
-Targets are `claude`, `codex`, `pi`, `copilot`, `grok`, and `cursor`. Duplicate
-selectors fail validation.
+Targets are `antigravity`, `claude`, `codex`, `pi`, `copilot`, `grok`, and
+`cursor`. Duplicate selectors fail validation.
+
+## Antigravity hook or native-resource failures
+
+Portable hooks are unsupported for Antigravity. Exclude them with an exact
+asset target allow-list. If vendor-native behavior is required, declare a
+non-empty Antigravity-only `asset.native-resource` under
+`src/plugins/antigravity/<component>/`. A raw `hooks.json`, `mcp_config.json`,
+or script is copied without semantic validation and remains trusted input.
+
+## Missing `agy` or native validation failure
+
+`agbun check --native` requires `agy` for each generated Antigravity CLI plugin.
+A missing executable or nonzero `agy plugin validate` result exits as native
+verification failure. Install the documented validator, run
+`agy plugin validate <plugin-root>` in isolated config roots, and inspect its
+output. Validation is not installation or a sandbox. Do not probe mutating
+`agy plugin install`, `link`, `enable`, `disable`, or `uninstall` commands in the
+normal user environment; Antigravity CLI 1.1.3 can parse help flags as actions.
 
 ## Symlink or unsafe-path errors
 

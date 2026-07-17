@@ -11,6 +11,8 @@ Start here if you already know the project and need the right page.
 - Diagnose failures or stale output: [Troubleshooting](troubleshooting.md)
 - Understand packages and the pipeline: [Architecture](architecture.md)
 - Run and interpret the release gates: [Release validation](release.md)
+- Review pinned vendor paths and limits: [Vendor package contracts](vendor-package-contracts.md)
+- Build an Antigravity CLI plugin: [Conductor-shaped example](../examples/antigravity-conductor/README.md)
 
 ## The short version
 
@@ -21,6 +23,8 @@ configured output directory separate and disposable.
 
 Current renderers support skills, portable resources, selected native agent
 forms, typed command hooks with payloads, explicit Pi aggregation, and
-deterministic target catalogs. See the
-[portable hook cells](targets-and-cli.md#portable-hook-cells) before relying on
-blocking, rewrite, async, or failure semantics across targets.
+vendor-specific catalogs where supported. Antigravity CLI is package-only: it
+has no generated catalog, accepts a narrow portable-agent subset, rejects
+portable hooks, and can preserve explicit native resources without interpreting
+them. See the [portable hook cells](targets-and-cli.md#portable-hook-cells)
+before relying on blocking, rewrite, async, or failure semantics across targets.

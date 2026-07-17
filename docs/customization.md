@@ -50,6 +50,10 @@ plugin/
 └── .agentbundler/assets/skill/explain-query/targets/pi.json
 ```
 
+Use `targets/antigravity.json` at the same sidecar location for an Antigravity
+skill or agent overlay. Sidecars customize portable assets; they do not turn raw
+vendor files into portable semantics.
+
 The overlay file is JSON. The examples below are valid strict JSON.
 
 ## Frontmatter
@@ -262,8 +266,16 @@ when it should remain documented but not emitted, or `replace` with an existing
 asset as fallback. Every applicable source gap needs one matching policy.
 
 Policy does not make a hook, script, or native resource renderable. Package
-profiles render Claude, Codex, and Pi agents; Pi agents use `pi-subagents` and
-therefore require that runtime package. Current renderers still accept one
-package per target plan.
+profiles render target-supported agents; Pi agents use `pi-subagents` and
+therefore require that runtime package. Antigravity agents accept only exact
+non-empty string `name` and `description` frontmatter.
+
+Antigravity-native files use an explicit bundle resource under
+`src/plugins/antigravity/<component>/` with a local
+`.agentbundler/asset.json` declaring `asset.native-resource` and an exact
+Antigravity package allow-list. Rules, raw `mcp_config.json`, raw `hooks.json`,
+and scripts are copied without interpretation. They remain trusted explicit
+portability gaps: portable hooks are unsupported, and `agy plugin validate` is
+not a sandbox.
 
 Next: [target layouts and CLI](targets-and-cli.md).

@@ -83,6 +83,15 @@ The job uses temporary `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and
 validate local trees. They do not install plugins, mutate normal vendor state,
 authenticate, publish, or start model sessions.
 
+## v0.5.0 release scope
+
+Antigravity CLI is a new public output target, so the intended release is the
+next minor version, `v0.5.0`, not a patch. Release notes must name the strict
+`plugin.json`, skills, narrow agent subset, explicit native-resource
+passthrough, unsupported portable hooks, pinned `agy` 1.1.3 validation,
+Conductor-shaped example, and seven-target fixture. Agent Bundler still does not
+install or publish vendor plugins.
+
 ## Release checklist
 
 1. Run the required gate on a clean checkout.
@@ -95,8 +104,12 @@ authenticate, publish, or start model sessions.
    `internal/compiler/source`, `internal/compiler/composition`,
    `internal/target`, `internal/target/pi/runtime`, and `internal/artifact`.
 5. Tag only a commit on `master` with `vMAJOR.MINOR.PATCH`.
-6. Let `.github/workflows/release.yml` validate, build, checksum, and create the
-   GitHub release before updating the Homebrew formula.
+6. After review, merge, and green CI, create annotated tag `v0.5.0` on
+   `master`; push it and let `.github/workflows/release.yml` validate, build,
+   checksum, create the GitHub release, and dispatch the Homebrew update.
+7. Update the GitHub description and topics only after merge. Repository
+   metadata, merge, tag push, release creation, and Homebrew dispatch are remote
+   owner actions, never RalphEx task actions.
 
 Consuming-repository migration is separate. Passing this gate does not claim
 that cc-thingz source has been migrated, installed, or behavior-compared. That

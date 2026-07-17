@@ -1056,27 +1056,27 @@ Manual checks:
 - Confirm the intended semantic-version bump is minor (`v0.5.0`) rather than a
   patch because this adds a public target.
 
-- [ ] Update all listed human-facing and agent-facing documentation with exact
+- [x] Update all listed human-facing and agent-facing documentation with exact
       Antigravity paths, capabilities, limits, validation, example, security,
       and external installation guidance.
-- [ ] Remove every stale “six targets” reference in active documentation,
+- [x] Remove every stale “six targets” reference in active documentation,
       scripts, tests, and workflow labels; do not rewrite historical completed
       plans except this active plan’s completion move.
-- [ ] Run Markdownlint on the new example README and this plan. Review edits to
+- [x] Run Markdownlint on the new example README and this plan. Review edits to
       existing Markdown with `git diff --check`; do not turn historical MD013
       cleanup in unrelated text into hidden feature scope.
-- [ ] Run the complete validation gate: format, diff, all Go tests, smoke
+- [x] Run the complete validation gate: format, diff, all Go tests, smoke
       compilation, race, vet, GolangCI-Lint, Pi runtime, seven-target fixture,
       architecture, Archfit, Actionlint, Gitleaks, scoped Markdownlint, local
       `agy` golden/example validation, and native check.
-- [ ] Run GitNexus change detection, inspect every affected process/module, and
+- [x] Run GitNexus change detection, inspect every affected process/module, and
       resolve unexpected target-to-source/composition/artifact coupling.
-- [ ] Perform the scoped architecture re-review and record whether AG-D1 through
+- [x] Perform the scoped architecture re-review and record whether AG-D1 through
       AG-D9 and every success criterion are satisfied.
-- [ ] Verify `git status` contains only intended source, test, fixture,
+- [x] Verify `git status` contains only intended source, test, fixture,
       workflow, documentation, example, and completed-plan changes; remove all
       temporary generated output.
-- [ ] Record final verification evidence in the RalphEx task result and leave
+- [x] Record final verification evidence in the RalphEx task result and leave
       remote GitHub metadata, merge, tagging, release, and Homebrew dispatch for
       Post-Completion.
 

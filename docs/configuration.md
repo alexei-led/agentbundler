@@ -10,7 +10,8 @@ The common fields are:
 - `version`: use `1`. The current decoder also accepts omission.
 - `kind`: `skills-repository`, `bundle`, or `claude-plugin`.
 - `root`: source root, relative to the manifest directory.
-- `targets`: one or more supported target IDs.
+- `targets`: one or more supported target IDs: `antigravity`, `claude`, `codex`,
+  `pi`, `copilot`, `grok`, or `cursor`.
 - `output`: dedicated generated-output directory.
 - `distribution`: optional target-wide JSON metadata for generated catalogs.
 - `composition`: optional target-wide policy, once per target at most. It may
@@ -114,9 +115,11 @@ Bundle package assets use exact forms such as `src/skills/<name>`,
 `src/plugins/<target>/<file-or-directory>`. The `src/` prefix is optional.
 Asset target lists are exact allow-lists. Portable resource directories render
 under `resources/` in package profiles. Pi-native extension trees require an
-explicit `piExtensions` declaration; other target-native resources remain
-explicit gaps. The old exact `src/hooks/<name>.json` form remains compatible
-only for a payload-free descriptor.
+explicit `piExtensions` declaration. Antigravity-native trees require an
+explicit `asset.native-resource` declaration and an Antigravity-only package
+asset allow-list. Other target-native resources remain explicit gaps. The old
+exact `src/hooks/<name>.json` form remains compatible only for a payload-free
+descriptor.
 
 Pi package metadata may include a `dependencies` object with package-name keys
 and non-empty string versions. **Agent Bundler** writes it only to Pi
@@ -145,6 +148,29 @@ must be a contained `extensions/*.ts` or `extensions/*.js` file. Agent Bundler
 copies the complete tree so relative imports remain valid, then registers only
 listed entries in `package.json#pi.extensions`. It does not infer entrypoints,
 install dependencies, or register unlisted files.
+
+### Explicit Antigravity native resource
+
+Use a bundle asset when an Antigravity CLI plugin needs a vendor-native rule,
+raw MCP configuration, raw `hooks.json`, or support script:
+
+```text
+src/plugins/antigravity/conductor-ux/
+├── .agentbundler/asset.json
+├── rules/conductor_antigravity.md
+├── mcp_config.json
+└── scripts/check.sh
+```
+
+```json
+{ "capabilities": ["asset.native-resource"] }
+```
+
+The package entry must use exactly `"targets": ["antigravity"]`. Agent Bundler
+copies the complete non-empty, symlink-free tree to the plugin root without
+parsing it. Raw MCP configuration, hooks, and scripts are trusted
+code/configuration; validation is not a sandbox. Do not add `piExtensions` to an
+Antigravity resource.
 
 ### Canonical command hook
 
@@ -225,7 +251,9 @@ Copilot's safe exec-to-command-string conversion without changing the hook:
 Put it at
 `src/hooks/command-guard/.agentbundler/targets/copilot.json`. Target allow-lists
 on the package asset entry are the right way to exclude a hook from targets
-that cannot preserve its semantics. See the complete six-target example in
+that cannot preserve its semantics. Antigravity rejects every portable hook
+cell; only an explicit raw native `hooks.json` resource can be preserved without
+semantic validation. See the complete seven-target example in
 `testdata/cc-thingz-hooks`.
 
 #### Example manifest
@@ -259,9 +287,10 @@ gaps, not portable support files.
 
 `distribution` is optional target-wide publication metadata. When it is present
 on a separate package-profile build, Agent Bundler emits a deterministic local
-catalog for Claude, Codex, Copilot, Cursor, and Grok. Pi emits no catalog.
-Catalog generation never publishes, registers, installs, authenticates, fetches,
-or changes vendor configuration.
+catalog for Claude, Codex, Copilot, Cursor, and Grok. Pi and Antigravity emit
+no catalog.
+Catalog generation never publishes, registers, installs, authenticates,
+fetches, or changes vendor configuration.
 
 Catalog distribution metadata is strict:
 
@@ -294,8 +323,9 @@ claude  .claude-plugin/marketplace.json
 codex   .agents/plugins/marketplace.json
 copilot .github/plugin/marketplace.json
 cursor  .cursor-plugin/marketplace.json
-grok    .claude-plugin/marketplace.json
-pi      no catalog
+grok        .claude-plugin/marketplace.json
+pi          no catalog
+antigravity no catalog
 ```
 
 Each target composition may set `packageMode`:
@@ -304,6 +334,13 @@ Each target composition may set `packageMode`:
   when `packageMode` is omitted.
 - `aggregate`: render one explicitly declared package. In version 1 this is
   valid only for target `pi` with profile `package`.
+
+Antigravity requires `profile: "package"` and `packageMode: "separate"`.
+Package IDs become `plugin.json#name` and must match `^[A-Za-z0-9_-]+$`.
+Generated `plugin.json` contains only `name` and an optional string
+`description`. Portable agents must contain exactly non-empty string `name` and
+`description` frontmatter. One selected package renders flat; multiple packages
+render under package-ID roots, with no target-wide marketplace.
 
 An `aggregate` object is valid only with `packageMode: "aggregate"`. It requires
 both `identity` and `metadata`; `metadata` must be present even when it is `{}`.

@@ -7,7 +7,7 @@
 
 > **One source → target-specific coding-agent layouts**
 >
-> Claude Code · Codex · Pi · Copilot · Grok Build · Cursor
+> Claude Code · Codex · Pi · Copilot · Grok Build · Cursor · Antigravity CLI
 
 Define coding-agent assets once. Build the target-specific trees each agent
 expects.
@@ -36,20 +36,25 @@ canonical source + manifest
           │
           ├── Claude Code   .claude-plugin/ + hooks/ + skills/ + agents/
           ├── Codex         .codex-plugin/ + hooks/ + skills/
-          ├── Pi            package.json + typed hook runtime + declared TypeScript extensions
+          ├── Pi            package.json + hook runtime + declared TS extensions
           ├── Copilot CLI   plugin.json + hooks.json + skills/ + agents/
           ├── Grok Build    Claude-compatible plugin + Grok hook roots
-          └── Cursor        .cursor-plugin/ + hooks/ + skills/ + agents/
+          ├── Cursor        .cursor-plugin/ + hooks/ + skills/ + agents/
+          └── Antigravity   plugin.json + skills/ + agents/ + explicit native resources
 ```
 
 ## Current scope
 
 Package profiles produce **skills, agents, portable resources, command hooks,
 payload files, and deterministic catalogs** in each vendor's native layout.
-Claude, Codex, Copilot CLI, Cursor, and Grok use separate plugin roots. Pi can
-merge several logical packages into one explicit aggregate package with its
-typed hook runtime and explicitly declared native TypeScript extensions.
-Project profiles remain available for their narrower target layouts.
+Claude, Codex, Copilot CLI, Cursor, Grok, and Antigravity CLI use separate
+plugin roots. Antigravity requires package profile and separate mode, emits no
+catalog, supports only agents with `name` and `description`, and rejects
+portable hooks. Explicit Antigravity-native rules, MCP configuration, hooks, and
+scripts can be copied as opaque native resources. Pi can merge several logical
+packages into one explicit aggregate package with its typed hook runtime and
+explicitly declared native TypeScript extensions. Project profiles remain
+available for their narrower target layouts.
 
 Hook portability is semantic, not name-based. An unsupported event, matcher,
 decision, timeout, async mode, or failure policy fails with an exact diagnostic;
@@ -107,9 +112,11 @@ full command, safety, and target-ID reference.
 
 `build` replaces the configured output directory. Use a dedicated generated
 directory, not a working project root. `check` is read-only; add `--native` to
-run only declared safe validators for Claude and Grok after drift passes.
-For a complete first bundle, see the [quick start](docs/quickstart.md). For a
-multi-package hook example that builds all six targets, see
+run only declared safe validators for Claude, Grok, and Antigravity after drift
+passes. For a complete first bundle, see the [quick start](docs/quickstart.md).
+For a tested Antigravity CLI plugin, see the
+[Conductor-shaped example](examples/antigravity-conductor/README.md). For a
+multi-package hook example that builds all seven targets, see
 [`testdata/cc-thingz-hooks`](testdata/cc-thingz-hooks).
 
 ## What can be customized
