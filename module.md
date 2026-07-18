@@ -12,7 +12,7 @@
 
 - Expose the `build` and `check` product operations.
 - Accept clean **Agent Bundler** bundles and low-friction adopted repositories.
-- Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, and Cursor CLI.
+- Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, Cursor CLI, and Antigravity CLI.
 - Preserve native semantics where possible and fail on unsupported or unacknowledged semantic loss.
 - Produce reproducible generated trees, installable package roots, deterministic target catalogs, and provenance outside native package roots.
 - Preserve idempotence: an equivalent `build` or `package` run must not replace, rewrite, chmod, or retimestamp current output.
@@ -98,7 +98,7 @@ A command creates a compile request and invokes the compiler. The compiler impor
 - `check` never writes. `check --native` may run only declared official offline non-mutating validators after exact no-drift comparison.
 - Native target package roots contain only target-native files, including the Pi-owned runtime payload; compiler provenance is outside them.
 - Version-1 hook-free manifests and package layouts remain compatible. Aggregate mode is explicit, never inferred, and in version 1 is limited to Pi package profile.
-- `internal/target` has six vendor leaves plus cohesive shared rendering leaves. Vendor schemas, hook mappings, root variables, catalogs, and validator declarations remain isolated in vendor adapters.
+- `internal/target` has seven vendor leaves plus cohesive shared rendering leaves. Vendor schemas, hook mappings, root variables, catalogs, and validator declarations remain isolated in vendor adapters.
 
 ## Test Specification
 

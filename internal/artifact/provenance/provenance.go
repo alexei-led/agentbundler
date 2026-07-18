@@ -325,7 +325,7 @@ func validString(value string) bool {
 
 func validTarget(target model.TargetID) bool {
 	switch target {
-	case model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
+	case model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
 		return true
 	default:
 		return false

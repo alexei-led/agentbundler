@@ -96,6 +96,9 @@ func InspectClaudePluginRoot(manifest model.SourceManifest, workspaceRoot string
 	inspector.agents(pluginRoot, assets, recognized)
 	inspector.hooks(pluginRoot, pluginPath, plugin.Hooks, assets, recognized)
 	inspector.nativeGaps(pluginRoot, recognized)
+	for index := range inspector.native {
+		inspector.native[index].Package = packageID
+	}
 	if hasErrors(inspector.diagnostics) {
 		return model.SourceInventory{}, inspector.diagnostics
 	}

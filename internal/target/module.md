@@ -2,7 +2,7 @@
 
 **Path**: `internal/target/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: repository root
-**Submodules**: `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`
+**Submodules**: `antigravity`, `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`
 
 ## Purpose
 
@@ -10,7 +10,7 @@ This module owns the closed built-in adapter registry and the pure target-render
 
 ## Functional Responsibilities
 
-- Register and resolve six built-in adapters.
+- Register and resolve seven built-in adapters.
 - Expose adapter format revisions and exact semantic capability rules.
 - Render one explicit target-wide request to one declarative plan.
 - Keep rendering free of filesystem, process, network, clock, Git, locale, and environment access.
@@ -68,6 +68,7 @@ A leaf may mark only proven cells native/equivalent; advisory needs exact acknow
 
 Package profiles render verified native forms:
 
+- Antigravity: root `plugin.json`, skills, narrow Markdown agents, portable resources, and exact explicit native resources; no catalog.
 - Claude: `.claude-plugin/plugin.json`, skills, agents, `hooks/hooks.json`, payloads.
 - Codex: `.codex-plugin/plugin.json`, skills, default `hooks/hooks.json`, payloads, and `.mcp.json` only when already modeled. Plugin agents are unsupported until an official component path exists.
 - Pi: one explicit package root with `package.json`, skills, agents, one generated hook descriptor, one thin extension, and the embedded runtime.
@@ -100,7 +101,7 @@ The registry is an explicit map, not installed-tool discovery. Shared package ou
 
 - No external adapter SDK, dynamic loading, target-to-target calls, output writes, or process invocation.
 - Native output path/schema claims cite primary evidence in the leaf and `docs/vendor-package-contracts.md`.
-- `NativeCheck` declarations are limited to official offline non-mutating validators. Initially only Claude strict validation and Grok plugin validation qualify.
+- `NativeCheck` declarations are limited to official offline non-mutating validators. Antigravity, Claude, and Grok plugin validation qualify.
 - Install/load/list smoke tests for Codex, Copilot, Cursor, and Pi are test-only, opt-in, and use temporary vendor configuration roots.
 - Hook-free version-1 inputs retain output unless a verified native correction changes a leaf revision.
 - Embedded Pi runtime bytes are an allowed deterministic adapter input; installed vendor versions are not.

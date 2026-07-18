@@ -56,8 +56,23 @@ Create `agentbundle.json` beside `source/`:
   "version": 1,
   "kind": "skills-repository",
   "root": "source",
-  "targets": ["claude", "codex", "pi", "copilot", "grok", "cursor"],
+  "targets": [
+    "antigravity",
+    "claude",
+    "codex",
+    "pi",
+    "copilot",
+    "grok",
+    "cursor"
+  ],
   "output": "generated",
+  "composition": [
+    {
+      "target": "antigravity",
+      "profile": "package",
+      "packageMode": "separate"
+    }
+  ],
   "skillsRepository": {
     "package": "team-skills",
     "roots": ["skills"],
@@ -91,6 +106,8 @@ The target trees are created below `generated/`:
 ```text
 generated/
 ├── .agentbundler/build.json
+├── antigravity/plugin.json
+├── antigravity/skills/explain-query/
 ├── claude/.claude/skills/explain-query/
 ├── codex/.codex-plugin/plugin.json
 ├── codex/skills/explain-query/
@@ -121,8 +138,10 @@ symlinked output entries as drift.
 ## 5. Use one target tree
 
 Give your target project the contents of the matching generated directory. For
-example, `generated/pi/` contains `.pi/skills/explain-query/`. The generated
-path is a file-layout contract; confirm the target agent's runtime behavior in
+example, `generated/pi/` contains `.pi/skills/explain-query/`, while
+`generated/antigravity/` is a flat one-package Antigravity CLI plugin with
+`plugin.json`. The generated path is a file-layout contract; confirm the target
+agent's runtime behavior in
 [its official documentation](targets-and-cli.md#vendor-documentation).
 
 Next: [customize one target](customization.md), or choose a different source

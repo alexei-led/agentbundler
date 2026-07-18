@@ -1,7 +1,7 @@
 # User guide
 
 **Agent Bundler** exists for a boring reason: copying the same coding-agent skill
-into six vendor-specific trees is easy to start and painful to maintain.
+into seven vendor-specific trees is easy to start and painful to maintain.
 
 `SKILL.md` gives us a useful shared format for instructions, but it does not
 settle the rest of the package contract. Agents disagree about frontmatter,
@@ -43,12 +43,17 @@ The current adapters render skills, portable package resources, supported native
 agent forms, typed command hooks with payloads, and deterministic catalogs into
 target-native project or installable package layouts. Separate profiles can
 render multiple package-owned roots; Pi supports one explicit aggregate package
-with one embedded hook runtime. They do not install an agent, run a model, or
-publish a marketplace package.
+with one embedded hook runtime. Antigravity CLI uses package profile and
+separate mode, generates a strict `plugin.json` with no catalog, accepts only a
+narrow portable-agent subset, and rejects portable hooks. Explicit native rules,
+MCP configuration, hooks, and scripts can pass through without interpretation.
+Adapters do not install an agent, run a model, or publish a marketplace package.
 
 Hook event, matcher, decision, timeout, async, and failure semantics differ by
-target. Unsupported cells and target-native resources fail explicitly instead
-of being silently omitted.
+target. Unsupported cells and undeclared target-native resources fail explicitly
+instead of being silently omitted. Raw Antigravity MCP configuration, hooks,
+and scripts are trusted code/configuration; `agy plugin validate` checks plugin
+shape but does not sandbox them.
 
 ## Choose your next page
 
@@ -56,5 +61,6 @@ of being silently omitted.
 - Existing source: [Configuration and source formats](configuration.md)
 - Target-specific instructions: [Customization](customization.md)
 - Generated paths and vendor behavior: [Targets and CLI](targets-and-cli.md)
+- Tested Antigravity flow: [Conductor-shaped example](../examples/antigravity-conductor/README.md)
 - Build failures or drift: [Troubleshooting](troubleshooting.md)
 - Implementation and extension points: [Architecture](architecture.md)

@@ -9,23 +9,29 @@ installation and publication remain external operations.
 ## Package output
 
 Separate mode keeps one package at the flat target root. Two or more packages
-use package-ID roots and add a target-wide catalog when `distribution` is set.
-Pi hook packages use explicit aggregate mode instead.
+use package-ID roots and add a target-wide catalog when the target supports one
+and `distribution` is set. Pi hook packages use explicit aggregate mode instead.
+Antigravity requires package profile and separate mode and never emits a
+catalog.
 
-| Target      | Installable package paths                                                                                                  | Catalog path                       |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Claude Code | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                                      | `.claude-plugin/marketplace.json`  |
-| Codex       | `.codex-plugin/plugin.json`, `skills/`, `hooks/hooks.json`, hook payloads                                                  | `.agents/plugins/marketplace.json` |
-| Pi          | `package.json`, `skills/`, optional `agents/`, `hooks/hooks.v1.json`, `extensions/agentbundler-hooks.ts`, embedded runtime | none                               |
-| Copilot CLI | `plugin.json`, `skills/`, `agents/*.agent.md`, `hooks.json`, hook payloads                                                 | `.github/plugin/marketplace.json`  |
-| Cursor      | `.cursor-plugin/plugin.json`, `skills/`, `agents/*.md`, `hooks/hooks.json`, hook payloads                                  | `.cursor-plugin/marketplace.json`  |
-| Grok Build  | Claude-compatible `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                    | `.claude-plugin/marketplace.json`  |
+| Target          | Installable package paths                                                                                                  | Catalog path                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Antigravity CLI | `plugin.json`, `skills/`, supported `agents/*.md`, explicit native resources                                               | none                               |
+| Claude Code     | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                                      | `.claude-plugin/marketplace.json`  |
+| Codex           | `.codex-plugin/plugin.json`, `skills/`, `hooks/hooks.json`, hook payloads                                                  | `.agents/plugins/marketplace.json` |
+| Pi              | `package.json`, `skills/`, optional `agents/`, `hooks/hooks.v1.json`, `extensions/agentbundler-hooks.ts`, embedded runtime | none                               |
+| Copilot CLI     | `plugin.json`, `skills/`, `agents/*.agent.md`, `hooks.json`, hook payloads                                                 | `.github/plugin/marketplace.json`  |
+| Cursor          | `.cursor-plugin/plugin.json`, `skills/`, `agents/*.md`, `hooks/hooks.json`, hook payloads                                  | `.cursor-plugin/marketplace.json`  |
+| Grok Build      | Claude-compatible `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/hooks.json`, hook payloads                    | `.claude-plugin/marketplace.json`  |
 
 Project profiles remain narrower: Claude uses `.claude/skills`; Codex uses
 `.codex-plugin/plugin.json`, a root `skills/` tree, and `.codex/agents/*.toml`;
 Pi uses `.pi/skills`; Copilot uses `.github/skills`; Grok uses
 `.grok/{skills,resources}`; and Cursor keeps its project layout. The Grok
-package profile is distinct from `.grok/skills`.
+package profile is distinct from `.grok/skills`. Antigravity has no project
+profile. Its package name must match `^[A-Za-z0-9_-]+$`; `plugin.json` contains
+only `name` and optional string `description`. One selected package is flat, and
+multiple packages use package-ID roots.
 
 The Pi aggregate package contains one generated hook-adapter registration plus
 any declared native extension entries and the bundled subagent entry when agents
@@ -66,11 +72,28 @@ the full initial event-name set, but only events with matching timeout and
 failure behavior are accepted. Target validators return exact per-hook
 diagnostics for narrower cases.
 
+### Antigravity capability boundary
+
+Antigravity supports portable skills, resources, and agents whose frontmatter
+contains exactly non-empty string `name` and `description`. Skills are
+discovered as slash commands; Agent Bundler does not emit legacy `commands/`.
+Every portable `asset.hook` and `hook.*` cell is unsupported, including event,
+matcher, command, timeout, async, ordering, failure-policy, block, and rewrite
+semantics.
+
+A bundle may explicitly declare an Antigravity-only `asset.native-resource`
+under `src/plugins/antigravity/<component>/`. Its complete symlink-free tree is
+copied to the plugin root, allowing paths such as `rules/*.md`,
+`mcp_config.json`, `hooks.json`, and support scripts without parsing or semantic
+validation. These files are trusted code/configuration. `agy plugin validate`
+validates plugin shape; it is not a sandbox and does not make raw hooks or MCP
+configuration portable.
+
 HTTP, prompt-handler, agent-handler, and MCP-tool-handler hooks are not part of
 the initial portable command-hook contract. Pi-native extension trees are
 supported only with an explicit `piExtensions` resource declaration; other
-target-native resources remain explicit gaps. Hooks and extensions execute
-trusted package code; validation is not a sandbox.
+undeclared target-native resources remain explicit gaps. Hooks and extensions
+execute trusted package code; validation is not a sandbox.
 
 ## Build and check
 
@@ -103,12 +126,14 @@ non-regular, or symlinked output. Neither command uses the network.
 `check --native` runs only target-declared, offline, non-mutating validators
 after drift passes:
 
+- Antigravity: `agy plugin validate .` in each plugin root;
 - Claude: `claude plugin validate --strict <root>`;
 - Grok: `grok plugin validate <root>`.
 
-A missing declared validator is a native-verification failure, not a skip. Codex,
-Pi, Copilot, and Cursor have no production native validator because their useful
-load/install checks are mutating, model-backed, or incomplete.
+A missing declared validator, including `agy`, is a native-verification failure,
+not a skip. Codex, Pi, Copilot, and Cursor have no production native validator
+because their useful load/install checks are mutating, model-backed, or
+incomplete.
 
 ### Idempotence quality contract
 
@@ -140,8 +165,12 @@ or release job:
 
 ```sh
 # Official non-mutating validators.
+agy plugin validate generated/antigravity
 claude plugin validate --strict generated/claude
 grok plugin validate generated/grok/core-tools
+
+# Optional external installation of a validated one-package plugin.
+agy plugin install "$(pwd)/generated/antigravity"
 
 # Pi aggregate package; isolate both project and user configuration.
 package_root=$(cd generated/pi && pwd -P)
@@ -162,6 +191,9 @@ mkdir -p "$smoke_root/workspace" "$smoke_root/home"
 go test -tags=vendor_smoke ./internal/target/... ./internal/compiler/...
 ```
 
+The `agy plugin install` command is an optional user action, not part of
+`agbun`; do not run it in automation or against normal user state.
+
 The opt-in smokes use temporary `HOME` and vendor config/cache roots, bounded
 subprocesses and output, exact missing-CLI skips, and post-run digests of normal
 config paths. Cursor's load smoke also requires `CURSOR_API_KEY`; without it the
@@ -174,7 +206,7 @@ For the hermetic all-target acceptance case:
 scripts/check-acceptance-fixture
 ```
 
-It copies `testdata/cc-thingz-hooks` into two temporary roots, builds all six
+It copies `testdata/cc-thingz-hooks` into two temporary roots, builds all seven
 targets, runs read-only `check`, and compares every generated byte.
 
 ## Help and version
@@ -212,8 +244,16 @@ acknowledgments, adapter revisions, compiler version, and output file details.
 Released binaries report their injected tag; development builds report the Go
 module version when available, otherwise `agbun-dev`.
 
+`agbun package --out DIR` archives current target roots without rebuilding.
+Antigravity uses the default deterministic
+`<distribution.name>-antigravity.tar.gz` archive and has no marketplace root.
+
 ## Vendor documentation
 
+- [Antigravity CLI plugins](https://antigravity.google/docs/cli/plugins)
+- [Antigravity CLI features](https://antigravity.google/docs/cli/features)
+- [Antigravity CLI releases](https://github.com/google-antigravity/antigravity-cli/releases)
+- [Pinned Conductor source](https://github.com/gemini-cli-extensions/conductor/tree/fb6212e8faee3f9ecb69f0ee19bd5b2a0765bb0a)
 - [Claude Code plugins and hooks](https://code.claude.com/docs/en/plugins-reference)
 - [Codex plugins and hooks](https://developers.openai.com/codex/plugins)
 - [Pi packages and extensions](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/docs)

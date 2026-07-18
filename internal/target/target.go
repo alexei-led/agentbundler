@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/antigravity"
 	"github.com/alexei-led/agentbundler/internal/target/claude"
 	"github.com/alexei-led/agentbundler/internal/target/codex"
 	"github.com/alexei-led/agentbundler/internal/target/copilot"
@@ -27,6 +28,7 @@ type registry struct {
 }
 
 var builtInRegistry = mustNewRegistry(
+	fromLeaf(antigravity.New()),
 	fromLeaf(claude.New()),
 	fromLeaf(codex.New()),
 	Adapter{

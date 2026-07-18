@@ -120,7 +120,7 @@ func ValidateSourceManifest(manifest SourceManifest) []Diagnostic {
 // ValidateSourceInventory validates discovered source values without accessing the filesystem.
 func ValidateSourceInventory(inventory SourceInventory) []Diagnostic {
 	var diagnostics []Diagnostic
-	packages := make(map[PackageID]struct{}, len(inventory.Packages))
+	packages := make(map[PackageID]map[AssetID]struct{}, len(inventory.Packages))
 	for _, pkg := range inventory.Packages {
 		if err := validateIdentifier(string(pkg.Identity), "package ID"); err != nil {
 			diagnostics = appendInvalid(diagnostics, "source package: "+err.Error())
@@ -128,7 +128,6 @@ func ValidateSourceInventory(inventory SourceInventory) []Diagnostic {
 		if _, ok := packages[pkg.Identity]; ok {
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("source package %q is duplicated", pkg.Identity))
 		}
-		packages[pkg.Identity] = struct{}{}
 		if err := validateJSONValue(pkg.Metadata); err != nil {
 			diagnostics = appendInvalid(diagnostics, "source package metadata: "+err.Error())
 		}
@@ -140,9 +139,18 @@ func ValidateSourceInventory(inventory SourceInventory) []Diagnostic {
 			}
 			assets[asset.Identity] = struct{}{}
 		}
+		packages[pkg.Identity] = assets
 	}
 	for _, gap := range inventory.NativeGaps {
 		diagnostics = append(diagnostics, validateNativeGap(gap)...)
+		assets, ok := packages[gap.Package]
+		if !ok {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("native gap %q references missing package %q", gap.Component, gap.Package))
+		} else if gap.Asset != nil {
+			if _, ok := assets[*gap.Asset]; !ok {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("native gap %q references missing asset %q in package %q", gap.Component, *gap.Asset, gap.Package))
+			}
+		}
 	}
 	inputs := make(map[RelativePath]struct{}, len(inventory.Inputs))
 	for _, input := range inventory.Inputs {
@@ -675,6 +683,9 @@ func validateBodyPatch(patch BodyPatch) []Diagnostic {
 
 func validateNativeGap(gap NativeGap) []Diagnostic {
 	var diagnostics []Diagnostic
+	if err := validateIdentifier(string(gap.Package), "package ID"); err != nil {
+		diagnostics = appendInvalid(diagnostics, "native gap package: "+err.Error())
+	}
 	if err := validateComponent(gap.Component); err != nil {
 		diagnostics = appendInvalid(diagnostics, "native gap: "+err.Error())
 	}
@@ -839,7 +850,7 @@ func validSourceKind(kind SourceKind) bool {
 
 func validTargetID(target TargetID) bool {
 	switch target {
-	case TargetClaude, TargetCodex, TargetPi, TargetCopilot, TargetGrok, TargetCursor:
+	case TargetAntigravity, TargetClaude, TargetCodex, TargetPi, TargetCopilot, TargetGrok, TargetCursor:
 		return true
 	default:
 		return false

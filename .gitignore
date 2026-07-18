@@ -13,6 +13,7 @@ bin/
 *.test
 coverage.out
 testdata/cc-thingz-hooks/generated/
+examples/antigravity-conductor/generated/
 
 # Local environment
 .env

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/antigravity"
 )
 
 func TestCCThingzDistributionVersionOwnsEveryGeneratedManifestAndCatalog(t *testing.T) {
@@ -86,6 +87,7 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 	}
 
 	wantTargets := []model.TargetID{
+		model.TargetAntigravity,
 		model.TargetClaude,
 		model.TargetCodex,
 		model.TargetCopilot,
@@ -102,6 +104,14 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 	}
 
 	expectedPaths := map[model.TargetID][]model.RelativePath{
+		model.TargetAntigravity: {
+			"core-tools/plugin.json",
+			"core-tools/skills/review/SKILL.md",
+			"core-tools/agents/reviewer.md",
+			"core-tools/rules/conductor_antigravity.md",
+			"workflow-tools/plugin.json",
+			"workflow-tools/skills/release/SKILL.md",
+		},
 		model.TargetClaude: {
 			".claude-plugin/marketplace.json",
 			"core-tools/hooks/command-guard/check.sh",
@@ -145,6 +155,31 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 		}
 	}
 
+	antigravityPlan := acceptanceTargetPlan(t, first.Plan, model.TargetAntigravity)
+	wantAntigravityPaths := []model.RelativePath{
+		"core-tools/README.md",
+		"core-tools/agents/reviewer.md",
+		"core-tools/plugin.json",
+		"core-tools/rules/conductor_antigravity.md",
+		"core-tools/skills/review/SKILL.md",
+		"core-tools/skills/review/references/checklist.md",
+		"workflow-tools/README.md",
+		"workflow-tools/plugin.json",
+		"workflow-tools/skills/release/SKILL.md",
+	}
+	if got := targetPaths(antigravityPlan); !reflect.DeepEqual(got, wantAntigravityPaths) {
+		t.Fatalf("Antigravity paths = %#v, want %#v", got, wantAntigravityPaths)
+	}
+	if len(antigravityPlan.NativeChecks) != 2 {
+		t.Fatalf("Antigravity native checks = %#v, want one per package root", antigravityPlan.NativeChecks)
+	}
+	for index, packageID := range []model.RelativePath{"core-tools", "workflow-tools"} {
+		check := antigravityPlan.NativeChecks[index]
+		if check.Program != "agy" || !reflect.DeepEqual(check.Arguments, []string{"plugin", "validate", "."}) || check.WorkingDirectory == nil || *check.WorkingDirectory != packageID || check.Location.Path != "internal/target/antigravity/antigravity.go" {
+			t.Errorf("Antigravity native check %d = %#v", index, check)
+		}
+	}
+
 	claudePlan := acceptanceTargetPlan(t, first.Plan, model.TargetClaude)
 	if len(claudePlan.NativeChecks) != 1 || claudePlan.NativeChecks[0].Program != "claude" {
 		t.Fatalf("Claude native checks = %#v, want one strict catalog validation", claudePlan.NativeChecks)
@@ -154,10 +189,28 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 		t.Fatalf("Grok native checks = %#v, want one per package root", grokPlan.NativeChecks)
 	}
 	for _, plan := range first.Plan.Targets {
-		if plan.Target != model.TargetClaude && plan.Target != model.TargetGrok && len(plan.NativeChecks) != 0 {
+		if plan.Target != model.TargetAntigravity && plan.Target != model.TargetClaude && plan.Target != model.TargetGrok && len(plan.NativeChecks) != 0 {
 			t.Fatalf("%s unexpectedly declares native checks: %#v", plan.Target, plan.NativeChecks)
 		}
 	}
+
+	existingTargets := []model.TargetID{
+		model.TargetClaude,
+		model.TargetCodex,
+		model.TargetCopilot,
+		model.TargetCursor,
+		model.TargetGrok,
+		model.TargetPi,
+	}
+	_, _, existingOnly := compileCCThingzFixture(t, existingTargets, nil)
+	for _, targetID := range existingTargets {
+		got := acceptanceTargetPlan(t, first.Plan, targetID)
+		want := acceptanceTargetPlan(t, existingOnly.Plan, targetID)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s output changed when Antigravity was selected", targetID)
+		}
+	}
+	assertAcceptanceProvenance(t, first.Plan, wantTargets, wantAntigravityPaths)
 
 	outputRoot := filepath.Join(firstRoot, "generated")
 	before := snapshotTree(t, outputRoot)
@@ -169,7 +222,11 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 		t.Fatal("acceptance check changed generated output")
 	}
 
-	driftPath := filepath.Join(outputRoot, "cursor", "core-tools", "hooks", "hooks.json")
+	driftPath := filepath.Join(outputRoot, "antigravity", "core-tools", "plugin.json")
+	original, err := os.ReadFile(driftPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(driftPath, []byte("drift\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -181,13 +238,80 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 	if err != nil || string(data) != "drift\n" {
 		t.Fatalf("drift check rewrote %q: data=%q err=%v", driftPath, data, err)
 	}
+	if err := os.WriteFile(driftPath, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	restoredBefore := snapshotTree(t, outputRoot)
+	restored := Compile(CompileRequest{WorkspaceRoot: firstRoot, Manifest: manifest, Mode: BuildModeCheck})
+	if len(restored.Diagnostics) != 0 || restored.Drift {
+		t.Fatalf("restored acceptance check = %#v", restored)
+	}
+	if after := snapshotTree(t, outputRoot); !reflect.DeepEqual(after, restoredBefore) {
+		t.Fatal("restored acceptance check changed generated output")
+	}
 
-	_, _, selected := compileCCThingzFixture(t, []model.TargetID{model.TargetCodex}, []model.PackageID{"core-tools"})
-	if len(selected.Plan.Targets) != 1 || selected.Plan.Targets[0].Target != model.TargetCodex || !reflect.DeepEqual(selected.Plan.Targets[0].Packages, []model.PackageID{"core-tools"}) {
+	_, _, selected := compileCCThingzFixture(t, []model.TargetID{model.TargetAntigravity}, []model.PackageID{"core-tools"})
+	if len(selected.Plan.Targets) != 1 || selected.Plan.Targets[0].Target != model.TargetAntigravity || !reflect.DeepEqual(selected.Plan.Targets[0].Packages, []model.PackageID{"core-tools"}) {
 		t.Fatalf("selected acceptance plan = %#v", selected.Plan.Targets)
 	}
-	if !planHasPath(selected.Plan.Targets[0], ".codex-plugin/plugin.json") || planHasPath(selected.Plan.Targets[0], "core-tools/.codex-plugin/plugin.json") {
-		t.Fatalf("single-package selector did not use the flat Codex root: %#v", targetPaths(selected.Plan.Targets[0]))
+	selectedPlan := selected.Plan.Targets[0]
+	if !planHasPath(selectedPlan, "plugin.json") || planHasPath(selectedPlan, "core-tools/plugin.json") || planHasPath(selectedPlan, "workflow-tools/plugin.json") {
+		t.Fatalf("single-package selector did not use the flat Antigravity root: %#v", targetPaths(selectedPlan))
+	}
+	if len(selectedPlan.NativeChecks) != 1 || selectedPlan.NativeChecks[0].WorkingDirectory != nil {
+		t.Fatalf("selected Antigravity native checks = %#v", selectedPlan.NativeChecks)
+	}
+
+	_, _, workflowSelected := compileCCThingzFixture(t, []model.TargetID{model.TargetAntigravity}, []model.PackageID{"workflow-tools"})
+	if len(workflowSelected.Plan.Targets) != 1 || !reflect.DeepEqual(workflowSelected.Plan.Targets[0].Packages, []model.PackageID{"workflow-tools"}) {
+		t.Fatalf("workflow-only acceptance plan = %#v", workflowSelected.Plan.Targets)
+	}
+	workflowPlan := workflowSelected.Plan.Targets[0]
+	wantWorkflowPaths := []model.RelativePath{"README.md", "plugin.json", "skills/release/SKILL.md"}
+	if got := targetPaths(workflowPlan); !reflect.DeepEqual(got, wantWorkflowPaths) {
+		t.Fatalf("workflow-only Antigravity paths = %#v, want %#v", got, wantWorkflowPaths)
+	}
+	if len(workflowPlan.NativeChecks) != 1 || workflowPlan.NativeChecks[0].WorkingDirectory != nil {
+		t.Fatalf("workflow-only Antigravity native checks = %#v", workflowPlan.NativeChecks)
+	}
+}
+
+func assertAcceptanceProvenance(t *testing.T, plan model.BuildPlan, wantTargets []model.TargetID, wantAntigravityPaths []model.RelativePath) {
+	t.Helper()
+	if len(plan.CompilerFiles) != 1 || plan.CompilerFiles[0].Path != ".agentbundler/build.json" {
+		t.Fatalf("compiler files = %#v", plan.CompilerFiles)
+	}
+	var document struct {
+		Outputs []struct {
+			Target          model.TargetID `json:"target"`
+			AdapterRevision int            `json:"adapterRevision"`
+			Files           []struct {
+				Path model.RelativePath `json:"path"`
+			} `json:"files"`
+		} `json:"outputs"`
+	}
+	if err := json.Unmarshal(plan.CompilerFiles[0].Bytes, &document); err != nil {
+		t.Fatal(err)
+	}
+	gotTargets := make([]model.TargetID, len(document.Outputs))
+	for index, output := range document.Outputs {
+		gotTargets[index] = output.Target
+		if output.Target != model.TargetAntigravity {
+			continue
+		}
+		if output.AdapterRevision != antigravity.FormatRevision {
+			t.Errorf("Antigravity adapter revision = %d, want %d", output.AdapterRevision, antigravity.FormatRevision)
+		}
+		paths := make([]model.RelativePath, len(output.Files))
+		for fileIndex, file := range output.Files {
+			paths[fileIndex] = file.Path
+		}
+		if !reflect.DeepEqual(paths, wantAntigravityPaths) {
+			t.Errorf("Antigravity provenance paths = %#v, want %#v", paths, wantAntigravityPaths)
+		}
+	}
+	if !reflect.DeepEqual(gotTargets, wantTargets) {
+		t.Fatalf("provenance targets = %#v, want %#v", gotTargets, wantTargets)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/antigravity"
 	"github.com/alexei-led/agentbundler/internal/target/claude"
 	"github.com/alexei-led/agentbundler/internal/target/codex"
 	"github.com/alexei-led/agentbundler/internal/target/copilot"
@@ -96,16 +97,22 @@ func TestRenderDuplicatePackageRootsFailClosed(t *testing.T) {
 
 func TestRenderMultiplePackagesForEveryInstallableTarget(t *testing.T) {
 	for _, target := range []model.TargetID{
-		model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetCursor,
+		model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetCursor,
 	} {
 		t.Run(string(target), func(t *testing.T) {
 			first := packageFixture(target)
 			if target == model.TargetCodex {
 				first.Assets = withoutAgents(first.Assets)
 			}
+			if target == model.TargetAntigravity {
+				delete(first.Assets[1].Content.Frontmatter, "inheritSkills")
+			}
 			second := packageFixture(target)
 			if target == model.TargetCodex {
 				second.Assets = withoutAgents(second.Assets)
+			}
+			if target == model.TargetAntigravity {
+				delete(second.Assets[1].Content.Frontmatter, "inheritSkills")
 			}
 			second.Identity = "second"
 			_, diagnostics := Render(target, []model.NormalizedPackage{first, second})
@@ -372,6 +379,7 @@ func TestTargetCodecsOwnTargetAndCapabilities(t *testing.T) {
 		target model.TargetID
 		codec  packageoutput.Codec
 	}{
+		{name: "antigravity", target: model.TargetAntigravity, codec: antigravity.PackageCodec()},
 		{name: "claude", target: model.TargetClaude, codec: claude.PackageCodec()},
 		{name: "codex", target: model.TargetCodex, codec: codex.PackageCodec()},
 		{name: "copilot", target: model.TargetCopilot, codec: copilot.PackageCodec()},
@@ -402,6 +410,16 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 		agentPath      model.RelativePath
 		manifestFields func(*testing.T, map[string]any)
 	}{
+		{
+			name: "antigravity", target: model.TargetAntigravity, codec: antigravity.PackageCodec(),
+			manifestPath: "plugin.json", agentPath: "agents/reviewer.md",
+			manifestFields: func(t *testing.T, manifest map[string]any) {
+				t.Helper()
+				if _, exists := manifest["version"]; exists || len(manifest) != 2 {
+					t.Fatalf("manifest = %#v, want strict name and description", manifest)
+				}
+			},
+		},
 		{
 			name: "claude", target: model.TargetClaude, codec: claude.PackageCodec(),
 			manifestPath: ".claude-plugin/plugin.json", agentPath: "agents/reviewer.md",
@@ -463,6 +481,9 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 			if test.target == model.TargetCodex {
 				pkg.Assets = withoutAgents(pkg.Assets)
 			}
+			if test.target == model.TargetAntigravity {
+				delete(pkg.Assets[1].Content.Frontmatter, "inheritSkills")
+			}
 			plan, diagnostics := packageoutput.RenderWithCodec(separate([]model.NormalizedPackage{pkg}), test.codec)
 			if len(diagnostics) != 0 {
 				t.Fatalf("RenderWithCodec() diagnostics = %#v", diagnostics)
@@ -486,8 +507,11 @@ func TestPackageCodecsProduceVendorSemanticOutput(t *testing.T) {
 			if err := json.Unmarshal(files[test.manifestPath], &manifest); err != nil {
 				t.Fatalf("manifest JSON: %v", err)
 			}
-			if manifest["name"] != "demo" || manifest["version"] != "1.0.0" {
+			if manifest["name"] != "demo" {
 				t.Fatalf("manifest identity = %#v", manifest)
+			}
+			if test.target != model.TargetAntigravity && manifest["version"] != "1.0.0" {
+				t.Fatalf("manifest version = %#v", manifest)
 			}
 			test.manifestFields(t, manifest)
 
@@ -508,6 +532,8 @@ func separate(packages []model.NormalizedPackage) model.TargetRenderInput {
 func Render(target model.TargetID, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	input := separate(packages)
 	switch target {
+	case model.TargetAntigravity:
+		return antigravity.Render(input)
 	case model.TargetClaude:
 		return claude.Render(input)
 	case model.TargetCodex:

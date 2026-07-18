@@ -26,12 +26,13 @@ const (
 type TargetID string
 
 const (
-	TargetClaude  TargetID = "claude"
-	TargetCodex   TargetID = "codex"
-	TargetPi      TargetID = "pi"
-	TargetCopilot TargetID = "copilot"
-	TargetGrok    TargetID = "grok"
-	TargetCursor  TargetID = "cursor"
+	TargetAntigravity TargetID = "antigravity"
+	TargetClaude      TargetID = "claude"
+	TargetCodex       TargetID = "codex"
+	TargetPi          TargetID = "pi"
+	TargetCopilot     TargetID = "copilot"
+	TargetGrok        TargetID = "grok"
+	TargetCursor      TargetID = "cursor"
 )
 
 // AssetKind classifies normalized assets.
@@ -232,8 +233,9 @@ type NativeResourceOptions struct {
 	PiExtensions []RelativePath `json:"piExtensions,omitempty"`
 }
 
-// NativeGap identifies a source component with target-native behavior.
+// NativeGap identifies a package-owned source component with target-native behavior.
 type NativeGap struct {
+	Package   PackageID      `json:"package"`
 	Component string         `json:"component"`
 	Asset     *AssetID       `json:"asset,omitempty"`
 	Location  SourceLocation `json:"location"`

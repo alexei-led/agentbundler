@@ -94,6 +94,40 @@ func TestInspectSkillRepoImportsSkillsAndSidecars(t *testing.T) {
 	}
 }
 
+func TestInspectSkillRepoImportsAntigravityTargetSidecar(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/skills/alpha/SKILL.md", "Alpha.\n")
+	writeFixture(t, workspace, "source/.agentbundler/assets/skill/alpha/targets/antigravity.json", `{"frontmatterPatch":{"name":"alpha","description":"Alpha skill"},"files":{"guide.md":"Guide\n"}}`)
+	manifest := testManifest()
+	manifest.Targets = []model.TargetID{model.TargetAntigravity}
+
+	inventory, diagnostics := InspectSkillRepo(manifest, workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectSkillRepo() diagnostics = %#v", diagnostics)
+	}
+	if len(inventory.Packages) != 1 || len(inventory.Packages[0].Assets) != 1 || len(inventory.Packages[0].Assets[0].Overlays) != 1 {
+		t.Fatalf("inventory = %#v", inventory)
+	}
+	overlay := inventory.Packages[0].Assets[0].Overlays[0]
+	if overlay.Target != model.TargetAntigravity || overlay.FrontmatterPatch == nil || (*overlay.FrontmatterPatch)["name"] != "alpha" || (*overlay.FrontmatterPatch)["description"] != "Alpha skill" {
+		t.Fatalf("overlay = %#v", overlay)
+	}
+	if got := filePatch(overlay.Files, "guide.md").Content; string(got.Bytes) != "Guide\n" || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "source/.agentbundler/assets/skill/alpha/targets/antigravity.json"}}) {
+		t.Fatalf("overlay file = %#v", got)
+	}
+}
+
+func TestInspectSkillRepoRejectsUnknownTargetSidecar(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/skills/alpha/SKILL.md", "Alpha.\n")
+	writeFixture(t, workspace, "source/.agentbundler/assets/skill/alpha/targets/unknown.json", `{}`)
+
+	inventory, diagnostics := InspectSkillRepo(testManifest(), workspace)
+	if !hasErrors(diagnostics) || len(inventory.Packages) != 0 {
+		t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+	}
+}
+
 func TestInspectSkillRepoRejectsSymlinkedSidecarAncestor(t *testing.T) {
 	workspace := t.TempDir()
 	outside := t.TempDir()

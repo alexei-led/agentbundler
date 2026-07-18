@@ -5,6 +5,8 @@ on:
 permissions:
   contents: read
 env:
+  ANTIGRAVITY_CLI_SHA256: 7a7239a69b65d3cf3af7e75f27b2ff4e9cce696a7b9a9e5c37c695f1c74eec34
+  ANTIGRAVITY_CLI_VERSION: 1.1.3
   ARCHFIT_VERSION: v1.6.0
   ARCHFIT_VERSION_CHECK: "1"
   AST_GREP_VERSION: 0.44.0
@@ -69,7 +71,7 @@ jobs:
           bun install --frozen-lockfile
           bun run typecheck
           bun test
-      - name: Check deterministic six-target fixture
+      - name: Check deterministic seven-target fixture
         run: scripts/check-acceptance-fixture
       - name: Check architecture
         run: scripts/check-architecture
@@ -112,14 +114,25 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install pinned validators
-        # zizmor: ignore[adhoc-packages] official validator versions and Grok bytes are pinned
+        # zizmor: ignore[adhoc-packages] official validator versions and downloaded bytes are pinned
         run: |
+          set -euo pipefail
           npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
           curl --fail --silent --show-error --location \
             --output /tmp/grok \
             "https://x.ai/cli/grok-${GROK_BUILD_VERSION}-linux-x86_64"
           printf '%s  %s\n' "$GROK_BUILD_SHA256" /tmp/grok | sha256sum --check --strict
           install -m 0755 /tmp/grok /usr/local/bin/grok
+          antigravity_archive=/tmp/agy_cli_linux_x64.tar.gz
+          curl --fail --silent --show-error --location \
+            --output "$antigravity_archive" \
+            "https://github.com/google-antigravity/antigravity-cli/releases/download/${ANTIGRAVITY_CLI_VERSION}/agy_cli_linux_x64.tar.gz"
+          printf '%s  %s\n' "$ANTIGRAVITY_CLI_SHA256" "$antigravity_archive" | sha256sum --check --strict
+          mkdir /tmp/antigravity-cli
+          tar --extract --gzip --file "$antigravity_archive" \
+            --directory /tmp/antigravity-cli antigravity
+          install -m 0755 /tmp/antigravity-cli/antigravity /usr/local/bin/agy
+          test "$(agy --version)" = "$ANTIGRAVITY_CLI_VERSION"
       - name: Build acceptance fixture
         run: go run ./cmd/agbun build --root testdata/cc-thingz-hooks
       - name: Run official non-mutating validators
@@ -127,11 +140,16 @@ jobs:
           HOME: ${{ runner.temp }}/vendor-home
           CLAUDE_CONFIG_DIR: ${{ runner.temp }}/vendor-home/.claude
           XDG_CONFIG_HOME: ${{ runner.temp }}/vendor-home/.config
+          XDG_CACHE_HOME: ${{ runner.temp }}/vendor-home/.cache
+          TMPDIR: ${{ runner.temp }}/vendor-tmp
           HTTP_PROXY: http://127.0.0.1:9
           HTTPS_PROXY: http://127.0.0.1:9
           NO_PROXY: ""
         run: |
-          mkdir -p "$HOME"
+          set -euo pipefail
+          mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$TMPDIR"
           claude plugin validate --strict testdata/cc-thingz-hooks/generated/claude
           grok plugin validate testdata/cc-thingz-hooks/generated/grok/core-tools
           grok plugin validate testdata/cc-thingz-hooks/generated/grok/workflow-tools
+          agy plugin validate testdata/cc-thingz-hooks/generated/antigravity/core-tools
+          agy plugin validate testdata/cc-thingz-hooks/generated/antigravity/workflow-tools

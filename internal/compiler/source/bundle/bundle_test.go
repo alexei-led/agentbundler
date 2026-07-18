@@ -79,6 +79,7 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 		t.Fatalf("native resource = %#v", got)
 	}
 	if got, want := inventory.NativeGaps, []model.NativeGap{{
+		Package:   "alpha",
 		Component: "resource.bin",
 		Asset:     assetID("native-resource/resource.bin"),
 		Location:  model.SourceLocation{Path: "src/plugins/pi/resource.bin"},
@@ -100,6 +101,9 @@ func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
 	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/custom.ts"]}`)
 	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/custom.ts", `export default () => {};`)
 	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/shared/util.ts", `export const value = 1;`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/node_modules/helper/index.js", `module.exports = {};`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/extensions/custom.ts.bak", `backup`)
+	writeFixture(t, workspace, "bundle/src/plugins/pi/cc-thingz/.DS_Store", `editor`)
 
 	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
 	if len(diagnostics) != 0 {
@@ -112,8 +116,145 @@ func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
 	if got := string(asset.Base.Files["extensions/shared/util.ts"].Bytes); got != "export const value = 1;" {
 		t.Fatalf("nested native resource = %q", got)
 	}
+	for _, ignored := range []model.RelativePath{"node_modules/helper/index.js", "extensions/custom.ts.bak", ".DS_Store"} {
+		if _, exists := asset.Base.Files[ignored]; exists || containsInput(inventory, model.RelativePath("src/plugins/pi/cc-thingz/")+ignored) {
+			t.Fatalf("ignored Pi native resource path %q was imported", ignored)
+		}
+	}
 	if len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Target == nil || *inventory.NativeGaps[0].Target != model.TargetPi {
 		t.Fatalf("native gaps = %#v", inventory.NativeGaps)
+	}
+}
+
+func TestInspectBundleImportsExplicitAntigravityNativeResourceTree(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/plugins/antigravity/conductor-ux","targets":["antigravity"]}]}`)
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/rules/conductor.md", "# Conductor rule\n")
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/mcp_config.json", "{}\n")
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/node_modules/hook-helper/index.js", "module.exports = {};\n")
+	writeFixtureMode(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/scripts/check.sh", "#!/bin/sh\n", 0o755)
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor-ux/scripts/check.sh.bak", "backup\n")
+	manifest := bundleManifest("packages/base.json")
+	manifest.Targets = []model.TargetID{model.TargetAntigravity}
+
+	inventory, diagnostics := InspectBundle(manifest, workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	if len(inventory.Packages) != 1 || len(inventory.Packages[0].Assets) != 1 {
+		t.Fatalf("packages = %#v", inventory.Packages)
+	}
+	asset := inventory.Packages[0].Assets[0]
+	if asset.Identity != "native-resource/conductor-ux" || asset.Kind != model.AssetKindNativeResource || asset.Native != nil || !reflect.DeepEqual(asset.Targets, []model.TargetID{model.TargetAntigravity}) {
+		t.Fatalf("native resource asset = %#v", asset)
+	}
+	if got := asset.CapabilityUses; !reflect.DeepEqual(got, []model.CapabilityUse{{Key: "asset.native-resource", Location: model.SourceLocation{Path: "src/plugins/antigravity/conductor-ux/.agentbundler/asset.json"}}}) {
+		t.Fatalf("capability uses = %#v", got)
+	}
+	if got := asset.Base.Files["rules/conductor.md"]; string(got.Bytes) != "# Conductor rule\n" || got.Executable || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "src/plugins/antigravity/conductor-ux/rules/conductor.md"}}) {
+		t.Fatalf("rule file = %#v", got)
+	}
+	if got := asset.Base.Files["scripts/check.sh"]; string(got.Bytes) != "#!/bin/sh\n" || (runtime.GOOS != "windows" && !got.Executable) || !reflect.DeepEqual(got.Origin, []model.SourceLocation{{Path: "src/plugins/antigravity/conductor-ux/scripts/check.sh"}}) {
+		t.Fatalf("script file = %#v", got)
+	}
+	for path, want := range map[model.RelativePath]string{
+		"node_modules/hook-helper/index.js": "module.exports = {};\n",
+		"scripts/check.sh.bak":              "backup\n",
+	} {
+		if got := string(asset.Base.Files[path].Bytes); got != want {
+			t.Fatalf("native resource file %q = %q, want %q", path, got, want)
+		}
+	}
+	if got := inventory.NativeGaps; len(got) != 1 || got[0].Component != "conductor-ux" || got[0].Asset == nil || *got[0].Asset != asset.Identity || got[0].Target == nil || *got[0].Target != model.TargetAntigravity {
+		t.Fatalf("native gaps = %#v", got)
+	}
+	for _, path := range []model.RelativePath{
+		"packages/base.json",
+		"src/plugins/antigravity/conductor-ux/.agentbundler/asset.json",
+		"src/plugins/antigravity/conductor-ux/mcp_config.json",
+		"src/plugins/antigravity/conductor-ux/node_modules/hook-helper/index.js",
+		"src/plugins/antigravity/conductor-ux/rules/conductor.md",
+		"src/plugins/antigravity/conductor-ux/scripts/check.sh",
+		"src/plugins/antigravity/conductor-ux/scripts/check.sh.bak",
+	} {
+		if !containsInput(inventory, path) {
+			t.Fatalf("input %q was not recorded: %#v", path, inventory.Inputs)
+		}
+	}
+	if !inputsAreSortedAndHashed(inventory) {
+		t.Fatalf("inputs are not sorted and hashed: %#v", inventory.Inputs)
+	}
+}
+
+func TestInspectBundleRejectsInvalidAntigravityNativeResourcePathsAndDeclaration(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		assetPath string
+		want      string
+		sidecar   bool
+	}{
+		{name: "malformed path", assetPath: "src/plugins/antigravity/conductor/rules", want: "not a canonical", sidecar: true},
+		{name: "unknown target", assetPath: "src/plugins/unknown/conductor", want: `target "unknown" is invalid`, sidecar: true},
+		{name: "missing explicit declaration", assetPath: "src/plugins/antigravity/conductor", want: "must explicitly declare capability", sidecar: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"`+test.assetPath+`","targets":["antigravity"]}]}`)
+			writeFixture(t, workspace, "bundle/"+test.assetPath+"/rules/rule.md", "rule\n")
+			if test.sidecar {
+				writeFixture(t, workspace, "bundle/"+test.assetPath+"/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
+			}
+			manifest := bundleManifest("packages/base.json")
+			manifest.Targets = []model.TargetID{model.TargetAntigravity}
+
+			inventory, diagnostics := InspectBundle(manifest, workspace)
+			if !hasError(diagnostics) || !reflect.DeepEqual(inventory, model.SourceInventory{}) || !diagnosticsContainText(diagnostics, test.want) {
+				t.Fatalf("inventory = %#v, diagnostics = %#v, want %q", inventory, diagnostics, test.want)
+			}
+		})
+	}
+}
+
+func TestInspectBundleRejectsAntigravityNativeResourceTargetAllowListMismatch(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		entry string
+	}{
+		{name: "missing", entry: `"src/plugins/antigravity/foo"`},
+		{name: "wrong target", entry: `{"path":"src/plugins/antigravity/foo","targets":["claude"]}`},
+		{name: "additional target", entry: `{"path":"src/plugins/antigravity/foo","targets":["antigravity","claude"]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[`+test.entry+`]}`)
+			writeFixture(t, workspace, "bundle/src/plugins/antigravity/foo/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
+			writeFixture(t, workspace, "bundle/src/plugins/antigravity/foo/rules/foo.md", "rule\n")
+			manifest := bundleManifest("packages/base.json")
+			manifest.Targets = []model.TargetID{model.TargetAntigravity, model.TargetClaude}
+
+			inventory, diagnostics := InspectBundle(manifest, workspace)
+			if !reflect.DeepEqual(inventory, model.SourceInventory{}) || !diagnosticsContainText(diagnostics, `native resource path "src/plugins/antigravity/foo" must declare an exact target allow-list ["antigravity"]`) {
+				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
+			}
+		})
+	}
+}
+
+func TestInspectBundleRejectsAntigravityNativeResourceSymlink(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/plugins/antigravity/conductor","targets":["antigravity"]}]}`)
+	writeFixture(t, workspace, "bundle/src/plugins/antigravity/conductor/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
+	writeFixture(t, workspace, "outside", "secret")
+	if err := os.Symlink(filepath.Join(workspace, "outside"), filepath.Join(workspace, "bundle/src/plugins/antigravity/conductor/linked")); err != nil {
+		t.Skipf("os.Symlink() unavailable: %v", err)
+	}
+	manifest := bundleManifest("packages/base.json")
+	manifest.Targets = []model.TargetID{model.TargetAntigravity}
+
+	inventory, diagnostics := InspectBundle(manifest, workspace)
+	if !hasError(diagnostics) || !reflect.DeepEqual(inventory, model.SourceInventory{}) || !diagnosticsContainText(diagnostics, "is a symlink") {
+		t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
 	}
 }
 
@@ -490,6 +631,15 @@ func capabilityKeys(uses []model.CapabilityUse) []model.CapabilityKey {
 func diagnosticsContain(diagnostics []model.Diagnostic, message string, path model.RelativePath) bool {
 	for _, diagnostic := range diagnostics {
 		if strings.Contains(diagnostic.Message, message) && diagnostic.Location != nil && diagnostic.Location.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func diagnosticsContainText(diagnostics []model.Diagnostic, message string) bool {
+	for _, diagnostic := range diagnostics {
+		if strings.Contains(diagnostic.Message, message) {
 			return true
 		}
 	}

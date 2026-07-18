@@ -15,12 +15,14 @@ import (
 
 func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	workspace := t.TempDir()
+	writeFile(t, workspace, "dist/antigravity/plugin.json", "{\"name\":\"demo\"}\n", 0o644)
+	writeFile(t, workspace, "dist/antigravity/skills/demo/SKILL.md", "# Demo\n", 0o644)
 	writeFile(t, workspace, "dist/claude/.claude-plugin/marketplace.json", "{}\n", 0o644)
 	writeFile(t, workspace, "dist/claude/hooks/run.sh", "#!/bin/sh\n", 0o755)
 	writeFile(t, workspace, "dist/claude/.agentbundler/build.json", "private\n", 0o644)
 	writeFile(t, workspace, "dist/pi/package.json", "{}\n", 0o644)
 	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "demo"}}
-	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetClaude}, {Target: model.TargetPi}}}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetAntigravity}, {Target: model.TargetClaude}, {Target: model.TargetPi}}}
 	output := filepath.Join(workspace, "release")
 
 	first, err := WriteTargetRoots(workspace, manifest, plan, output)
@@ -34,6 +36,12 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	}
 	if got := archiveHashes(t, second); !reflect.DeepEqual(got, firstHashes) {
 		t.Fatalf("archive hashes changed: first=%x second=%x", firstHashes, got)
+	}
+	if got, want := tarEntries(t, filepath.Join(output, "demo-antigravity.tar.gz")), []string{"plugin.json", "skills/demo/SKILL.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Antigravity entries = %#v, want %#v", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(output, "demo-antigravity.tgz")); !os.IsNotExist(err) {
+		t.Fatalf("Antigravity unexpectedly used Pi archive suffix: %v", err)
 	}
 	if got, want := tarEntries(t, filepath.Join(output, "demo-claude.tar.gz")), []string{".claude-plugin/marketplace.json", "hooks/run.sh"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Claude entries = %#v, want %#v", got, want)

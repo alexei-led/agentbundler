@@ -10,21 +10,23 @@ import (
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/antigravity"
 	"github.com/alexei-led/agentbundler/internal/target/pi"
 )
 
 func TestConsolidateDiagnosticsGroupsUnsupportedAgentFieldTargets(t *testing.T) {
 	diagnostics := consolidateDiagnostics([]model.Diagnostic{
 		{Code: "unsupported-agent-field", Severity: model.SeverityError, Asset: "agent/demo", Field: "sandbox_mode", Targets: []model.TargetID{model.TargetPi}, Hint: "move it"},
+		{Code: "unsupported-agent-field", Severity: model.SeverityError, Asset: "agent/demo", Field: "sandbox_mode", Targets: []model.TargetID{model.TargetAntigravity}, Hint: "move it"},
 		{Code: "unsupported-agent-field", Severity: model.SeverityError, Asset: "agent/demo", Field: "sandbox_mode", Targets: []model.TargetID{model.TargetClaude}, Hint: "move it"},
 	})
 	if len(diagnostics) != 1 {
 		t.Fatalf("consolidateDiagnostics() = %#v", diagnostics)
 	}
-	if !reflect.DeepEqual(diagnostics[0].Targets, []model.TargetID{model.TargetClaude, model.TargetPi}) {
+	if !reflect.DeepEqual(diagnostics[0].Targets, []model.TargetID{model.TargetAntigravity, model.TargetClaude, model.TargetPi}) {
 		t.Fatalf("targets = %#v", diagnostics[0].Targets)
 	}
-	want := `agent "agent/demo" field "sandbox_mode" is unsupported by targets: claude, pi`
+	want := `agent "agent/demo" field "sandbox_mode" is unsupported by targets: antigravity, claude, pi`
 	if diagnostics[0].Message != want || diagnostics[0].Hint != "move it" {
 		t.Fatalf("diagnostic = %#v", diagnostics[0])
 	}
@@ -38,7 +40,7 @@ func TestCompileRejectsNativeVerifyForBuild(t *testing.T) {
 }
 
 func TestCompileBuildsMinimalSkillsRepositoryForEveryTarget(t *testing.T) {
-	for _, target := range []model.TargetID{model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor} {
+	for _, target := range []model.TargetID{model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor} {
 		t.Run(string(target), func(t *testing.T) {
 			workspace := t.TempDir()
 			writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
@@ -58,32 +60,42 @@ func TestCompileBuildsMinimalSkillsRepositoryForEveryTarget(t *testing.T) {
 }
 
 func TestCompileRecordsResolvedAdapterRevision(t *testing.T) {
-	workspace := t.TempDir()
-	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
-	result := Compile(CompileRequest{
-		WorkspaceRoot: filepath.Clean(workspace),
-		Manifest:      skillsManifest(model.TargetPi),
-		Mode:          BuildModeBuild,
-	})
-	if len(result.Diagnostics) != 0 {
-		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
-	}
+	for _, test := range []struct {
+		target   model.TargetID
+		revision int
+	}{
+		{target: model.TargetAntigravity, revision: antigravity.FormatRevision},
+		{target: model.TargetPi, revision: pi.FormatRevision},
+	} {
+		t.Run(string(test.target), func(t *testing.T) {
+			workspace := t.TempDir()
+			writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
+			result := Compile(CompileRequest{
+				WorkspaceRoot: filepath.Clean(workspace),
+				Manifest:      skillsManifest(test.target),
+				Mode:          BuildModeBuild,
+			})
+			if len(result.Diagnostics) != 0 {
+				t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+			}
 
-	data, err := os.ReadFile(filepath.Join(workspace, "generated/.agentbundler/build.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var provenance struct {
-		Outputs []struct {
-			Target          model.TargetID `json:"target"`
-			AdapterRevision int            `json:"adapterRevision"`
-		} `json:"outputs"`
-	}
-	if err := json.Unmarshal(data, &provenance); err != nil {
-		t.Fatal(err)
-	}
-	if len(provenance.Outputs) != 1 || provenance.Outputs[0].Target != model.TargetPi || provenance.Outputs[0].AdapterRevision != pi.FormatRevision {
-		t.Fatalf("provenance outputs = %#v", provenance.Outputs)
+			data, err := os.ReadFile(filepath.Join(workspace, "generated/.agentbundler/build.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var provenance struct {
+				Outputs []struct {
+					Target          model.TargetID `json:"target"`
+					AdapterRevision int            `json:"adapterRevision"`
+				} `json:"outputs"`
+			}
+			if err := json.Unmarshal(data, &provenance); err != nil {
+				t.Fatal(err)
+			}
+			if len(provenance.Outputs) != 1 || provenance.Outputs[0].Target != test.target || provenance.Outputs[0].AdapterRevision != test.revision {
+				t.Fatalf("provenance outputs = %#v", provenance.Outputs)
+			}
+		})
 	}
 }
 
@@ -98,6 +110,18 @@ func TestCompileRejectsSymlinkedOutputAncestor(t *testing.T) {
 	manifest.Output = "linked/generated"
 	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
 	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "invalid-output-root" {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+}
+
+func TestCompileRejectsAntigravityProjectProfile(t *testing.T) {
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
+	manifest := skillsManifest(model.TargetAntigravity)
+	manifest.Composition = nil
+
+	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "invalid-target-profile" {
 		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
 	}
 }
@@ -125,8 +149,9 @@ func TestCompileNativeChecksRunFromTargetRoots(t *testing.T) {
 	workspace := t.TempDir()
 	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
 	manifest := skillsManifest(model.TargetClaude)
-	manifest.Targets = []model.TargetID{model.TargetClaude, model.TargetGrok}
+	manifest.Targets = []model.TargetID{model.TargetAntigravity, model.TargetClaude, model.TargetGrok}
 	manifest.Composition = []model.TargetComposition{
+		{Target: model.TargetAntigravity, Profile: model.TargetProfilePackage, PackageMode: model.TargetPackageModeSeparate},
 		{Target: model.TargetClaude, Profile: model.TargetProfilePackage},
 		{Target: model.TargetGrok, Profile: model.TargetProfilePackage},
 	}
@@ -138,6 +163,7 @@ func TestCompileNativeChecksRunFromTargetRoots(t *testing.T) {
 
 	bin := t.TempDir()
 	logs := t.TempDir()
+	writeFakeNativeValidator(t, bin, "agy", filepath.Join(logs, "agy"))
 	writeFakeNativeValidator(t, bin, "claude", filepath.Join(logs, "claude"))
 	writeFakeNativeValidator(t, bin, "grok", filepath.Join(logs, "grok"))
 	t.Setenv("NATIVE_CHECK_LOG", logs)
@@ -152,6 +178,7 @@ func TestCompileNativeChecksRunFromTargetRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertNativeValidatorLog(t, filepath.Join(logs, "agy"), filepath.Join(outputRoot, "antigravity")+"\nplugin\nvalidate\n.\n")
 	assertNativeValidatorLog(t, filepath.Join(logs, "claude"), filepath.Join(outputRoot, "claude")+"\nplugin\nvalidate\n--strict\n.\n")
 	assertNativeValidatorLog(t, filepath.Join(logs, "grok"), filepath.Join(outputRoot, "grok")+"\nplugin\nvalidate\n.\n")
 }
@@ -226,6 +253,71 @@ func TestTargetRenderInputUsesManifestDistributionAndExplicitPackageMode(t *test
 	}
 }
 
+func TestSelectPackagesFiltersOnlyPackageOwnedNativeGaps(t *testing.T) {
+	ownedAsset := model.AssetID("native-resource/core")
+	missingAsset := model.AssetID("native-resource/missing")
+	inventory := model.SourceInventory{
+		Packages: []model.SourcePackage{
+			{Identity: "core", Assets: []model.SourceAsset{{Identity: ownedAsset}}},
+			{Identity: "workflow", Assets: []model.SourceAsset{{Identity: "skill/release"}}},
+		},
+		NativeGaps: []model.NativeGap{
+			{Package: "core", Component: "core", Asset: &ownedAsset},
+			{Package: "workflow", Component: "missing", Asset: &missingAsset},
+			{Package: "workflow", Component: "assetless"},
+		},
+	}
+	var diagnostics []model.Diagnostic
+
+	selected := selectPackages(inventory, []model.PackageID{"workflow"}, &diagnostics)
+
+	if len(diagnostics) != 0 || len(selected.Packages) != 1 || selected.Packages[0].Identity != "workflow" {
+		t.Fatalf("selectPackages() = (%#v, %#v)", selected, diagnostics)
+	}
+	if want := inventory.NativeGaps[1:]; !reflect.DeepEqual(selected.NativeGaps, want) {
+		t.Fatalf("native gaps = %#v, want %#v", selected.NativeGaps, want)
+	}
+}
+
+func TestCompilePackageSelectorKeepsSelectedNativeResourceWithCrossTargetDuplicateID(t *testing.T) {
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/packages/pi.json", `{"id":"pi-only","metadata":{},"assets":[{"path":"src/plugins/pi/shared","targets":["pi"]}]}`)
+	writeCompilerFixture(t, workspace, "source/packages/antigravity.json", `{"id":"antigravity-only","metadata":{},"assets":[{"path":"src/plugins/antigravity/shared","targets":["antigravity"]}]}`)
+	writeCompilerFixture(t, workspace, "source/src/plugins/pi/shared/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"],"piExtensions":["extensions/shared.ts"]}`)
+	writeCompilerFixture(t, workspace, "source/src/plugins/pi/shared/extensions/shared.ts", "export default function shared() {}\n")
+	writeCompilerFixture(t, workspace, "source/src/plugins/antigravity/shared/.agentbundler/asset.json", `{"capabilities":["asset.native-resource"]}`)
+	writeCompilerFixture(t, workspace, "source/src/plugins/antigravity/shared/rules/shared.md", "# Shared\n")
+	manifest := model.SourceManifest{
+		Version: 1,
+		Kind:    model.SourceKindBundle,
+		Root:    "source",
+		Targets: []model.TargetID{model.TargetPi, model.TargetAntigravity},
+		Output:  "generated",
+		Composition: []model.TargetComposition{{
+			Target: model.TargetPi, Profile: model.TargetProfilePackage, PackageMode: model.TargetPackageModeAggregate,
+			Aggregate: &model.AggregatePackage{Identity: "selected", Metadata: model.PackageMetadata{"version": "1.0.0"}},
+		}},
+		Bundle: &model.BundleSourceConfig{Packages: []model.RelativePath{"packages/pi.json", "packages/antigravity.json"}},
+	}
+
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(workspace),
+		Manifest:      manifest,
+		Targets:       []model.TargetID{model.TargetPi},
+		Packages:      []model.PackageID{"pi-only"},
+		Mode:          BuildModeBuild,
+	})
+	if len(result.Diagnostics) != 0 || len(result.Plan.Targets) != 1 {
+		t.Fatalf("Compile() = (%#v, %#v)", result.Plan, result.Diagnostics)
+	}
+	for _, file := range result.Plan.Targets[0].Files {
+		if file.Path == "extensions/shared.ts" && string(file.Bytes) == "export default function shared() {}\n" {
+			return
+		}
+	}
+	t.Fatalf("selected Pi native resource missing from files %#v", result.Plan.Targets[0].Files)
+}
+
 func TestCompileRejectsUndeclaredTargetBeforeFilesystemWork(t *testing.T) {
 	root := t.TempDir()
 	manifest := model.SourceManifest{
@@ -236,19 +328,21 @@ func TestCompileRejectsUndeclaredTargetBeforeFilesystemWork(t *testing.T) {
 		Output:  "generated",
 		Bundle:  &model.BundleSourceConfig{Packages: []model.RelativePath{"packages/base.json"}},
 	}
-	result := Compile(CompileRequest{
-		WorkspaceRoot: filepath.Clean(root),
-		Manifest:      manifest,
-		Targets:       []model.TargetID{model.TargetCodex},
-		Mode:          BuildModeCheck,
-	})
-	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "invalid-target-selector" {
-		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	for _, targetID := range []model.TargetID{model.TargetAntigravity, model.TargetCodex} {
+		result := Compile(CompileRequest{
+			WorkspaceRoot: filepath.Clean(root),
+			Manifest:      manifest,
+			Targets:       []model.TargetID{targetID},
+			Mode:          BuildModeCheck,
+		})
+		if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "invalid-target-selector" {
+			t.Fatalf("Compile(%q) diagnostics = %#v", targetID, result.Diagnostics)
+		}
 	}
 }
 
 func skillsManifest(target model.TargetID) model.SourceManifest {
-	return model.SourceManifest{
+	manifest := model.SourceManifest{
 		Version: 1,
 		Kind:    model.SourceKindSkillsRepository,
 		Root:    "source",
@@ -260,6 +354,12 @@ func skillsManifest(target model.TargetID) model.SourceManifest {
 			Metadata: model.PackageMetadata{},
 		},
 	}
+	if target == model.TargetAntigravity {
+		manifest.Composition = []model.TargetComposition{{
+			Target: target, Profile: model.TargetProfilePackage, PackageMode: model.TargetPackageModeSeparate,
+		}}
+	}
+	return manifest
 }
 
 func writeCompilerFixture(t *testing.T, root, relative, content string) {

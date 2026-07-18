@@ -51,7 +51,7 @@ Use a dedicated output such as `generated/`.
 The supported target IDs are:
 
 ```text
-claude  codex  pi  copilot  grok  cursor
+antigravity  claude  codex  pi  copilot  grok  cursor
 ```
 
 ## Configure `agentbundle.json`
@@ -67,8 +67,23 @@ Minimal skills repository:
   "version": 1,
   "kind": "skills-repository",
   "root": "source",
-  "targets": ["claude", "codex", "pi", "copilot", "grok", "cursor"],
+  "targets": [
+    "antigravity",
+    "claude",
+    "codex",
+    "pi",
+    "copilot",
+    "grok",
+    "cursor"
+  ],
   "output": "generated",
+  "composition": [
+    {
+      "target": "antigravity",
+      "profile": "package",
+      "packageMode": "separate"
+    }
+  ],
   "skillsRepository": {
     "package": "team-skills",
     "roots": ["skills"],
@@ -90,11 +105,14 @@ Source kinds:
   plugin assets.
 
 Current renderers emit skills, portable resources, supported native agents,
-typed command hooks with payloads, and deterministic catalogs. Claude, Codex,
-Copilot, Cursor, and Grok package profiles support separate package-ID roots. Pi
-supports an explicit aggregate package with one registered embedded hook runtime.
-Renderers do not publish or install packages. `check --native` runs only declared
-safe Claude and Grok validators after drift passes.
+typed command hooks with payloads, and catalogs where supported. Claude, Codex,
+Copilot, Cursor, Grok, and Antigravity package profiles support separate
+package-ID roots. Antigravity requires package profile/separate mode, emits no
+catalog, accepts only agent frontmatter with exact non-empty string `name` and
+`description`, and rejects all portable hooks. Pi supports an explicit aggregate
+package with one registered embedded hook runtime. Renderers do not publish or
+install packages. `check --native` runs only declared safe Claude, Grok, and
+Antigravity validators after drift passes.
 
 ## Create a skill source
 
@@ -172,10 +190,18 @@ A filesystem file under the overlay's `files/` directory wins over a JSON
 `files` value at the same path. Paths are asset-relative. A path cannot be in
 both `files` and `deletedFiles`. Deleting a missing file is a no-op.
 
-Target overlays do not inherit from another target. Composition is target-wide
-and can prepend a `skillPreamble`; it also classifies capabilities and native
-gaps. A composition entry replaces that target's default capability rules, so
+Target overlays do not inherit from another target. Use
+`targets/antigravity.json` for an Antigravity portable-asset sidecar. Composition
+is target-wide and can prepend a `skillPreamble`; it also classifies capabilities
+and native gaps. A composition entry replaces that target's default capability rules, so
 list every required rule when declaring `capabilities`.
+
+For raw Antigravity rules, `mcp_config.json`, `hooks.json`, or scripts, use a
+bundle asset under `src/plugins/antigravity/<component>/`, declare
+`asset.native-resource` in its `.agentbundler/asset.json`, and set the package
+asset allow-list to exactly `antigravity`. These files are copied without
+semantic validation. They are trusted code/configuration, and `agy plugin
+validate` is not a sandbox.
 
 ## Build and verify
 
@@ -227,8 +253,8 @@ Normal workflow after source/config changes:
 5. If `check` exits `1` or `3`, diagnose the failure; do not overwrite output.
 6. Run `agbun check` again.
 7. For a distributed package, run repository-owned vendor smoke tests. `agbun
-check --native` runs only declared checks; built-in adapters do not invoke
-   optional vendor CLIs.
+check --native` runs only declared checks, including `agy plugin validate .`
+   for each Antigravity plugin root.
 8. Inspect generated target paths and report any unsupported source assets.
 
 ## Diagnose failures
@@ -241,9 +267,15 @@ check --native` runs only declared checks; built-in adapters do not invoke
 - Section patch errors: use the exact heading path once; do not use Setext
   headings or anchors inside fenced code.
 - Unsupported capability/native-gap errors: check the target hook event,
-  matcher, decision, timeout, async, and failure-policy cells. Advisory
+  matcher, decision, timeout, async, and failure-policy cells. Antigravity
+  rejects every portable hook cell; exclude the hook rather than acknowledging
+  or silently converting it. Advisory
   conversions require an exact acknowledgment. A policy cannot make an
   unsupported security decision or target-native resource safe.
+- Antigravity native verification failure: confirm `agy` is on `PATH`, run only
+  `agy plugin validate <root>` with isolated config, and inspect the strict
+  package name/agent/native-resource diagnostics. Do not install or mutate the
+  normal user plugin state.
 - Target not recognizing files: confirm the generated target path, then check
   the target agent's current runtime documentation. **Agent Bundler** creates files;
   it does not install, enable, or register an agent plugin. Validate a published

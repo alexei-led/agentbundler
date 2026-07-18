@@ -72,6 +72,9 @@ func normalizeInventory(inventory model.SourceInventory) model.SourceInventory {
 	}
 	sort.Slice(inventory.NativeGaps, func(i, j int) bool {
 		left, right := inventory.NativeGaps[i], inventory.NativeGaps[j]
+		if left.Package != right.Package {
+			return left.Package < right.Package
+		}
 		if left.Location.Path != right.Location.Path {
 			return left.Location.Path < right.Location.Path
 		}

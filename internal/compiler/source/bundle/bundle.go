@@ -24,8 +24,13 @@ type inspector struct {
 	filesystem    *os.Root
 	root          string
 	inputs        map[model.RelativePath]string
-	nativeGaps    map[model.RelativePath]model.NativeGap
+	nativeGaps    map[nativeGapKey]model.NativeGap
 	diagnostics   []model.Diagnostic
+}
+
+type nativeGapKey struct {
+	packageID model.PackageID
+	assetPath model.RelativePath
 }
 
 type packageManifest struct {
@@ -116,7 +121,7 @@ func InspectBundleRoot(manifest model.SourceManifest, workspaceRoot string, work
 		filesystem:    workspace,
 		root:          root,
 		inputs:        make(map[model.RelativePath]string),
-		nativeGaps:    make(map[model.RelativePath]model.NativeGap),
+		nativeGaps:    make(map[nativeGapKey]model.NativeGap),
 	}
 	info, err := inspector.lstat(root)
 	if err != nil {
@@ -152,6 +157,9 @@ func InspectBundleRoot(manifest model.SourceManifest, workspaceRoot string, work
 		nativeGaps = append(nativeGaps, gap)
 	}
 	sort.Slice(nativeGaps, func(i, j int) bool {
+		if nativeGaps[i].Package != nativeGaps[j].Package {
+			return nativeGaps[i].Package < nativeGaps[j].Package
+		}
 		return nativeGaps[i].Location.Path < nativeGaps[j].Location.Path
 	})
 	inputs := make([]model.InputFile, 0, len(inspector.inputs))
@@ -208,12 +216,17 @@ func (i *inspector) inspectPackage(packagePath model.RelativePath) (model.Source
 		if !ok {
 			continue
 		}
+		if nativeGap != nil && nativeGap.Target != nil && *nativeGap.Target == model.TargetAntigravity && (len(entry.Targets) != 1 || entry.Targets[0] != *nativeGap.Target) {
+			i.addDiagnostic(packagePath, "native resource path %q must declare an exact target allow-list [%q]", assetPath, *nativeGap.Target)
+			continue
+		}
 		asset.Targets = append([]model.TargetID(nil), entry.Targets...)
 		if len(asset.Targets) > 0 {
 			sort.Slice(asset.Targets, func(left, right int) bool { return asset.Targets[left] < asset.Targets[right] })
 		}
 		if nativeGap != nil {
-			i.nativeGaps[assetPath] = *nativeGap
+			nativeGap.Package = packageID
+			i.nativeGaps[nativeGapKey{packageID: packageID, assetPath: assetPath}] = *nativeGap
 		}
 		if _, exists := seenAssets[asset.Identity]; exists {
 			i.addDiagnostic(packagePath, "asset identity %q is duplicated", asset.Identity)
@@ -240,6 +253,10 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 
 	content := model.AssetContent{Frontmatter: map[string]any{}, Files: make(map[model.RelativePath]model.FileContent)}
 	metadataDir := assetDir
+	nativeTarget := model.TargetID("")
+	if kind == model.AssetKindNativeResource {
+		nativeTarget = nativeResourceTarget(assetPath)
+	}
 	switch kind {
 	case model.AssetKindResource:
 		i.readSupportFiles(assetDir, &content)
@@ -255,7 +272,11 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 			return model.SourceAsset{}, nil, false
 		}
 		if info.IsDir() {
-			i.readSupportFiles(assetDir, &content)
+			if nativeTarget == model.TargetAntigravity {
+				i.readNativeResourceFiles(assetDir, &content)
+			} else {
+				i.readSupportFiles(assetDir, &content)
+			}
 		} else {
 			metadataDir = filepath.ToSlash(filepath.Dir(string(assetPath)))
 			data, ok := i.readRegular(mainPath)
@@ -323,22 +344,32 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 	if kind != model.AssetKindNativeResource {
 		return asset, nil, true
 	}
-	parts := strings.Split(string(assetPath), "/")
-	targetIndex := 1
-	if len(parts) > 0 && parts[0] == "src" {
-		targetIndex = 2
+	if nativeTarget == model.TargetAntigravity {
+		declared := false
+		for _, capability := range capabilities {
+			if capability.Key == "asset.native-resource" {
+				declared = true
+				break
+			}
+		}
+		if !declared {
+			i.addDiagnostic(model.RelativePath(filepath.ToSlash(filepath.Join(metadataDir, ".agentbundler/asset.json"))), "Antigravity native resource must explicitly declare capability %q", "asset.native-resource")
+		}
 	}
-	if len(parts) <= targetIndex {
-		i.addDiagnostic(assetPath, "native resource path is missing its target")
-		return model.SourceAsset{}, nil, false
-	}
-	target := model.TargetID(parts[targetIndex])
 	return asset, &model.NativeGap{
 		Component: name,
 		Asset:     &identity,
 		Location:  model.SourceLocation{Path: assetPath},
-		Target:    &target,
+		Target:    &nativeTarget,
 	}, true
+}
+
+func nativeResourceTarget(assetPath model.RelativePath) model.TargetID {
+	parts := strings.Split(string(assetPath), "/")
+	if parts[0] == "src" {
+		return model.TargetID(parts[2])
+	}
+	return model.TargetID(parts[1])
 }
 
 func classifyAsset(assetPath string) (model.AssetKind, string, string, string, bool, bool, error) {
@@ -364,6 +395,55 @@ func classifyAsset(assetPath string) (model.AssetKind, string, string, string, b
 		return model.AssetKindNativeResource, parts[2], assetPath, assetPath, false, false, nil
 	default:
 		return "", "", "", "", false, false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
+	}
+}
+
+func (i *inspector) readNativeResourceFiles(assetDir string, content *model.AssetContent) {
+	root := filepath.Join(i.root, filepath.FromSlash(assetDir))
+	err := i.walkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, fullPath)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".agentbundler" {
+			if entry.Type()&os.ModeSymlink != 0 || !entry.IsDir() {
+				return fmt.Errorf("sidecar path must be a non-symlink directory")
+			}
+			return filepath.SkipDir
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("native resource path %q is a symlink", rel)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return fmt.Errorf("inspect native resource path %q: %w", rel, err)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("native resource path %q is not a regular file", rel)
+		}
+		path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, rel)))
+		data, ok := i.readRegular(path)
+		if ok {
+			content.Files[model.RelativePath(rel)] = model.FileContent{
+				Bytes:      data,
+				Executable: info.Mode().Perm()&0o111 != 0,
+				Origin:     []model.SourceLocation{{Path: path}},
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		i.addDiagnostic(model.RelativePath(assetDir), "%v", err)
 	}
 }
 
@@ -1007,7 +1087,7 @@ func decodeAcknowledgment(value acknowledgmentSidecar) (model.Acknowledgment, er
 func parseTarget(value string) (model.TargetID, error) {
 	target := model.TargetID(value)
 	switch target {
-	case model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
+	case model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
 		return target, nil
 	default:
 		return "", fmt.Errorf("target %q is invalid", value)

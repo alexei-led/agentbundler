@@ -6,6 +6,7 @@ This note pins the native package and hook contracts used by Agent Bundler. Prim
 
 | Target             | Installable package root                                                         | Hook file                                                               | Catalog path                                     | Production native validator              |
 | ------------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
+| Antigravity CLI    | root `plugin.json`, `skills/`, `agents/`, and explicit native resources          | root `hooks.json` only as an explicit native resource                   | None                                             | `agy plugin validate <root>`             |
 | Claude Code        | `.claude-plugin/plugin.json`, `skills/`, `agents/`                               | `hooks/hooks.json`                                                      | `.claude-plugin/marketplace.json`                | `claude plugin validate --strict <root>` |
 | OpenAI Codex       | `.codex-plugin/plugin.json`, `skills/`, optional `.mcp.json`                     | `hooks/hooks.json`                                                      | `.agents/plugins/marketplace.json`               | None                                     |
 | Pi                 | `package.json`, declared `pi.extensions`, `pi.skills`, and package resources     | Agent Bundler `hooks/hooks.v1.json` consumed by one generated extension | None; install the package root with `pi install` | None                                     |
@@ -19,9 +20,22 @@ Repository vendor smokes are opt-in under the `vendor_smoke` build tag. A shared
 test-only harness requires exact CLI names, uses positive subprocess deadlines,
 bounds combined output to 32 KiB, supplies temporary HOME/config/cache roots,
 and verifies normal configuration digests after mutating tests. CI runs only the
-safe local-tree validators, pinned to Claude Code 2.1.210 and Grok Build 0.2.101;
-the Grok Linux binary is checksum-pinned. Codex, Pi, Copilot, and Cursor
+safe local-tree validators, pinned to Claude Code 2.1.210, Grok Build 0.2.101,
+and Antigravity CLI 1.1.3; the Grok and Antigravity Linux binaries are
+checksum-pinned. Codex, Pi, Copilot, and Cursor
 install/load smokes are never production native checks.
+
+## Antigravity CLI
+
+- Evidence checked 2026-07-17: official [plugin documentation](https://antigravity.google/docs/cli/plugins), [feature documentation](https://antigravity.google/docs/cli/features), [migration documentation](https://antigravity.google/docs/cli/gcli-migration), and the [Antigravity CLI repository](https://github.com/google-antigravity/antigravity-cli). The Conductor 0.3.0 example was checked at commit [`fb6212e8faee3f9ecb69f0ee19bd5b2a0765bb0a`](https://github.com/gemini-cli-extensions/conductor/tree/fb6212e8faee3f9ecb69f0ee19bd5b2a0765bb0a). The verified local CLI is `agy` 1.1.3. Its Linux x64 [release archive](https://github.com/google-antigravity/antigravity-cli/releases/download/1.1.3/agy_cli_linux_x64.tar.gz) has SHA-256 `7a7239a69b65d3cf3af7e75f27b2ff4e9cce696a7b9a9e5c37c695f1c74eec34` and contains the `antigravity` binary.
+- Source boundary: Antigravity is an outbound target for existing bundle, Claude-plugin, and skills-repository inputs, not a source kind. Agent Bundler does not claim direct import of arbitrary Antigravity plugin repositories. The adapter uses the shared package-output seam rather than a separate renderer.
+- Native layout: `plugin.json` is required at the plugin root. Optional convention-based components are `skills/<name>/SKILL.md`, `agents/*.md`, `rules/*.md`, root `mcp_config.json`, and root `hooks.json`. Antigravity also accepts legacy `commands/`, but Agent Bundler does not generate it because Antigravity compiles skills into slash commands.
+- Manifest: generated `plugin.json` contains required string `name` and optional string `description` only, rejects additional fields, and enforces the published name pattern `^[A-Za-z0-9_-]+$`. Agent Bundler does not infer a schema field, version, author, repository, component paths, hooks, MCP, or rule arrays.
+- Packaging: only package profile with separate package mode is supported. One package renders flat; multiple packages render as independent package-ID roots. There is no verified marketplace or catalog format, so Agent Bundler generates no catalog and no manifest version field.
+- Portable assets: skills retain their normal directories, support files, and frontmatter. Portable agents render only when their frontmatter consists exactly of non-empty string `name` and `description`; model, tool-policy, skill-inheritance, Pi `sandbox_mode`, and all other fields are unsupported.
+- Native resources: an explicit bundle `asset.native-resource` under `src/plugins/antigravity/<component>/` is copied as a complete symlink-free tree at the plugin root without parsing rules, MCP configuration, hooks, or support files. The asset must be Antigravity-owned, non-empty, and must not declare Pi extensions. Existing target allow-lists, paths, collisions, hashes, executable modes, and native-gap actions remain authoritative.
+- Hook limit: portable `asset.hook` and all portable `hook.*` semantics are unsupported. A target-native `hooks.json` may pass through only as the explicit raw native resource above. Agent Bundler does not claim portable event, matcher, timeout, decision, async, ordering, or failure-policy equivalence.
+- Validation: each rendered plugin root declares `agy plugin validate .`, executed by the isolated native-verification subsystem with temporary home, config, and cache roots. CI verifies Antigravity CLI 1.1.3 with the pinned Linux x64 digest above and validates both acceptance-fixture plugin roots. Validation is offline and non-mutating, but it is not a sandbox for raw MCP configuration, hooks, or scripts. Production and tests never install, link, enable, disable, uninstall, authenticate, or access the network.
 
 ## Claude Code
 

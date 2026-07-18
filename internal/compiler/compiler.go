@@ -222,6 +222,12 @@ func selectPackages(inventory model.SourceInventory, requested []model.PackageID
 			filtered.Packages = append(filtered.Packages, pkg)
 		}
 	}
+	filtered.NativeGaps = nil
+	for _, gap := range inventory.NativeGaps {
+		if selected[gap.Package] {
+			filtered.NativeGaps = append(filtered.NativeGaps, gap)
+		}
+	}
 	return filtered
 }
 

@@ -121,6 +121,47 @@ func TestAppendCanonicalSchemaAndOrdering(t *testing.T) {
 	}
 }
 
+func TestAppendRoundTripsAntigravityTargetDeterministically(t *testing.T) {
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target: model.TargetAntigravity,
+		Files:  []model.PlannedFile{{Path: "plugin.json", Bytes: []byte(`{"name":"demo"}`)}},
+	}}}
+	input := Input{
+		CompilerVersion:  "v0.5.0",
+		Configuration:    json.RawMessage(`{"target":"antigravity"}`),
+		Inputs:           []InputFile{{Path: "source/plugin.json", SHA256: shaA}},
+		Acknowledgments:  []Acknowledgment{{Asset: "skill/demo", Target: model.TargetAntigravity, Key: "reviewed", Reason: "Reviewed."}},
+		AdapterRevisions: []AdapterRevision{{Target: model.TargetAntigravity, Revision: 1}},
+	}
+
+	first, err := Append(plan, input)
+	if err != nil {
+		t.Fatalf("Append() error = %v", err)
+	}
+	second, err := Append(plan, input)
+	if err != nil {
+		t.Fatalf("Append(second) error = %v", err)
+	}
+	if !bytes.Equal(provenanceFile(t, first), provenanceFile(t, second)) {
+		t.Fatalf("provenance differs:\nfirst:  %s\nsecond: %s", provenanceFile(t, first), provenanceFile(t, second))
+	}
+	var document struct {
+		Acknowledgments []struct {
+			Target string `json:"target"`
+		} `json:"acknowledgments"`
+		Outputs []struct {
+			Target          string `json:"target"`
+			AdapterRevision int    `json:"adapterRevision"`
+		} `json:"outputs"`
+	}
+	if err := json.Unmarshal(provenanceFile(t, first), &document); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(document.Acknowledgments) != 1 || document.Acknowledgments[0].Target != "antigravity" || len(document.Outputs) != 1 || document.Outputs[0].Target != "antigravity" || document.Outputs[0].AdapterRevision != 1 {
+		t.Fatalf("document = %#v", document)
+	}
+}
+
 func TestAppendConfigurationMemberOrderChangesHash(t *testing.T) {
 	plan := singleTargetPlan()
 	first, err := Append(plan, validInput(`{"first":1,"second":2}`))
@@ -238,6 +279,7 @@ func TestAppendRejectsMalformedInput(t *testing.T) {
 		{name: "duplicate input path", mutate: func(input *Input) { input.Inputs = append(input.Inputs, input.Inputs[0]) }},
 		{name: "empty acknowledgment reason", mutate: func(input *Input) { input.Acknowledgments[0].Reason = "" }},
 		{name: "invalid acknowledgment target", mutate: func(input *Input) { input.Acknowledgments[0].Target = "other" }},
+		{name: "invalid adapter revision target", mutate: func(input *Input) { input.AdapterRevisions[0].Target = "other" }},
 		{name: "missing adapter revision", mutate: func(input *Input) { input.AdapterRevisions = nil }},
 		{name: "duplicate adapter revision", mutate: func(input *Input) { input.AdapterRevisions = append(input.AdapterRevisions, input.AdapterRevisions[0]) }},
 		{name: "extra adapter revision", mutate: func(input *Input) {

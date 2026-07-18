@@ -23,6 +23,7 @@
     {
       "path": "src/agents/reviewer.md",
       "targets": [
+        "antigravity",
         "claude",
         "pi",
         "copilot",
@@ -30,6 +31,22 @@
         "grok"
       ]
     },
-    "src/hooks/command-guard"
+    {
+      "path": "src/hooks/command-guard",
+      "targets": [
+        "claude",
+        "codex",
+        "pi",
+        "copilot",
+        "cursor",
+        "grok"
+      ]
+    },
+    {
+      "path": "src/plugins/antigravity/conductor-ux",
+      "targets": [
+        "antigravity"
+      ]
+    }
   ]
 }

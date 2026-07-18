@@ -625,7 +625,7 @@ func decodeStrictJSON(data []byte, destination any) error {
 func parseTargetID(value string) (model.TargetID, bool) {
 	target := model.TargetID(value)
 	switch target {
-	case model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
+	case model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
 		return target, true
 	default:
 		return "", false
