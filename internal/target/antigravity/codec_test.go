@@ -109,6 +109,7 @@ func TestNativeResourceSortedDetachedExactFiles(t *testing.T) {
 func TestNativeResourceRejectsEmptyAndPiExtensions(t *testing.T) {
 	for _, asset := range []model.NormalizedAsset{
 		{Identity: "native-resource/empty", Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{}}},
+		{Identity: "native-resource/pi-empty", Native: &model.NativeResourceOptions{PiExtensions: []model.RelativePath{}}, Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{"resource.txt": {}}}},
 		{Identity: "native-resource/pi", Native: &model.NativeResourceOptions{PiExtensions: []model.RelativePath{"extension.ts"}}, Content: model.AssetContent{Files: map[model.RelativePath]model.FileContent{"extension.ts": {}}}},
 	} {
 		if _, err := nativeResource(asset); err == nil {

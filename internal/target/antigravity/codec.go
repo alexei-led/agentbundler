@@ -88,7 +88,7 @@ func markdownAgent(asset model.NormalizedAsset) ([]byte, string, error) {
 }
 
 func nativeResource(asset model.NormalizedAsset) ([]packageoutput.NativeResourceFile, error) {
-	if asset.Native != nil && len(asset.Native.PiExtensions) != 0 {
+	if asset.Native != nil {
 		return nil, fmt.Errorf("antigravity native resource %q must not declare piExtensions", asset.Identity)
 	}
 	paths := make([]model.RelativePath, 0, len(asset.Content.Files))
