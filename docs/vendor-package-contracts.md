@@ -21,6 +21,8 @@ does not install, publish, authenticate, or modify vendor state.
   opt-in and never enters target archives.
 - Codex project agents are `.codex/agents/*.toml`; marketplace installation does
   not install them. Root compatibility may copy canonical profiles there.
+- Claude Code 2.1.19 auto-loads `hooks/hooks.json` from generated plugin roots.
+  Claude manifests omit `hooks` for that standard path to avoid duplicate loading.
 - Grok reads Claude marketplaces. Claude and Grok root compatibility cannot be
   enabled together.
 - Pi agents remain metadata in `pi.subagents.agents`. Agent Bundler compiles

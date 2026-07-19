@@ -89,10 +89,14 @@ func TestRenderClaudeHookGolden(t *testing.T) {
 
 	files := plannedFiles(plan)
 	manifest := decodeJSONObject(t, files[".claude-plugin/plugin.json"].Bytes)
-	if manifest["hooks"] != "./hooks/hooks.json" {
-		t.Fatalf("plugin hooks declaration = %#v", manifest["hooks"])
+	if _, exists := manifest["hooks"]; exists {
+		t.Fatalf("plugin manifest declares hooks: %#v", manifest)
 	}
-	hooks := decodeJSONObject(t, files["hooks/hooks.json"].Bytes)
+	hookFile, exists := files["hooks/hooks.json"]
+	if !exists {
+		t.Fatal("hook package did not emit hooks/hooks.json")
+	}
+	hooks := decodeJSONObject(t, hookFile.Bytes)
 	events := hooks["hooks"].(map[string]any)
 	preTool := events["PreToolUse"].([]any)
 	if got := preTool[0].(map[string]any)["matcher"]; got != "Read" {

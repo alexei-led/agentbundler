@@ -121,9 +121,6 @@ func manifest(pkg model.NormalizedPackage) ([]byte, error) {
 	if value, ok := values["author"]; ok {
 		values["author"] = packageoutput.PersonMetadata(value)
 	}
-	if packageoutput.PackageHasAsset(pkg, model.AssetKindHook) {
-		values["hooks"] = "./" + claudeHooksPath
-	}
 	values["$schema"] = "https://json.schemastore.org/claude-code-plugin-manifest.json"
 	return packageoutput.ManifestJSON(values)
 }
