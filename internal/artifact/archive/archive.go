@@ -4,6 +4,8 @@ package archive
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -146,5 +148,51 @@ func writeTarGzip(destination, root string) (err error) {
 	if err := file.Close(); err != nil {
 		return err
 	}
+	unchanged, err := sameFileContents(temporary, destination)
+	if err != nil {
+		return err
+	}
+	if unchanged {
+		return os.Remove(temporary)
+	}
 	return os.Rename(temporary, destination)
+}
+
+func sameFileContents(left, right string) (bool, error) {
+	leftInfo, err := os.Stat(left)
+	if err != nil {
+		return false, err
+	}
+	rightInfo, err := os.Lstat(right)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if rightInfo.Mode()&os.ModeSymlink != 0 || !rightInfo.Mode().IsRegular() {
+		return false, nil
+	}
+	if leftInfo.Size() != rightInfo.Size() {
+		return false, nil
+	}
+	leftFile, err := os.Open(left)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = leftFile.Close() }()
+	rightFile, err := os.Open(right)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = rightFile.Close() }()
+	leftHash := sha256.New()
+	if _, err := io.Copy(leftHash, leftFile); err != nil {
+		return false, err
+	}
+	rightHash := sha256.New()
+	if _, err := io.Copy(rightHash, rightFile); err != nil {
+		return false, err
+	}
+	return string(leftHash.Sum(nil)) == string(rightHash.Sum(nil)), nil
 }

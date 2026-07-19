@@ -2,7 +2,7 @@
 
 **Path**: `internal/compiler/source/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: `internal/compiler`
-**Submodules**: `bundle`, `claudeplugin`, `skillrepo`
+**Submodules**: `bundle`, `claudeplugin`, `skillrepo`, `frontmatter`
 
 ## Purpose
 
@@ -52,6 +52,9 @@ import(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 - **Counterpart**: `internal/compiler/model`
   - **Direction**: all importers construct model-owned values.
   - **Shared knowledge**: source declarations, `FileContent`, `HookDescriptor`, inventory, and diagnostics only.
+- **Counterpart**: `internal/compiler/source/frontmatter`
+  - **Direction**: importers delegate Skills frontmatter parsing without exposing YAML implementation details to the parent.
+  - **Shared knowledge**: bounded frontmatter bytes and normalized metadata only.
 
 ## Internal Design
 

@@ -4,6 +4,8 @@
 **Parent**: repository root
 **Submodules**: `model`, `source`, `composition`
 
+`internal/compatibility` is a sibling stage owned outside this module. The compiler orchestrator invokes its public plan/compare/write contract after provenance and before the final mode result.
+
 ## Purpose
 
 This module coordinates one deterministic compilation without owning source topology, overlay algorithms, vendor schemas, runtime execution, or artifact effects.
@@ -54,7 +56,10 @@ For each selected target, the compiler passes the adapter an explicit `TargetRen
 - **Counterpart**: `internal/target`
   - **Direction**: resolves adapters/capabilities and calls `render(Adapter, TargetRenderInput)`.
 - **Counterpart**: `internal/artifact`
-  - **Direction**: appends provenance, writes or compares, then optionally verifies declared native checks.
+  - **Direction**: appends provenance, writes or compares, archives through the facade, then optionally verifies declared native checks.
+- **Counterpart**: `internal/compatibility`
+  - **Direction**: prepares repository-root compatibility from the canonical plan, then writes or compares it alongside target output.
+  - **Shared knowledge**: compatibility configuration, output path, canonical `BuildPlan`, and compatibility plan only.
 - **Counterpart**: `internal/compiler/model`
   - **Direction**: constructs and validates shared model values.
 
@@ -70,7 +75,7 @@ The compiler reads no asset directly. Only this orchestrator combines manifest d
 
 ## Constraints and Invariants
 
-- Imports only public facades of model, source, composition, target, and artifact.
+- Imports only public facades of model, source, composition, target, artifact, and compatibility.
 - Never imports vendor leaves, importer leaves, serializers, filesystem, process, network, clock, Git, or environment output inputs.
 - `separate` remains the version-1 default. `aggregate` is explicit and valid only for Pi package profile with aggregate identity/metadata.
 - Build and check use the same imported, composed, rendered, provenance-augmented plan.

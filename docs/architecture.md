@@ -19,7 +19,7 @@ flowchart LR
 ## Pipeline
 
 1. **CLI** discovers the manifest, parses selectors, maps diagnostics, and
-   chooses `build` or `check`.
+   chooses `build`, `check`, or `package`.
 2. **Model validation** decodes strict UTF-8 JSON and rejects unknown fields,
    duplicate keys, invalid paths, invalid targets, and malformed patch shapes.
    Source importers share root-containment and no-symlink checks for workspace
@@ -40,9 +40,10 @@ flowchart LR
 6. **Compatibility handling** optionally derives repository-root marketplace
    routes, Codex project agents, and a Pi package merge from the canonical target
    plan. It owns root drift and cleanup state without changing archive roots.
-7. **Artifact handling** adds provenance, stages output for `build`, compares
-   the plan against existing files for read-only `check`, and invokes declared
-   native validators only for `check --native` after drift passes.
+7. **Artifact handling** adds provenance, compares current output before
+   staging a changed tree for `build`, compares the plan for read-only `check`,
+   and archives only current target roots for `package`. Declared native
+   validators run only for `check --native` after drift passes.
 
 ## Package ownership
 
@@ -69,12 +70,16 @@ flowchart LR
 - `internal/target/antigravity`: strict Antigravity CLI plugin serialization,
   supported-agent validation, opaque native-resource copying, and native-check
   declarations. It does not import source, composition, or artifact packages.
-- `internal/artifact/write`: staging and complete output replacement.
+- `internal/artifact`: public artifact facade, validation, and archive boundary.
+- `internal/artifact/archive`: deterministic target-root release archives; it excludes compiler and compatibility files and skips unchanged archive replacement.
+- `internal/artifact/write`: staging and complete output replacement; the facade skips it for current output.
 - `internal/artifact/compare`: exact output drift detection.
 - `internal/artifact/provenance`: configuration, input, output, and
   acknowledgment metadata.
 - `internal/artifact/nativeverify`: declared native checks, when adapters
   provide them.
+- `internal/buildinfo`: side-effect-free release/development version lookup.
+- `internal/testutil`: test-only vendor smoke and filesystem isolation helpers; it is not a production module.
 
 ## Determinism and ownership
 
@@ -85,8 +90,10 @@ does not depend on network state, wall clock, hostname, locale, Git state,
 installed vendor versions, or absolute source paths. The provenance file records
 hashes so a later `check` can identify drift.
 
-`build` owns the complete configured output directory. It writes through a
-staging/journal path and replaces the output only after the plan is ready.
+`build` owns the complete configured output directory. It compares the
+current plan first, then writes through a staging/journal path and replaces the
+output only when drift exists. `package` applies the same no-op rule to matching
+release archives.
 Opted-in repository-root compatibility owns only paths recorded in
 `.agentbundler/compatibility.json` and generated Pi fields/dependencies recorded
 there. `check` does not mutate output or root files.

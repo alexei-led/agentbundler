@@ -33,12 +33,26 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstHashes := archiveHashes(t, first)
+	firstInfo, err := os.Stat(first[0])
+	if err != nil {
+		t.Fatal(err)
+	}
 	second, err := WriteTargetRoots(workspace, manifest, plan, output)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := archiveHashes(t, second); !reflect.DeepEqual(got, firstHashes) {
 		t.Fatalf("archive hashes changed: first=%x second=%x", firstHashes, got)
+	}
+	secondInfo, err := os.Stat(second[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(firstInfo, secondInfo) {
+		t.Fatal("second archive write replaced an unchanged archive")
+	}
+	if !firstInfo.ModTime().Equal(secondInfo.ModTime()) {
+		t.Fatalf("second archive write changed timestamp: before=%v after=%v", firstInfo.ModTime(), secondInfo.ModTime())
 	}
 	if got, want := tarEntries(t, filepath.Join(output, "demo-antigravity.tar.gz")), []string{"plugin.json", "skills/demo/SKILL.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Antigravity entries = %#v, want %#v", got, want)

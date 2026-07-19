@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alexei-led/agentbundler/internal/artifact/archive"
+	"github.com/alexei-led/agentbundler/internal/artifact"
 	"github.com/alexei-led/agentbundler/internal/buildinfo"
 	"github.com/alexei-led/agentbundler/internal/compiler"
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -99,10 +99,9 @@ func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Wri
 		if !filepath.IsAbs(output) {
 			output = filepath.Join(manifestDirectory, output)
 		}
-		paths, err := archive.WriteTargetRoots(manifestDirectory, manifest, result.Plan, filepath.Clean(output))
-		if err != nil {
-			result.Diagnostics = append(result.Diagnostics, model.Diagnostic{Code: "archive-write-failed", Severity: model.SeverityError, Message: err.Error()})
-		} else {
+		paths, diagnostics := artifact.Archive(manifestDirectory, manifest, result.Plan, filepath.Clean(output))
+		result.Diagnostics = append(result.Diagnostics, diagnostics...)
+		if len(diagnostics) == 0 {
 			parsed.archives = paths
 			if !parsed.jsonOutput {
 				for _, path := range paths {

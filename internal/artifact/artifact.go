@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/alexei-led/agentbundler/internal/artifact/archive"
 	"github.com/alexei-led/agentbundler/internal/artifact/compare"
 	"github.com/alexei-led/agentbundler/internal/artifact/nativeverify"
 	"github.com/alexei-led/agentbundler/internal/artifact/provenance"
@@ -17,6 +18,7 @@ import (
 
 const (
 	diagnosticInvalidPlan      = "invalid-model"
+	diagnosticArchive          = "archive-write-failed"
 	diagnosticExecutable       = "ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED"
 	diagnosticProvenance       = "PROVENANCE_INVALID"
 	diagnosticDriftMissing     = "DRIFT_MISSING"
@@ -59,7 +61,22 @@ func Write(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return diagnostics
 	}
+	if drift, err := compare.DetectDrift(plan, outputRoot); err == nil && len(drift) == 0 {
+		return nil
+	}
 	return write.ReplaceOutput(plan, outputRoot)
+}
+
+// Archive writes deterministic archives for the target roots in a validated plan.
+func Archive(workspace string, manifest model.SourceManifest, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
+	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
+		return nil, diagnostics
+	}
+	paths, err := archive.WriteTargetRoots(workspace, manifest, plan, output)
+	if err != nil {
+		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
+	}
+	return paths, nil
 }
 
 // Compare validates plan and reports exact generated-output drift below outputRoot.

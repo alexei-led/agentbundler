@@ -54,4 +54,4 @@ When atomic directory exchange is unavailable, a private sibling journal records
 - POSIX executable/non-executable files receive exact intent; Windows rejects true before mutation.
 - Every fallback journal phase recovers to one complete state.
 - Staging or replacement failure preserves the prior complete output.
-- A second identical write is idempotent.
+- Repeated direct replacement produces the same complete bytes and modes. The parent `internal/artifact` facade compares first and skips replacement when the current output is already exact, preserving file identity and timestamps.

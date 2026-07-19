@@ -2,7 +2,7 @@
 
 **Path**: `internal/target/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: repository root
-**Submodules**: `antigravity`, `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`
+**Submodules**: `antigravity`, `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`, `hookdecision`
 
 ## Purpose
 
@@ -86,6 +86,9 @@ Target-wide catalogs are deterministic artifacts at the leaf-owned paths pinned 
   - **Direction**: consumes model-owned render requests and returns model-owned plans.
 - **Counterpart**: vendor leaves
   - **Direction**: registry delegates schema/mapping/render behavior by target ID.
+- **Counterpart**: `internal/target/hookdecision`
+  - **Direction**: supported vendor leaves delegate canonical decision-hook process wrapping and protocol translation.
+  - **Shared knowledge**: model capability uses and target-specific decision protocol only.
 
 ## Internal Design
 

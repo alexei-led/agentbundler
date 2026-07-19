@@ -2,7 +2,7 @@
 
 **Path**: repository root — the module's code is everything in this folder and transparent subfolders, excluding child module folders
 **Parent**: none (root)
-**Submodules**: `cmd/agbun`, `internal/compiler`, `internal/target`, `internal/artifact`
+**Submodules**: `cmd/agbun`, `internal/compiler`, `internal/target`, `internal/artifact`, `internal/compatibility`, `internal/buildinfo`, `internal/testutil`
 
 ## Purpose
 
@@ -10,7 +10,7 @@
 
 ## Functional Responsibilities
 
-- Expose the `build` and `check` product operations.
+- Expose the `build`, `check`, and `package` product operations.
 - Accept clean **Agent Bundler** bundles and low-friction adopted repositories.
 - Compile supported assets for Claude, Codex, Pi, Copilot CLI, Grok Build, Cursor CLI, and Antigravity CLI.
 - Preserve native semantics where possible and fail on unsupported or unacknowledged semantic loss.
@@ -38,11 +38,14 @@ build [--root path] [--target id] [--package id] [--json]
 
 check [--root path] [--target id] [--package id] [--native] [--json]
   validates, compiles without writing, and reports exact generated-output drift.
+
+package --out path [--root path] [--target id] [--package id] [--json]
+  validates current generated output and writes deterministic target-root archives.
 ```
 
-`build` and `check` are the only user-facing verbs. Normal diagnostics use stable codes and source locations. JSON output is one versioned result object on standard output; human diagnostics use standard error. Exit status is zero on success, one for source/capability/render/write failure, two for drift, and three for optional native verification failure.
+`build`, `check`, and `package` are the user-facing product verbs. Normal diagnostics use stable codes and source locations. JSON output is one versioned result object on standard output; human diagnostics use standard error. Exit status is zero on success, one for source/capability/render/write/archive failure, two for drift, and three for optional native verification failure.
 
-Idempotence is a required quality contract, not an optimization. Given unchanged source bytes, manifest, selectors, and compiler version, `build` must leave a current output tree untouched and `package` must preserve matching archives. Real drift may use complete atomic replacement to retain stale-file cleanup and rollback safety. The current writer and archive path are byte-deterministic but still replace unchanged filesystem objects; this is a known implementation gap until content-aware no-op writes are added.
+Idempotence is a required quality contract, not an optimization. Given unchanged source bytes, manifest, selectors, and compiler version, `build` must leave a current output tree untouched and `package` must preserve matching archives. Real drift may use complete atomic replacement to retain stale-file cleanup and rollback safety. Current output and matching archives are content-checked before replacement, so unchanged filesystem objects retain identity and timestamps.
 
 ## Integrations
 
@@ -67,6 +70,13 @@ Idempotence is a required quality contract, not an optimization. Given unchanged
   - **Volatility**: high.
   - **Balanced?**: yes.
   - **Shared knowledge**: target selection is explicit; no target behavior is inferred from ambient tools.
+- **Counterpart**: `internal/compatibility`
+  - **Direction**: compatibility owns opt-in repository-root wrappers derived from the canonical plan.
+  - **Strength**: contract.
+  - **LCA / Rank / Distance**: root / 1 / 1.
+  - **Volatility**: high.
+  - **Balanced?**: yes.
+  - **Shared knowledge**: only the canonical plan, compatibility configuration, and root ownership state.
 
 ## Internal Design
 
@@ -76,10 +86,13 @@ root
 ├── internal/compiler       source import, composition, orchestration
 │   └── model               immutable normalized contracts
 ├── internal/target         adapter registry and vendor semantics
-└── internal/artifact       output, drift, provenance, native checks
+├── internal/artifact       output, drift, provenance, archives, native checks
+├── internal/compatibility  opt-in repository-root compatibility files
+├── internal/buildinfo      version metadata
+└── internal/testutil       test-only helpers
 ```
 
-A command creates a compile request and invokes the compiler. The compiler imports one explicit source topology, composes overlays and policies into normalized packages, asks each target adapter for one target-wide plan, assembles one complete build plan, and gives it to artifact services. `build` writes the staged selection atomically; `check` compares the same build plan to disk. Adapter implementations never write files or invoke processes.
+A command creates a compile request and invokes the compiler. The compiler imports one explicit source topology, composes overlays and policies into normalized packages, asks each target adapter for one target-wide plan, assembles one complete build plan, and gives it to artifact services. `build` writes the staged selection and compatibility files; `check` compares the same plan to disk; `package` compares first and archives only current target roots. Adapter implementations never write files or invoke processes.
 
 ## Change Vectors
 
@@ -91,12 +104,13 @@ A command creates a compile request and invokes the compiler. The compiler impor
 ## Constraints and Invariants
 
 - Normal builds use no network, clock, hostname, locale, absolute source path, Git state, installed vendor version, or mutable environment as an output input.
-- Equivalent successful runs are filesystem no-ops: unchanged output files, directories, and archives retain identity and timestamps. This required invariant is not yet satisfied by the current writer/archive implementation.
+- Equivalent successful runs are filesystem no-ops: unchanged output files, directories, and archives retain identity and timestamps.
 - The compiler never silently drops or weakens security, permission, sandbox, hook, executable, decision, timeout, failure, or capability semantics.
 - Generated output contains no **Agent Bundler** executable/runtime dependency. The embedded Pi payload is target-owned generated source loaded by Pi, not a call back into `agbun`.
 - Deterministic marketplace/catalog generation is artifact creation only. Production code never publishes, submits, authenticates, installs, changes vendor configuration, or fetches packages.
 - `check` never writes. `check --native` may run only declared official offline non-mutating validators after exact no-drift comparison.
 - Native target package roots contain only target-native files, including the Pi-owned runtime payload; compiler provenance is outside them.
+- `internal/testutil` is test-only and never enters the production dependency graph.
 - Version-1 hook-free manifests and package layouts remain compatible. Aggregate mode is explicit, never inferred, and in version 1 is limited to Pi package profile.
 - `internal/target` has seven vendor leaves plus cohesive shared rendering leaves. Vendor schemas, hook mappings, root variables, catalogs, and validator declarations remain isolated in vendor adapters.
 
@@ -106,7 +120,7 @@ A command creates a compile request and invokes the compiler. The compiler impor
 
 - **Test name**: command surface is closed.
   - **Scenario**: invoke help parsing with supported and unknown verbs.
-  - **Expected behavior**: only `build` and `check` are accepted; unknown verbs fail with usage.
+  - **Expected behavior**: only `build`, `check`, and `package` are accepted; unknown verbs fail with usage.
 - **Test name**: selection defaults are explicit.
   - **Scenario**: omit target and package selectors.
   - **Expected behavior**: the compiler selects only manifest-declared derived targets and packages.

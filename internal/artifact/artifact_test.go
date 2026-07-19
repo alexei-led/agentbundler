@@ -80,6 +80,33 @@ func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 	}
 }
 
+func TestWritePreservesCurrentOutputIdentity(t *testing.T) {
+	outputRoot := filepath.Join(t.TempDir(), "output")
+	plan := planWithFile("skill.md")
+	if diagnostics := Write(plan, outputRoot); len(diagnostics) != 0 {
+		t.Fatalf("first Write() diagnostics = %#v", diagnostics)
+	}
+	path := filepath.Join(outputRoot, "claude", "skill.md")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat before second Write() = %v", err)
+	}
+
+	if diagnostics := Write(plan, outputRoot); len(diagnostics) != 0 {
+		t.Fatalf("second Write() diagnostics = %#v", diagnostics)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat after second Write() = %v", err)
+	}
+	if !os.SameFile(before, after) {
+		t.Fatal("second Write() replaced a current output file")
+	}
+	if !before.ModTime().Equal(after.ModTime()) {
+		t.Fatalf("second Write() changed file timestamp: before=%v after=%v", before.ModTime(), after.ModTime())
+	}
+}
+
 func TestCompareMapsExactDrift(t *testing.T) {
 	outputRoot := t.TempDir()
 	plan := model.BuildPlan{Targets: []model.TargetPlan{{
