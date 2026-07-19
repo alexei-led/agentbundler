@@ -1,0 +1,1 @@
+{"name":"tools","plugins":[{"name":"alpha","source":{"path":"./dist/codex/alpha","source":"local"}},{"name":"remote","source":{"source":"github","repo":"example/remote"}}]}

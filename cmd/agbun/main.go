@@ -405,7 +405,8 @@ func buildHelp() string {
 
 Compile the selected package and targets, then replace the complete output
 directory configured by agentbundle.json. Use a dedicated generated directory;
-build removes files that are not in the current build plan.
+build removes files that are not in the current build plan. Opt-in repository-root
+compatibility files are generated after target output succeeds.
 
 Options:
   --root DIR       Read agentbundle.json from DIR instead of searching the
@@ -429,8 +430,9 @@ func packageHelp() string {
 	return `Usage:
   agbun package --out DIR [options]
 
-Verify that generated output is current, then create deterministic target-root release archives.
-The archive root is the native target package/marketplace root. This command never rebuilds output.
+Verify that generated output and opt-in root compatibility are current, then create deterministic
+target-root release archives. Archives contain only the native generated target root; repository-root
+compatibility files are excluded. This command never rebuilds output.
 
 Options:
   --out DIR        Write release archives to DIR. Required.
@@ -455,9 +457,9 @@ func checkHelp() string {
 	return `Usage:
   agbun check [options]
 
-Compare the selected build plan with the configured output directory. check does
-not write files and exits 2 when output is missing, changed, extra, non-regular,
-or symlinked.
+Compare the selected build plan with the configured output directory and any
+opt-in repository-root compatibility files. check does not write files and exits
+2 when output is missing, changed, extra, non-regular, or symlinked.
 
 Options:
   --root DIR       Read agentbundle.json from DIR instead of searching the

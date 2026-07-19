@@ -1,0 +1,1 @@
+{"name":"tools","plugins":[{"name":"alpha","source":"./dist/grok/alpha"},{"name":"remote","source":"https://example.com/remote.git"}]}

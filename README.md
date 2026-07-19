@@ -114,7 +114,10 @@ full command, safety, and target-ID reference.
 `build` replaces the configured output directory. Use a dedicated generated
 directory, not a working project root. `check` is read-only; add `--native` to
 run only declared safe validators for Claude, Grok, and Antigravity after drift
-passes. For a complete first bundle, see the [quick start](docs/quickstart.md).
+passes. Opt-in root vendor discovery can route repository installs into the
+generated target trees without symlinks; see
+[repository-root compatibility](docs/repository-root-compatibility.md). For a
+complete first bundle, see the [quick start](docs/quickstart.md).
 For a tested Antigravity CLI plugin, see the
 [Conductor-shaped example](examples/antigravity-conductor/README.md). For a
 multi-package hook example that builds all seven targets, see
@@ -143,6 +146,7 @@ examples.
 - [Configuration and source formats](docs/configuration.md)
 - [Target customization](docs/customization.md)
 - [Targets and CLI reference](docs/targets-and-cli.md)
+- [Repository-root compatibility](docs/repository-root-compatibility.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Architecture](docs/architecture.md)
 - [Release validation](docs/release.md)

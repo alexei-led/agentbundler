@@ -8,6 +8,7 @@ Start here if you already know the project and need the right page.
 - Define the manifest and source kind: [Configuration](configuration.md)
 - Make one target differ: [Customization](customization.md)
 - See output paths, flags, and exits: [Targets and CLI](targets-and-cli.md)
+- Keep vendor discovery at the repository root: [Repository-root compatibility](repository-root-compatibility.md)
 - Diagnose failures or stale output: [Troubleshooting](troubleshooting.md)
 - Understand packages and the pipeline: [Architecture](architecture.md)
 - Run and interpret the release gates: [Release validation](release.md)

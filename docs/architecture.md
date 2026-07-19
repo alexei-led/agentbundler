@@ -10,9 +10,10 @@ flowchart LR
     Model --> Compose[Overlay and composition]
     Compose --> Render[Target renderer]
     Render --> Plan[Build plan and provenance]
-    Plan --> Mode{Mode}
-    Mode -->|build| Write[Stage and replace output]
-    Mode -->|check| Compare[Exact drift comparison]
+    Plan --> Compat[Optional root compatibility plan]
+    Compat --> Mode{Mode}
+    Mode -->|build| Write[Replace output, then root wrappers]
+    Mode -->|check| Compare[Exact output and root drift comparison]
 ```
 
 ## Pipeline
@@ -36,7 +37,10 @@ flowchart LR
    seam and adds only its strict manifest, narrow agents, opaque native-resource
    passthrough, and `agy plugin validate` declaration. Renderers return a
    target-relative `BuildPlan` and do not write files.
-6. **Artifact handling** adds provenance, stages output for `build`, compares
+6. **Compatibility handling** optionally derives repository-root marketplace
+   routes, Codex project agents, and a Pi package merge from the canonical target
+   plan. It owns root drift and cleanup state without changing archive roots.
+7. **Artifact handling** adds provenance, stages output for `build`, compares
    the plan against existing files for read-only `check`, and invokes declared
    native validators only for `check --native` after drift passes.
 
@@ -59,6 +63,9 @@ flowchart LR
 - `internal/target/pi/runtime`: dependency-free TypeScript hook runtime owned by
   the Pi adapter. Go embeds the reviewed source bytes and emits one thin adapter
   for an explicit aggregate package.
+- `internal/compatibility`: pure target-plan rewriting plus bounded
+  repository-root merge, ownership, write, and drift behavior. It imports only
+  the compiler model and never changes target-native package serialization.
 - `internal/target/antigravity`: strict Antigravity CLI plugin serialization,
   supported-agent validation, opaque native-resource copying, and native-check
   declarations. It does not import source, composition, or artifact packages.
@@ -80,7 +87,9 @@ hashes so a later `check` can identify drift.
 
 `build` owns the complete configured output directory. It writes through a
 staging/journal path and replaces the output only after the plan is ready.
-`check` does not mutate output.
+Opted-in repository-root compatibility owns only paths recorded in
+`.agentbundler/compatibility.json` and generated Pi fields/dependencies recorded
+there. `check` does not mutate output or root files.
 
 ## Adding a target
 

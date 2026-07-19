@@ -318,6 +318,27 @@ func TestCompilePackageSelectorKeepsSelectedNativeResourceWithCrossTargetDuplica
 	t.Fatalf("selected Pi native resource missing from files %#v", result.Plan.Targets[0].Files)
 }
 
+func TestCompileRejectsPackageSelectorWithRepositoryRootCompatibility(t *testing.T) {
+	workspace := t.TempDir()
+	manifest := model.SourceManifest{
+		Version: 1, Kind: model.SourceKindBundle, Root: "source", Output: "dist",
+		Targets:       []model.TargetID{model.TargetClaude},
+		Distribution:  model.DistributionMetadata{"name": "tools"},
+		Compatibility: &model.CompatibilityConfig{RootManifests: []model.TargetID{model.TargetClaude}},
+		Composition: []model.TargetComposition{{
+			Target: model.TargetClaude, Profile: model.TargetProfilePackage, PackageMode: model.TargetPackageModeSeparate,
+		}},
+		Bundle: &model.BundleSourceConfig{Packages: []model.RelativePath{"packages/base.json"}},
+	}
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest,
+		Packages: []model.PackageID{"base"}, Mode: BuildModeBuild,
+	})
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "compatibility-incomplete-selection" {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+}
+
 func TestCompileRejectsUndeclaredTargetBeforeFilesystemWork(t *testing.T) {
 	root := t.TempDir()
 	manifest := model.SourceManifest{

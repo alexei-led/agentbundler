@@ -1,0 +1,1 @@
+{"name":"tools","plugins":[{"name":"alpha","source":"./dist/claude/alpha"},{"name":"remote","source":"https://example.com/remote.git"}]}

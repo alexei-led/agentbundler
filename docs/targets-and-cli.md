@@ -123,6 +123,12 @@ single package in separate mode uses the historical flat package root.
 compares the plan without writing and exits `2` for missing, changed, extra,
 non-regular, or symlinked output. Neither command uses the network.
 
+When `compatibility.rootManifests` is configured, the same commands also manage
+owned repository-root vendor discovery files and the Pi `package.json` merge.
+`package` requires them to be current but still archives only the native target
+root under the configured output directory. See
+[repository-root compatibility](repository-root-compatibility.md).
+
 `check --native` runs only target-declared, offline, non-mutating validators
 after drift passes:
 
@@ -245,7 +251,8 @@ Released binaries report their injected tag; development builds report the Go
 module version when available, otherwise `agbun-dev`.
 
 `agbun package --out DIR` archives current target roots without rebuilding.
-Antigravity uses the default deterministic
+Repository-root compatibility wrappers and the development `package.json` are
+never included in these target-native archives. Antigravity uses the default deterministic
 `<distribution.name>-antigravity.tar.gz` archive and has no marketplace root.
 
 ## Vendor documentation

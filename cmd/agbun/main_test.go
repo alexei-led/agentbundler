@@ -1,9 +1,12 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -174,6 +177,40 @@ func TestRunPackageArchivesCurrentTargetRootWithoutRebuilding(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestRunCompatibilityPackageChecksRootAndArchivesOnlyTargetOutput(t *testing.T) {
+	root := t.TempDir()
+	manifest := `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"dist","distribution":{"name":"demo","owner":"Platform","description":"Demo","version":"1.0.0"},"composition":[{"target":"claude","profile":"package","packageMode":"separate"}],"compatibility":{"rootManifests":["claude"]},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{"description":"Demo","version":"1.0.0","author":"Platform","homepage":"https://example.com","repository":"https://example.com/repo","license":"MIT","keywords":["demo"]}}}`
+	writeCLIFile(t, root, "agentbundle.json", manifest)
+	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := run([]string{"package", "--out", "release"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("package status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	archivePath := filepath.Join(root, "release", "demo-claude.tar.gz")
+	if _, err := os.Stat(archivePath); err != nil {
+		t.Fatal(err)
+	}
+	entries := archiveEntriesForTest(t, archivePath)
+	for _, entry := range entries {
+		if strings.Contains(entry, "compatibility") || strings.HasPrefix(entry, ".agentbundler") {
+			t.Fatalf("compatibility root leaked into archive: %#v", entries)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, ".claude-plugin/marketplace.json"), []byte("drift\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := run([]string{"check", "--json"}, root, &stdout, &stderr, compiler.Compile); status != 2 || !strings.Contains(stdout.String(), `"code":"COMPATIBILITY_DRIFT_CHANGED"`) {
+		t.Fatalf("compatibility JSON check status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 }
 
@@ -350,6 +387,33 @@ func TestRunReturnsFailureWhenJSONOutputCannotBeWritten(t *testing.T) {
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("writer failed") }
+
+func archiveEntriesForTest(t *testing.T, archivePath string) []string {
+	t.Helper()
+	file, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = gzipReader.Close() }()
+	reader := tar.NewReader(gzipReader)
+	var entries []string
+	for {
+		header, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries = append(entries, header.Name)
+	}
+	return entries
+}
 
 func writeCLIFile(t *testing.T, root, relative, contents string) {
 	t.Helper()

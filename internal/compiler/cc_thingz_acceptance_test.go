@@ -13,6 +13,221 @@ import (
 	"github.com/alexei-led/agentbundler/internal/target/antigravity"
 )
 
+func TestCCThingzRootCompatibilityBuildCheckDriftAndCleanup(t *testing.T) {
+	workspace := t.TempDir()
+	fixture := filepath.Join("..", "..", "testdata", "cc-thingz-hooks")
+	if err := os.CopyFS(workspace, os.DirFS(fixture)); err != nil {
+		t.Fatalf("copy cc-thingz acceptance fixture: %v", err)
+	}
+	corePackagePath := filepath.Join(workspace, "source/packages/core-tools.json")
+	corePackage, err := os.ReadFile(corePackagePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corePackage = bytes.Replace(corePackage, []byte(`"claude",
+        "pi"`), []byte(`"claude",
+        "codex",
+        "pi"`), 1)
+	if err := os.WriteFile(corePackagePath, corePackage, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeCompilerFixture(t, workspace, "package.json", `{
+  "name": "development-root",
+  "private": true,
+  "scripts": {"test": "go test ./..."},
+  "dependencies": {"unrelated": "1.0.0"},
+  "pi": {"extensions": ["./dev/local.ts"], "custom": true}
+}
+`)
+	data, err := os.ReadFile(filepath.Join(workspace, "agentbundle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, diagnostics := model.DecodeSourceManifestJSON(data)
+	if len(diagnostics) != 0 {
+		t.Fatalf("decode cc-thingz acceptance manifest: %#v", diagnostics)
+	}
+	manifest.Output = "dist"
+	manifest.Compatibility = &model.CompatibilityConfig{RootManifests: []model.TargetID{
+		model.TargetClaude, model.TargetCodex, model.TargetCopilot, model.TargetCursor, model.TargetPi,
+	}}
+	build := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(build.Diagnostics) != 0 {
+		t.Fatalf("compatibility build diagnostics = %#v", build.Diagnostics)
+	}
+
+	for targetID, marker := range map[model.TargetID]string{
+		model.TargetClaude:  ".claude-plugin/marketplace.json",
+		model.TargetCodex:   ".agents/plugins/marketplace.json",
+		model.TargetCopilot: ".github/plugin/marketplace.json",
+		model.TargetCursor:  ".cursor-plugin/marketplace.json",
+	} {
+		data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(marker)))
+		if err != nil {
+			t.Fatalf("read %s root marketplace: %v", targetID, err)
+		}
+		assertCompatibilitySources(t, targetID, data, "./dist/"+string(targetID)+"/")
+	}
+	if data, err := os.ReadFile(filepath.Join(workspace, ".codex/agents/reviewer.toml")); err != nil || len(data) == 0 {
+		t.Fatalf("Codex root agent compatibility artifact: data=%q err=%v", data, err)
+	}
+	generatedNPMRC := "# agentbundler: repository-root Pi compatibility\nlegacy-peer-deps=true\n"
+	if npmrc, err := os.ReadFile(filepath.Join(workspace, ".npmrc")); err != nil || string(npmrc) != generatedNPMRC {
+		t.Fatalf("Pi root .npmrc = %q err=%v", npmrc, err)
+	}
+	rootPackage, err := os.ReadFile(filepath.Join(workspace, "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var packageDocument map[string]any
+	if err := json.Unmarshal(rootPackage, &packageDocument); err != nil {
+		t.Fatal(err)
+	}
+	if packageDocument["name"] != "development-root" || packageDocument["private"] != true || packageDocument["scripts"] == nil {
+		t.Fatalf("development package fields changed: %#v", packageDocument)
+	}
+	dependencies := packageDocument["dependencies"].(map[string]any)
+	if dependencies["unrelated"] != "1.0.0" || dependencies["pi-subagents"] == nil {
+		t.Fatalf("root runtime dependencies = %#v", dependencies)
+	}
+	piManifest := packageDocument["pi"].(map[string]any)
+	if piManifest["custom"] != true || !jsonArrayContains(piManifest["extensions"], "./dev/local.ts") || !jsonArrayContains(piManifest["extensions"], "./dist/pi/extensions/agentbundler-hooks.ts") || !jsonArrayContains(piManifest["extensions"], "./node_modules/pi-subagents/src/extension/index.ts") {
+		t.Fatalf("root Pi manifest = %#v", piManifest)
+	}
+
+	before := snapshotTree(t, workspace)
+	check := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeCheck})
+	if len(check.Diagnostics) != 0 || check.Drift {
+		t.Fatalf("compatibility check = %#v", check)
+	}
+	if after := snapshotTree(t, workspace); !reflect.DeepEqual(after, before) {
+		t.Fatal("compatibility check changed the repository")
+	}
+
+	npmrcPath := filepath.Join(workspace, ".npmrc")
+	if err := os.WriteFile(npmrcPath, []byte("legacy-peer-deps=false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	npmrcDrift := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeCheck})
+	if npmrcDrift.Drift || !diagnosticCode(npmrcDrift.Diagnostics, "compatibility-ownership-invalid") {
+		t.Fatalf(".npmrc ownership drift = %#v", npmrcDrift.Diagnostics)
+	}
+	if npmrc, err := os.ReadFile(npmrcPath); err != nil || string(npmrc) != "legacy-peer-deps=false\n" {
+		t.Fatalf("compatibility check rewrote .npmrc: data=%q err=%v", npmrc, err)
+	}
+	if err := os.WriteFile(npmrcPath, []byte(generatedNPMRC), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	driftPath := filepath.Join(workspace, ".github/plugin/marketplace.json")
+	if err := os.WriteFile(driftPath, []byte("drift\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	drift := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeCheck})
+	if !drift.Drift || !diagnosticCode(drift.Diagnostics, "COMPATIBILITY_DRIFT_CHANGED") {
+		t.Fatalf("compatibility drift = %#v", drift)
+	}
+	if data, err := os.ReadFile(driftPath); err != nil || string(data) != "drift\n" {
+		t.Fatalf("compatibility check rewrote drift: data=%q err=%v", data, err)
+	}
+
+	manifest.Compatibility = nil
+	cleanup := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(cleanup.Diagnostics) != 0 {
+		t.Fatalf("compatibility cleanup diagnostics = %#v", cleanup.Diagnostics)
+	}
+	for _, stale := range []string{
+		".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", ".github/plugin/marketplace.json",
+		".cursor-plugin/marketplace.json", ".codex/agents/reviewer.toml", ".agentbundler/compatibility.json", ".npmrc",
+	} {
+		if _, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(stale))); !os.IsNotExist(err) {
+			t.Errorf("stale compatibility path %q remains: %v", stale, err)
+		}
+	}
+	rootPackage, err = os.ReadFile(filepath.Join(workspace, "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(rootPackage, &packageDocument); err != nil {
+		t.Fatal(err)
+	}
+	dependencies = packageDocument["dependencies"].(map[string]any)
+	if !reflect.DeepEqual(dependencies, map[string]any{"unrelated": "1.0.0"}) {
+		t.Fatalf("stale Pi dependencies remain: %#v", dependencies)
+	}
+	piManifest = packageDocument["pi"].(map[string]any)
+	if !reflect.DeepEqual(piManifest["extensions"], []any{"./dev/local.ts"}) || piManifest["custom"] != true {
+		t.Fatalf("stale Pi fields remain or development fields changed: %#v", piManifest)
+	}
+}
+
+func TestGrokRootCompatibilityUsesSharedClaudeMarkerOnlyWhenClaudeIsDisabled(t *testing.T) {
+	workspace := t.TempDir()
+	fixture := filepath.Join("..", "..", "testdata", "cc-thingz-hooks")
+	if err := os.CopyFS(workspace, os.DirFS(fixture)); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "agentbundle.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, diagnostics := model.DecodeSourceManifestJSON(data)
+	if len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+	manifest.Output = "dist"
+	manifest.Compatibility = &model.CompatibilityConfig{RootManifests: []model.TargetID{model.TargetGrok}}
+	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Targets: []model.TargetID{model.TargetGrok}, Mode: BuildModeBuild})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("Grok compatibility diagnostics = %#v", result.Diagnostics)
+	}
+	root, err := os.ReadFile(filepath.Join(workspace, ".claude-plugin/marketplace.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCompatibilitySources(t, model.TargetGrok, root, "./dist/grok/")
+}
+
+func assertCompatibilitySources(t *testing.T, target model.TargetID, data []byte, prefix string) {
+	t.Helper()
+	var document struct {
+		Plugins []struct {
+			Source any `json:"source"`
+		} `json:"plugins"`
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Plugins) == 0 {
+		t.Fatal("root marketplace has no plugins")
+	}
+	for _, plugin := range document.Plugins {
+		var source string
+		switch value := plugin.Source.(type) {
+		case string:
+			source = value
+		case map[string]any:
+			if target != model.TargetCodex || value["source"] != "local" {
+				t.Fatalf("unexpected compatibility source: %#v", value)
+			}
+			source, _ = value["path"].(string)
+		}
+		if !strings.HasPrefix(source, prefix) {
+			t.Fatalf("compatibility source %q does not start with %q", source, prefix)
+		}
+	}
+}
+
+func jsonArrayContains(value any, want string) bool {
+	values, _ := value.([]any)
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCCThingzDistributionVersionOwnsEveryGeneratedManifestAndCatalog(t *testing.T) {
 	workspace := t.TempDir()
 	fixture := filepath.Join("..", "..", "testdata", "cc-thingz-hooks")

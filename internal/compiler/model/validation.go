@@ -82,17 +82,18 @@ func ValidateSourceManifest(manifest SourceManifest) []Diagnostic {
 		}
 		targets[target] = struct{}{}
 	}
-	compositions := make(map[TargetID]struct{}, len(manifest.Composition))
+	compositions := make(map[TargetID]TargetComposition, len(manifest.Composition))
 	for _, composition := range manifest.Composition {
 		diagnostics = append(diagnostics, ValidateTargetComposition(composition)...)
 		if _, ok := compositions[composition.Target]; ok {
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("target composition %q is duplicated", composition.Target))
 		}
-		compositions[composition.Target] = struct{}{}
+		compositions[composition.Target] = composition
 		if _, ok := targets[composition.Target]; !ok {
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("target composition %q is not selected", composition.Target))
 		}
 	}
+	diagnostics = append(diagnostics, validateCompatibilityConfig(manifest, targets, compositions)...)
 
 	switch manifest.Kind {
 	case SourceKindBundle:
@@ -115,6 +116,56 @@ func ValidateSourceManifest(manifest SourceManifest) []Diagnostic {
 		}
 	}
 	return diagnostics
+}
+
+func validateCompatibilityConfig(manifest SourceManifest, targets map[TargetID]struct{}, compositions map[TargetID]TargetComposition) []Diagnostic {
+	if manifest.Compatibility == nil {
+		return nil
+	}
+	seen := make(map[TargetID]struct{}, len(manifest.Compatibility.RootManifests))
+	var diagnostics []Diagnostic
+	if len(manifest.Compatibility.RootManifests) == 0 {
+		diagnostics = append(diagnostics, compatibilityDiagnostic("invalid-compatibility-config", "compatibility.rootManifests must not be empty"))
+	}
+	for _, target := range manifest.Compatibility.RootManifests {
+		if _, duplicate := seen[target]; duplicate {
+			diagnostics = append(diagnostics, compatibilityDiagnostic("duplicate-compatibility-target", fmt.Sprintf("repository-root compatibility target %q is duplicated", target)))
+		}
+		seen[target] = struct{}{}
+		if _, selected := targets[target]; !selected {
+			diagnostics = append(diagnostics, compatibilityDiagnostic("invalid-compatibility-target", fmt.Sprintf("repository-root compatibility target %q is not selected", target)))
+			continue
+		}
+		switch target {
+		case TargetClaude, TargetCodex, TargetCopilot, TargetCursor, TargetGrok:
+			composition, configured := compositions[target]
+			if !configured || composition.Profile != TargetProfilePackage || (composition.PackageMode != "" && composition.PackageMode != TargetPackageModeSeparate) {
+				diagnostics = append(diagnostics, compatibilityDiagnostic("invalid-compatibility-profile", fmt.Sprintf("repository-root compatibility target %q requires package profile with separate package mode", target)))
+			}
+			if manifest.Distribution == nil {
+				diagnostics = append(diagnostics, compatibilityDiagnostic("missing-compatibility-catalog", fmt.Sprintf("repository-root compatibility target %q requires distribution metadata and a generated marketplace", target)))
+			}
+		case TargetPi:
+			composition, configured := compositions[target]
+			if !configured || composition.Profile != TargetProfilePackage {
+				diagnostics = append(diagnostics, compatibilityDiagnostic("invalid-compatibility-profile", "repository-root compatibility target \"pi\" requires package profile"))
+			}
+		case TargetAntigravity:
+			diagnostics = append(diagnostics, compatibilityDiagnostic("unsupported-compatibility-target", "Antigravity has no supported repository-root discovery manifest"))
+		default:
+			diagnostics = append(diagnostics, compatibilityDiagnostic("invalid-compatibility-target", fmt.Sprintf("repository-root compatibility target %q is invalid", target)))
+		}
+	}
+	if _, claude := seen[TargetClaude]; claude {
+		if _, grok := seen[TargetGrok]; grok {
+			diagnostics = append(diagnostics, compatibilityDiagnostic("compatibility-marker-collision", "Claude and Grok repository-root compatibility both own .claude-plugin/marketplace.json; choose one root route"))
+		}
+	}
+	return diagnostics
+}
+
+func compatibilityDiagnostic(code, message string) Diagnostic {
+	return Diagnostic{Code: code, Severity: SeverityError, Message: message}
 }
 
 // ValidateSourceInventory validates discovered source values without accessing the filesystem.

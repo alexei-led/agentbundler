@@ -14,6 +14,8 @@ The common fields are:
   `pi`, `copilot`, `grok`, or `cursor`.
 - `output`: dedicated generated-output directory.
 - `distribution`: optional target-wide JSON metadata for generated catalogs.
+- `compatibility`: optional repository-root vendor discovery generation. Its
+  `rootManifests` array lists opted-in targets.
 - `composition`: optional target-wide policy, once per target at most. It may
   declare `packageMode` and an `aggregate` package.
 - Source block: exactly one block matching `kind`.
@@ -38,6 +40,10 @@ The smallest useful `skills-repository` manifest is:
 Paths are normalized relative paths. Absolute paths, `..`, backslashes, empty
 components, duplicate separators, NUL bytes, and symlinks in source/sidecar
 paths are rejected.
+
+Repository-root compatibility is disabled by default. For configuration,
+ownership, target collisions, Pi dependency handling, and install behavior, see
+[repository-root compatibility](repository-root-compatibility.md).
 
 ## Choose a source kind
 

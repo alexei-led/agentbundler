@@ -84,6 +84,16 @@ modules:
     subdomain: supporting
     volatility: medium
     deploy_unit: agentbundler
+  compatibility:
+    owner: alexei-led
+    paths:
+      - internal/compatibility/**
+    public:
+      - internal/compatibility
+    layer: stage
+    subdomain: supporting
+    volatility: high
+    deploy_unit: agentbundler
   compiler:
     owner: alexei-led
     paths:
@@ -176,6 +186,26 @@ rules:
     type: forbidden_dependency
     from: internal/artifact/**
     to: internal/target/**
+    gate: fail
+  - id: compatibility_no_source
+    type: forbidden_dependency
+    from: internal/compatibility/**
+    to: internal/compiler/source/**
+    gate: fail
+  - id: compatibility_no_composition
+    type: forbidden_dependency
+    from: internal/compatibility/**
+    to: internal/compiler/composition/**
+    gate: fail
+  - id: compatibility_no_target
+    type: forbidden_dependency
+    from: internal/compatibility/**
+    to: internal/target/**
+    gate: fail
+  - id: compatibility_no_artifact
+    type: forbidden_dependency
+    from: internal/compatibility/**
+    to: internal/artifact/**
     gate: fail
 ai:
   provider: anthropic

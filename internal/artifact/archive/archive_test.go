@@ -21,6 +21,9 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	writeFile(t, workspace, "dist/claude/hooks/run.sh", "#!/bin/sh\n", 0o755)
 	writeFile(t, workspace, "dist/claude/.agentbundler/build.json", "private\n", 0o644)
 	writeFile(t, workspace, "dist/pi/package.json", "{}\n", 0o644)
+	writeFile(t, workspace, ".claude-plugin/marketplace.json", "root compatibility\n", 0o644)
+	writeFile(t, workspace, ".agentbundler/compatibility.json", "root ownership\n", 0o644)
+	writeFile(t, workspace, "package.json", "root Pi compatibility\n", 0o644)
 	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "demo"}}
 	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetAntigravity}, {Target: model.TargetClaude}, {Target: model.TargetPi}}}
 	output := filepath.Join(workspace, "release")

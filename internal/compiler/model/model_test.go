@@ -235,6 +235,48 @@ func TestDecodeSourceManifestJSONStrictlyRejectsRenderConfigurationFields(t *tes
 	}
 }
 
+func TestDecodeSourceManifestJSONAcceptsRepositoryRootCompatibility(t *testing.T) {
+	t.Parallel()
+
+	data := `{"version":1,"kind":"bundle","root":"source","targets":["claude","pi"],"output":"dist","distribution":{"name":"tools"},"compatibility":{"rootManifests":["claude","pi"]},"composition":[{"target":"claude","profile":"package","packageMode":"separate"},{"target":"pi","profile":"package","packageMode":"aggregate","aggregate":{"identity":"tools","metadata":{}}}],"bundle":{"packages":["packages/base"]}}`
+	manifest, diagnostics := DecodeSourceManifestJSON([]byte(data))
+	if len(diagnostics) != 0 {
+		t.Fatalf("DecodeSourceManifestJSON() diagnostics = %#v", diagnostics)
+	}
+	if manifest.Compatibility == nil || !reflect.DeepEqual(manifest.Compatibility.RootManifests, []TargetID{TargetClaude, TargetPi}) {
+		t.Fatalf("compatibility = %#v", manifest.Compatibility)
+	}
+}
+
+func TestValidateSourceManifestRejectsRepositoryRootCompatibilityConflicts(t *testing.T) {
+	t.Parallel()
+
+	base := SourceManifest{
+		Version: 1, Kind: SourceKindBundle, Root: "source", Output: "dist",
+		Targets:      []TargetID{TargetClaude, TargetGrok},
+		Distribution: DistributionMetadata{"name": "tools"},
+		Composition: []TargetComposition{
+			{Target: TargetClaude, Profile: TargetProfilePackage, PackageMode: TargetPackageModeSeparate},
+			{Target: TargetGrok, Profile: TargetProfilePackage, PackageMode: TargetPackageModeSeparate},
+		},
+		Bundle: &BundleSourceConfig{Packages: []RelativePath{"packages/base.json"}},
+	}
+	base.Compatibility = &CompatibilityConfig{RootManifests: []TargetID{TargetClaude, TargetGrok}}
+	if diagnostics := ValidateSourceManifest(base); !diagnosticsHaveCode(diagnostics, "compatibility-marker-collision") {
+		t.Fatalf("collision diagnostics = %#v", diagnostics)
+	}
+
+	base.Compatibility = &CompatibilityConfig{RootManifests: []TargetID{TargetClaude, TargetClaude}}
+	if diagnostics := ValidateSourceManifest(base); !diagnosticsHaveCode(diagnostics, "duplicate-compatibility-target") {
+		t.Fatalf("duplicate diagnostics = %#v", diagnostics)
+	}
+
+	base.Compatibility = &CompatibilityConfig{RootManifests: []TargetID{TargetPi}}
+	if diagnostics := ValidateSourceManifest(base); !diagnosticsHaveCode(diagnostics, "invalid-compatibility-target") {
+		t.Fatalf("unselected diagnostics = %#v", diagnostics)
+	}
+}
+
 func TestDecodeSourceManifestJSONKeepsVersionOneRenderDefaultsBackwardCompatible(t *testing.T) {
 	t.Parallel()
 
@@ -859,6 +901,15 @@ func TestSortHookDescriptorsUsesDeterministicTieBreaks(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sorted hooks = %#v, want %#v", got, want)
 	}
+}
+
+func diagnosticsHaveCode(diagnostics []Diagnostic, code string) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func diagnosticsContain(diagnostics []Diagnostic, message string) bool {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/alexei-led/agentbundler/internal/artifact"
 	"github.com/alexei-led/agentbundler/internal/buildinfo"
+	"github.com/alexei-led/agentbundler/internal/compatibility"
 	"github.com/alexei-led/agentbundler/internal/compiler/composition"
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/compiler/source"
@@ -69,6 +70,10 @@ func Compile(request CompileRequest) CompilationResult {
 	if hasErrors(result.Diagnostics) {
 		return result
 	}
+	if request.Manifest.Compatibility != nil && len(request.Manifest.Compatibility.RootManifests) != 0 && len(request.Packages) != 0 {
+		result.Diagnostics = append(result.Diagnostics, errorDiagnostic("compatibility-incomplete-selection", "repository-root compatibility requires all packages; --package cannot be used"))
+		return result
+	}
 
 	inventory, diagnostics := source.Import(request.Manifest, request.WorkspaceRoot)
 	result.Diagnostics = append(result.Diagnostics, diagnostics...)
@@ -79,7 +84,6 @@ func Compile(request CompileRequest) CompilationResult {
 	if hasErrors(result.Diagnostics) {
 		return result
 	}
-
 	adapterRevisions := make(map[model.TargetID]int, len(selectedTargets))
 	for _, targetID := range selectedTargets {
 		adapter, adapterDiagnostics := target.Resolve(targetID)
@@ -114,6 +118,16 @@ func Compile(request CompileRequest) CompilationResult {
 		return result
 	}
 	result.Plan = provenancePlan
+	compatibilityPlan, compatibilityDiagnostics := compatibility.Prepare(compatibility.Request{
+		WorkspaceRoot: request.WorkspaceRoot,
+		Output:        request.Manifest.Output,
+		Config:        request.Manifest.Compatibility,
+		Plan:          result.Plan,
+	})
+	result.Diagnostics = append(result.Diagnostics, compatibilityDiagnostics...)
+	if hasErrors(compatibilityDiagnostics) {
+		return result
+	}
 	outputRoot := filepath.Join(request.WorkspaceRoot, filepath.FromSlash(string(request.Manifest.Output)))
 	if err := noSymlinkComponents(request.WorkspaceRoot, outputRoot); err != nil && !os.IsNotExist(err) {
 		result.Diagnostics = append(result.Diagnostics, errorDiagnostic("invalid-output-root", err.Error()))
@@ -121,11 +135,17 @@ func Compile(request CompileRequest) CompilationResult {
 	}
 	if request.Mode == BuildModeBuild {
 		result.Diagnostics = append(result.Diagnostics, artifact.Write(result.Plan, outputRoot)...)
+		if hasErrors(result.Diagnostics) {
+			return result
+		}
+		result.Diagnostics = append(result.Diagnostics, compatibility.Write(compatibilityPlan, request.WorkspaceRoot)...)
 		return result
 	}
-	driftDiagnostics, drift := artifact.Compare(result.Plan, outputRoot)
+	driftDiagnostics, outputDrift := artifact.Compare(result.Plan, outputRoot)
 	result.Diagnostics = append(result.Diagnostics, driftDiagnostics...)
-	result.Drift = drift
+	compatibilityDriftDiagnostics, compatibilityDrift := compatibility.Compare(compatibilityPlan, request.WorkspaceRoot)
+	result.Diagnostics = append(result.Diagnostics, compatibilityDriftDiagnostics...)
+	result.Drift = outputDrift || compatibilityDrift
 	if !result.Drift && request.NativeVerify {
 		checks := nativeChecks(result.Plan)
 		nativeResult := artifact.Verify(checks, outputRoot)

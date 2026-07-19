@@ -319,6 +319,11 @@ type SkillsRepositorySourceConfig struct {
 	Metadata PackageMetadata `json:"metadata"`
 }
 
+// CompatibilityConfig opts generated vendor discovery files into the repository root.
+type CompatibilityConfig struct {
+	RootManifests []TargetID `json:"rootManifests"`
+}
+
 // SourceManifest describes one compiler source.
 type SourceManifest struct {
 	Version          int                           `json:"version"`
@@ -327,6 +332,7 @@ type SourceManifest struct {
 	Targets          []TargetID                    `json:"targets"`
 	Output           RelativePath                  `json:"output"`
 	Distribution     DistributionMetadata          `json:"distribution,omitempty"`
+	Compatibility    *CompatibilityConfig          `json:"compatibility,omitempty"`
 	Composition      []TargetComposition           `json:"composition"`
 	Bundle           *BundleSourceConfig           `json:"bundle,omitempty"`
 	ClaudePlugin     *ClaudePluginSourceConfig     `json:"claudePlugin,omitempty"`
