@@ -130,9 +130,11 @@ explicit gaps. The old exact `src/hooks/<name>.json` form remains compatible
 only for a payload-free descriptor.
 
 Pi package metadata may include a `dependencies` object with package-name keys
-and non-empty string versions. **Agent Bundler** writes it only to Pi
-`package.json`; use it to ship runtime package prerequisites such as
-`pi-subagents` alongside generated subagents.
+and non-empty string versions. **Agent Bundler** writes exactly those explicit
+author dependencies to Pi `package.json`. It never infers dependencies from
+agents, vendors dependency trees, or registers third-party extensions. Pi agent
+files remain declared through `pi.subagents.agents`; users who want the
+`pi-subagents` tools must install that extension separately.
 
 ### Declarative Pi-native extension
 

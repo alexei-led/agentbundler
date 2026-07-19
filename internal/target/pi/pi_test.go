@@ -29,37 +29,6 @@ func TestProjectRenderRejectsAgent(t *testing.T) {
 	}
 }
 
-func TestPackageRenderIncludesPiSubagent(t *testing.T) {
-	pkg := model.NormalizedPackage{
-		Identity: "demo",
-		Target:   Target,
-		Profile:  model.TargetProfilePackage,
-		Metadata: model.PackageMetadata{"version": "1.0.0", "dependencies": map[string]any{"pi-subagents": "^1.0.0"}},
-		Assets: []model.NormalizedAsset{{
-			Identity: "agent/reviewer",
-			Kind:     model.AssetKindAgent,
-			Content: model.AssetContent{
-				Frontmatter: map[string]any{"name": "reviewer", "description": "Review code"},
-				Body:        "Review.\n",
-				Files:       map[model.RelativePath]model.FileContent{},
-			},
-		}},
-	}
-	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
-	if len(diagnostics) != 0 {
-		t.Fatalf("Render() diagnostics = %#v", diagnostics)
-	}
-	paths := make(map[model.RelativePath]bool, len(plan.Files))
-	for _, file := range plan.Files {
-		paths[file.Path] = true
-	}
-	for _, path := range []model.RelativePath{"agents/reviewer.md", "node_modules/pi-subagents/src/extension/index.ts"} {
-		if !paths[path] {
-			t.Fatalf("plan files missing %q", path)
-		}
-	}
-}
-
 func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
 	data, err := os.ReadFile("runtime/testdata/hooks.v1.json")
 	if err != nil {
@@ -184,8 +153,8 @@ func TestRuntimeHookOrderFixtureMatchesPortableModel(t *testing.T) {
 }
 
 func TestCapabilitiesExposeAggregatePiHooksAndSubagents(t *testing.T) {
-	if FormatRevision != 7 {
-		t.Fatalf("FormatRevision = %d, want 7", FormatRevision)
+	if FormatRevision != 8 {
+		t.Fatalf("FormatRevision = %d, want 8", FormatRevision)
 	}
 	rules := make(map[model.CapabilityKey]model.CapabilityState)
 	for _, rule := range Capabilities() {

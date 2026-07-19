@@ -44,7 +44,7 @@ preserved.
 | Copilot | `.github/plugin/marketplace.json` | `./dist/copilot/<package>` |
 | Cursor | `.cursor-plugin/marketplace.json` | `./dist/cursor/<package>` |
 | Grok | `.claude-plugin/marketplace.json` | `./dist/grok/<package>` |
-| Pi | merged root `package.json#pi` and `.npmrc` | `./dist/pi/...` plus root runtime dependencies |
+| Pi | merged root `package.json#pi` | `./dist/pi/...` plus explicit author dependencies |
 
 `dist` above is the configured `output`; another normalized output path is used
 verbatim. Local sources must resolve to a generated target package manifest.
@@ -90,8 +90,8 @@ the existing development `package.json`:
 - generated `pi.extensions`, `pi.skills`, and `pi.subagents.agents` paths are
   rebased under `./dist/pi`;
 - for separate multi-package output, the package ID remains in the route;
-- a generated `./node_modules/...` extension stays root-relative;
-- generated runtime dependencies are added to root `dependencies`;
+- generated author-owned native extensions remain under `./dist/pi`;
+- explicit author dependencies are added to root `dependencies` unchanged;
 - unrelated top-level fields, dependency entries, `pi` fields, and author-owned
   array entries remain;
 - an unequal existing dependency version is a collision, not an overwrite.
@@ -102,33 +102,14 @@ the new manifest. Disabling Pi compatibility removes those entries while
 preserving unrelated development fields. `package.json` is serialized as
 stable two-space JSON, so key order and formatting become deterministic.
 
-Pi compatibility also requires root `.npmrc` to contain
-`legacy-peer-deps=true`. npm otherwise auto-installs broad development
-`peerDependencies` during Pi's production Git install, which can pull a second
-`@earendil-works/pi-coding-agent` or `@earendil-works/pi-ai` host and create a
-host/runtime mismatch. `peerDependenciesMeta` does not prevent that install.
-Agent Bundler preserves unrelated `.npmrc` bytes and keys. It preserves an
-existing `true` setting as author-owned, rejects `false` or duplicate active
-settings, and marks a setting it adds with an adjacent Agent Bundler comment.
-Cleanup requires that exact marker/setting pair, removes only that pair, and
-removes `.npmrc` only when no author content remains. A forged ownership record
-cannot turn an unmarked author setting into generated cleanup state.
+Agent Bundler compiles author-owned resources only. Agent assets add
+`pi.subagents.agents`, but Agent Bundler does not install or register
+`pi-subagents`; install it separately when using packaged Pi agents. Only
+explicit author dependencies are merged into root `package.json`.
 
-For a Git install, Pi clones the repository and runs `npm install --omit=dev`
-when root `package.json` exists. Root runtime dependencies such as
-`pi-subagents` are therefore installed at root, and an extension path such as
-`./node_modules/pi-subagents/src/extension/index.ts` resolves without committed
-`dist/pi/node_modules`. The generated `.npmrc` keeps npm from auto-installing
-root development peers; normal dependencies of `pi-subagents`, including its
-nested Pi TUI/typebox runtime when required, still install. Other generated
-resources continue to resolve under `dist/pi`.
-
-A local-path install does not install root dependencies. Run the repository's
-package-manager install first. Agent Bundler does not assume
-`dist/pi/node_modules` is committed and does not act as a bootstrap installer.
-Package dependencies imported by author-owned native extensions must likewise
-be declared in the generated Pi package metadata so they can be merged into the
-root.
+Regenerating v0.5.1 root compatibility removes its known compiler-owned runtime
+entries and marked `.npmrc` setting. Unrelated root dependencies, fields, and
+`.npmrc` keys remain. New builds do not create or modify `.npmrc`.
 
 ## Grok and Claude limitation
 
@@ -170,8 +151,8 @@ machine-readable envelope.
 
 `agbun package` requires both target output and root compatibility to be current,
 but archives only `output/<target>`. Root wrappers, the ownership state, the
-development `package.json`, `.npmrc`, and root Codex profiles are not included
-in target archives.
+development `package.json` and root Codex profiles are not included in target
+archives. Agent Bundler does not generate `.npmrc` or third-party package trees.
 
 ## Migrate a legacy root manifest
 

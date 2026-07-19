@@ -312,14 +312,13 @@ func TestPrepareMergesPiPackageWithoutDeletingDevelopmentFields(t *testing.T) {
   "pi": {"extensions": ["./dev/local.ts"], "custom": true}
 }
 `)
-	generated := `{"name":"tools","dependencies":{"pi-subagents":"0.34.0","chalk":"5.6.2"},"pi":{"extensions":["./extensions/hooks.ts","./node_modules/pi-subagents/src/extension/index.ts"],"skills":["./skills"],"subagents":{"agents":["./agents"]}}}`
+	generated := `{"name":"tools","dependencies":{"author-runtime":"2.0.0"},"pi":{"extensions":["./extensions/hooks.ts"],"skills":["./skills"],"subagents":{"agents":["./agents"]}}}`
 	plan, diagnostics := Prepare(Request{
 		WorkspaceRoot: workspace, Output: "dist",
 		Config: &model.CompatibilityConfig{RootManifests: []model.TargetID{model.TargetPi}},
 		Plan: model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetPi, Files: []model.PlannedFile{
 			{Path: "package.json", Bytes: []byte(generated)},
 			{Path: "extensions/hooks.ts", Bytes: []byte("export {}")},
-			{Path: "node_modules/pi-subagents/src/extension/index.ts", Bytes: []byte("export {}")},
 			{Path: "skills/demo/SKILL.md", Bytes: []byte("# Demo")},
 			{Path: "agents/reviewer.md", Bytes: []byte("review")},
 		}}}},
@@ -344,68 +343,90 @@ func TestPrepareMergesPiPackageWithoutDeletingDevelopmentFields(t *testing.T) {
 		t.Fatalf("development fields changed: %#v", document)
 	}
 	dependencies := document["dependencies"].(map[string]any)
-	if !reflect.DeepEqual(dependencies, map[string]any{"chalk": "5.6.2", "pi-subagents": "0.34.0", "unrelated": "1.0.0"}) {
+	if !reflect.DeepEqual(dependencies, map[string]any{"author-runtime": "2.0.0", "unrelated": "1.0.0"}) {
 		t.Fatalf("dependencies = %#v", dependencies)
 	}
 	pi := document["pi"].(map[string]any)
 	if pi["custom"] != true {
 		t.Fatalf("unrelated Pi field removed: %#v", pi)
 	}
-	assertStrings(t, pi["extensions"], []string{"./dev/local.ts", "./dist/pi/extensions/hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"})
+	assertStrings(t, pi["extensions"], []string{"./dev/local.ts", "./dist/pi/extensions/hooks.ts"})
 	assertStrings(t, pi["skills"], []string{"./dist/pi/skills"})
 	subagents := pi["subagents"].(map[string]any)
 	assertStrings(t, subagents["agents"], []string{"./dist/pi/agents"})
 }
 
-func TestPiNPMRCOwnershipPreservesUnrelatedKeysAndCleansStaleSetting(t *testing.T) {
+func TestPiCompatibilityDoesNotCreateOrChangeNPMRC(t *testing.T) {
 	t.Parallel()
 
-	for _, test := range []struct {
-		name   string
-		before string
-		built  string
-	}{
-		{name: "new file", before: "", built: ownedLegacyPeerDepsSetting},
-		{name: "unrelated key", before: "registry=https://registry.example\n", built: "registry=https://registry.example\n" + ownedLegacyPeerDepsSetting},
-		{name: "missing final newline", before: "audit=false", built: "audit=false\n" + ownedLegacyPeerDepsSetting},
-	} {
-		test := test
-		t.Run(test.name, func(t *testing.T) {
-			workspace := t.TempDir()
-			writeTestFile(t, workspace, "package.json", `{}`)
-			if test.before != "" {
-				writeTestFile(t, workspace, ".npmrc", test.before)
+	for _, content := range []string{"", "audit=false\nlegacy-peer-deps=false\n"} {
+		workspace := t.TempDir()
+		writeTestFile(t, workspace, "package.json", `{}`)
+		if content != "" {
+			writeTestFile(t, workspace, ".npmrc", content)
+		}
+		plan, diagnostics := Prepare(piCompatibilityRequest(workspace, `{"pi":{"skills":["./skills"],"subagents":{"agents":["./agents"]}}}`))
+		if len(diagnostics) != 0 {
+			t.Fatal(diagnostics)
+		}
+		if _, exists := planFile(plan, ".npmrc"); exists {
+			t.Fatalf("compatibility plan unexpectedly writes .npmrc: %#v", plan.Files)
+		}
+		if diagnostics := Write(plan, workspace); len(diagnostics) != 0 {
+			t.Fatal(diagnostics)
+		}
+		data, err := os.ReadFile(filepath.Join(workspace, ".npmrc"))
+		if content == "" {
+			if !os.IsNotExist(err) {
+				t.Fatalf("compatibility created .npmrc: data=%q err=%v", data, err)
 			}
-			request := piCompatibilityRequest(workspace, `{"pi":{"skills":["./skills"]}}`)
-			plan, diagnostics := Prepare(request)
-			if len(diagnostics) != 0 {
-				t.Fatal(diagnostics)
-			}
-			npmrc, ok := planFile(plan, ".npmrc")
-			if !ok || string(npmrc.Bytes) != test.built {
-				t.Fatalf("generated .npmrc = %q, present=%t, want %q", npmrc.Bytes, ok, test.built)
-			}
-			if diagnostics := Write(plan, workspace); len(diagnostics) != 0 {
-				t.Fatal(diagnostics)
-			}
-			cleanupRequest := request
-			cleanupRequest.Config = nil
-			cleanup, diagnostics := Prepare(cleanupRequest)
-			if len(diagnostics) != 0 {
-				t.Fatal(diagnostics)
-			}
-			if diagnostics := Write(cleanup, workspace); len(diagnostics) != 0 {
-				t.Fatal(diagnostics)
-			}
-			data, err := os.ReadFile(filepath.Join(workspace, ".npmrc"))
-			if test.before == "" {
-				if !os.IsNotExist(err) {
-					t.Fatalf("generated-only .npmrc remains: data=%q err=%v", data, err)
-				}
-			} else if err != nil || string(data) != test.before {
-				t.Fatalf("cleaned .npmrc = %q err=%v, want %q", data, err, test.before)
-			}
-		})
+		} else if err != nil || string(data) != content {
+			t.Fatalf("compatibility changed author .npmrc: data=%q err=%v", data, err)
+		}
+	}
+}
+
+func TestPiCompatibilityRegeneratesV051StateWithoutImplicitRuntime(t *testing.T) {
+	workspace := t.TempDir()
+	rootPackage := `{"name":"development","dependencies":{"unrelated":"1.0.0","@earendil-works/pi-tui":"legacy","@types/mime-types":"legacy","chalk":"legacy","get-east-asian-width":"legacy","jiti":"legacy","marked":"legacy","mime-db":"legacy","mime-types":"legacy","pi-subagents":"legacy","typebox":"legacy"},"pi":{"extensions":["./author.ts","./node_modules/pi-subagents/src/extension/index.ts"],"skills":["./dist/pi/skills"],"subagents":{"agents":["./dist/pi/agents"]},"custom":true}}`
+	writeTestFile(t, workspace, "package.json", rootPackage)
+	writeTestFile(t, workspace, ".npmrc", "registry=https://registry.example\n"+ownedLegacyPeerDepsSetting)
+	writeTestFile(t, workspace, ".agentbundler/compatibility.json", `{"version":1,"files":[],"pi":{"dependencies":["@earendil-works/pi-tui","@types/mime-types","chalk","get-east-asian-width","jiti","marked","mime-db","mime-types","pi-subagents","typebox"],"extensions":["./node_modules/pi-subagents/src/extension/index.ts"],"skills":["./dist/pi/skills"],"agents":["./dist/pi/agents"],"legacyPeerDeps":true}}`)
+
+	request := piCompatibilityRequest(workspace, `{"name":"tools","pi":{"skills":["./skills"],"subagents":{"agents":["./agents"]}}}`)
+	plan, diagnostics := Prepare(request)
+	if len(diagnostics) != 0 {
+		t.Fatalf("Prepare() diagnostics = %#v", diagnostics)
+	}
+	if diagnostics := Write(plan, workspace); len(diagnostics) != 0 {
+		t.Fatal(diagnostics)
+	}
+
+	data, err := os.ReadFile(filepath.Join(workspace, "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if got := document["dependencies"]; !reflect.DeepEqual(got, map[string]any{"unrelated": "1.0.0"}) {
+		t.Fatalf("dependencies = %#v", got)
+	}
+	pi := document["pi"].(map[string]any)
+	assertStrings(t, pi["extensions"], []string{"./author.ts"})
+	assertStrings(t, pi["skills"], []string{"./dist/pi/skills"})
+	assertStrings(t, pi["subagents"].(map[string]any)["agents"], []string{"./dist/pi/agents"})
+	if pi["custom"] != true || strings.Contains(string(data), "pi-subagents") || strings.Contains(string(data), "node_modules/") {
+		t.Fatalf("stale runtime remains or author field changed: %s", data)
+	}
+	npmrc, err := os.ReadFile(filepath.Join(workspace, ".npmrc"))
+	if err != nil || string(npmrc) != "registry=https://registry.example\n" {
+		t.Fatalf(".npmrc = %q err=%v", npmrc, err)
+	}
+	state, err := os.ReadFile(filepath.Join(workspace, ".agentbundler/compatibility.json"))
+	if err != nil || strings.Contains(string(state), "legacyPeerDeps") || strings.Contains(string(state), "pi-subagents") {
+		t.Fatalf("compatibility state = %q err=%v", state, err)
 	}
 }
 
@@ -425,48 +446,6 @@ func TestPiNPMRCRejectsForgedOwnershipWithoutRemovingAuthorSetting(t *testing.T)
 	data, err := os.ReadFile(filepath.Join(workspace, ".npmrc"))
 	if err != nil || string(data) != legacyPeerDepsSetting {
 		t.Fatalf("author .npmrc changed: data=%q err=%v", data, err)
-	}
-}
-
-func TestPiNPMRCPreservesAuthorOwnedTrueAndRejectsConflicts(t *testing.T) {
-	t.Parallel()
-
-	workspace := t.TempDir()
-	writeTestFile(t, workspace, "package.json", `{}`)
-	writeTestFile(t, workspace, ".npmrc", "legacy-peer-deps=true\nregistry=https://registry.example\n")
-	request := piCompatibilityRequest(workspace, `{"pi":{"skills":["./skills"]}}`)
-	plan, diagnostics := Prepare(request)
-	if len(diagnostics) != 0 {
-		t.Fatal(diagnostics)
-	}
-	if diagnostics := Write(plan, workspace); len(diagnostics) != 0 {
-		t.Fatal(diagnostics)
-	}
-	cleanupRequest := request
-	cleanupRequest.Config = nil
-	cleanup, diagnostics := Prepare(cleanupRequest)
-	if len(diagnostics) != 0 {
-		t.Fatal(diagnostics)
-	}
-	if diagnostics := Write(cleanup, workspace); len(diagnostics) != 0 {
-		t.Fatal(diagnostics)
-	}
-	data, err := os.ReadFile(filepath.Join(workspace, ".npmrc"))
-	if err != nil || string(data) != "legacy-peer-deps=true\nregistry=https://registry.example\n" {
-		t.Fatalf("author .npmrc changed: data=%q err=%v", data, err)
-	}
-
-	for _, content := range []string{
-		"legacy-peer-deps=false\n",
-		"legacy-peer-deps=true\nlegacy-peer-deps=true\n",
-	} {
-		workspace := t.TempDir()
-		writeTestFile(t, workspace, "package.json", `{}`)
-		writeTestFile(t, workspace, ".npmrc", content)
-		_, diagnostics := Prepare(piCompatibilityRequest(workspace, `{"pi":{"skills":["./skills"]}}`))
-		if !hasDiagnostic(diagnostics, "compatibility-npmrc-conflict") {
-			t.Fatalf("Prepare(.npmrc=%q) diagnostics = %#v", content, diagnostics)
-		}
 	}
 }
 

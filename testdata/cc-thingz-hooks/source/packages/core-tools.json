@@ -13,10 +13,7 @@
     "keywords": [
       "guard",
       "hooks"
-    ],
-    "dependencies": {
-      "pi-subagents": "^0.3.0"
-    }
+    ]
   },
   "assets": [
     "src/skills/review",

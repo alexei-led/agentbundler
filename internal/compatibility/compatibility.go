@@ -66,7 +66,7 @@ func Prepare(request Request) (Plan, []model.Diagnostic) {
 	for _, targetPlan := range request.Plan.Targets {
 		selected[targetPlan.Target] = targetPlan
 	}
-	if diagnostics := validateOwnershipAgainstPlan(previous, request.Output, selected); len(diagnostics) != 0 {
+	if diagnostics := validateOwnershipAgainstPlan(request.WorkspaceRoot, previous, request.Output, selected); len(diagnostics) != 0 {
 		return Plan{}, diagnostics
 	}
 	enabled := make(map[model.TargetID]struct{})
@@ -101,11 +101,17 @@ func Prepare(request Request) (Plan, []model.Diagnostic) {
 			file, ownership, targetDiagnostics := preparePiPackage(request.WorkspaceRoot, request.Output, targetPlan, previous.Pi)
 			diagnostics = append(diagnostics, targetDiagnostics...)
 			if len(targetDiagnostics) == 0 {
-				npmrc, npmrcDiagnostics := preparePiNPMRC(request.WorkspaceRoot, previous.Pi, ownership)
-				diagnostics = append(diagnostics, npmrcDiagnostics...)
-				if len(npmrcDiagnostics) == 0 {
-					files = append(files, file, npmrc)
-					desired.Pi = ownership
+				files = append(files, file)
+				desired.Pi = ownership
+				if previous.Pi != nil && previous.Pi.LegacyPeerDeps {
+					npmrc, changed, removeNPMRC, npmrcDiagnostics := cleanupPiNPMRC(request.WorkspaceRoot, previous.Pi)
+					diagnostics = append(diagnostics, npmrcDiagnostics...)
+					if changed {
+						files = append(files, npmrc)
+					}
+					if removeNPMRC {
+						remove = append(remove, npmrcPath)
+					}
 				}
 			}
 		}
@@ -245,7 +251,7 @@ func codexAgentPath(file model.RelativePath) bool {
 	return name != string(file) && name != "" && !strings.Contains(name, "/") && strings.HasSuffix(name, ".toml") && name != ".toml"
 }
 
-func validateOwnershipAgainstPlan(state ownershipState, output model.RelativePath, selected map[model.TargetID]model.TargetPlan) []model.Diagnostic {
+func validateOwnershipAgainstPlan(workspace string, state ownershipState, output model.RelativePath, selected map[model.TargetID]model.TargetPlan) []model.Diagnostic {
 	for _, file := range state.Files {
 		if !codexAgentPath(file) {
 			continue
@@ -257,6 +263,10 @@ func validateOwnershipAgainstPlan(state ownershipState, output model.RelativePat
 	}
 	if state.Pi == nil {
 		return nil
+	}
+	legacyOwnership, legacyDiagnostics := validateLegacyPiOwnership(workspace, state.Pi)
+	if len(legacyDiagnostics) != 0 {
+		return legacyDiagnostics
 	}
 	piPlan, exists := selected[model.TargetPi]
 	if !exists {
@@ -277,7 +287,7 @@ func validateOwnershipAgainstPlan(state ownershipState, output model.RelativePat
 		{name: "agent", actual: state.Pi.Agents, expected: expected.Agents},
 	} {
 		for _, value := range values.actual {
-			if !containsString(values.expected, value) {
+			if !containsString(values.expected, value) && (!legacyOwnership || !legacyPiOwnershipValue(values.name, value)) {
 				return []model.Diagnostic{diagnostic("compatibility-ownership-invalid", fmt.Sprintf("owned Pi %s %q does not match canonical generated output", values.name, value))}
 			}
 		}

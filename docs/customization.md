@@ -266,9 +266,10 @@ when it should remain documented but not emitted, or `replace` with an existing
 asset as fallback. Every applicable source gap needs one matching policy.
 
 Policy does not make a hook, script, or native resource renderable. Package
-profiles render target-supported agents; Pi agents use `pi-subagents` and
-therefore require that runtime package. Antigravity agents accept only exact
-non-empty string `name` and `description` frontmatter.
+profiles render target-supported agent files. Pi records them under
+`pi.subagents.agents` but does not bundle an execution extension; install
+`pi-subagents` separately if those tools are needed. Antigravity agents accept
+only exact non-empty string `name` and `description` frontmatter.
 
 Antigravity-native files use an explicit bundle resource under
 `src/plugins/antigravity/<component>/` with a local

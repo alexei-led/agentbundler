@@ -34,11 +34,12 @@ only `name` and optional string `description`. One selected package is flat, and
 multiple packages use package-ID roots.
 
 The Pi aggregate package contains one generated hook-adapter registration plus
-any declared native extension entries and the bundled subagent entry when agents
-are present. Its thin adapter imports a dependency-free TypeScript runtime
-embedded in `agbun`; the generated package needs neither Bun, TypeScript, npm
-dependencies, nor the `agbun` executable at load time. `pi-subagents` is
-bundled when generated agents are present.
+any declared author-owned native extension entries. Its thin adapter imports a
+dependency-free TypeScript runtime embedded in `agbun`; the generated package
+needs neither Bun, TypeScript, npm dependencies, nor the `agbun` executable at
+load time. Generated agents remain listed in `pi.subagents.agents`, but Agent
+Bundler does not bundle or register `pi-subagents`. Install `pi-subagents` as a
+standalone Pi extension separately when those agent tools are needed.
 
 ## Portable hook cells
 
@@ -55,7 +56,7 @@ acknowledgment.
 | Block            | pre-tool translator | pre-tool translator             | pre-tool                          | pre-tool translator      | pre-tool translator             | pre-tool translator |
 | Rewrite input    | pre-tool translator | unsupported                     | pre-tool                          | pre-tool translator      | pre-tool translator             | unsupported         |
 | Fail closed      | advisory pre-tool   | advisory pre-tool               | runtime-enforced                  | advisory pre-tool        | pre-tool/prompt-submit only     | advisory pre-tool   |
-| Package agents   | native              | unsupported; use project agents | equivalent through `pi-subagents` | native                   | native                          | native              |
+| Package agents   | native              | unsupported; use project agents | metadata; install separately      | native                   | native                          | native              |
 
 Decision-bearing hooks use a canonical subprocess stdin/stdout protocol and a
 target-owned translator. Claude, Copilot, Cursor, and Pi translate block and

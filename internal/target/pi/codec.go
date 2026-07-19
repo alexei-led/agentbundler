@@ -11,19 +11,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var piSubagentDependencies = map[string]string{
-	"@earendil-works/pi-tui": "0.74.0",
-	"@types/mime-types":      "2.1.4",
-	"chalk":                  "5.6.2",
-	"get-east-asian-width":   "1.6.0",
-	"jiti":                   "2.7.0",
-	"marked":                 "15.0.12",
-	"mime-db":                "1.54.0",
-	"mime-types":             "3.0.2",
-	"pi-subagents":           "0.34.0",
-	"typebox":                "1.1.24",
-}
-
 var capabilityRules = []model.CapabilityRule{
 	{Key: "asset.agent", State: model.CapabilityStateEquivalent},
 	{Key: "asset.hook", State: model.CapabilityStateNative},
@@ -183,22 +170,6 @@ func packageManifest(pkg model.NormalizedPackage, registerHooks bool) ([]byte, e
 		extensions = append(extensions, "./extensions/agentbundler-hooks.ts")
 	}
 	if packageoutput.PackageHasAsset(pkg, model.AssetKindAgent) {
-		dependencies, _ := values["dependencies"].(map[string]string)
-		if dependencies == nil {
-			dependencies = make(map[string]string)
-		}
-		bundled := make([]string, 0, len(piSubagentDependencies))
-		for name, version := range piSubagentDependencies {
-			if existing := dependencies[name]; name != "pi-subagents" && existing != "" && existing != "*" && existing != version {
-				return nil, fmt.Errorf("dependency %q must be %q for the bundled Pi agent runtime, got %q", name, version, existing)
-			}
-			dependencies[name] = version
-			bundled = append(bundled, name)
-		}
-		sort.Strings(bundled)
-		values["dependencies"] = dependencies
-		values["bundledDependencies"] = bundled
-		extensions = append(extensions, "./node_modules/pi-subagents/src/extension/index.ts")
 		pi["subagents"] = map[string]any{"agents": []string{"./agents"}}
 	}
 	if len(extensions) != 0 {

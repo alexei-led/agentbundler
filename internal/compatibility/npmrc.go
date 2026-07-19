@@ -17,44 +17,29 @@ const (
 	ownedLegacyPeerDepsSetting = legacyPeerDepsMarker + legacyPeerDepsSetting
 )
 
-func preparePiNPMRC(workspace string, previous, ownership *piOwnership) (File, []model.Diagnostic) {
-	data, _, err := readOptionalRootRegularFile(workspace, npmrcPath)
+func validateLegacyPiOwnership(workspace string, ownership *piOwnership) (bool, []model.Diagnostic) {
+	legacy := ownership.LegacyPeerDeps || containsString(ownership.Extensions, legacyPiSubagentExtension)
+	if !legacy {
+		return false, nil
+	}
+	if !ownership.LegacyPeerDeps || !containsString(ownership.Extensions, legacyPiSubagentExtension) {
+		return false, []model.Diagnostic{diagnostic("compatibility-ownership-invalid", "legacy Pi runtime ownership requires the v0.5.1 extension and .npmrc ownership markers")}
+	}
+	data, exists, err := readOptionalRootRegularFile(workspace, npmrcPath)
 	if err != nil {
-		return File{}, []model.Diagnostic{diagnostic("compatibility-npmrc-invalid", "read repository .npmrc: "+err.Error())}
+		return false, []model.Diagnostic{diagnostic("compatibility-npmrc-invalid", "read repository .npmrc: "+err.Error())}
 	}
-	if previous != nil && previous.LegacyPeerDeps {
-		var removed bool
-		data, removed, err = removeOwnedLegacyPeerDeps(data)
-		if err != nil {
-			return File{}, []model.Diagnostic{diagnostic("compatibility-ownership-invalid", err.Error())}
+	if !exists {
+		return false, []model.Diagnostic{diagnostic("compatibility-ownership-invalid", "legacy Pi runtime ownership requires the v0.5.1 .npmrc marker")}
+	}
+	_, found, err := removeOwnedLegacyPeerDeps(data)
+	if err != nil || !found {
+		if err == nil {
+			err = fmt.Errorf("agent Bundler marker is missing")
 		}
-		if !removed {
-			return File{}, []model.Diagnostic{diagnostic("compatibility-ownership-invalid", "ownership state claims .npmrc legacy-peer-deps, but the Agent Bundler marker is missing")}
-		}
-		if previous.LegacyPeerDepsSeparator && len(data) != 0 && data[len(data)-1] == '\n' {
-			data = data[:len(data)-1]
-		}
+		return false, []model.Diagnostic{diagnostic("compatibility-ownership-invalid", "legacy Pi runtime .npmrc ownership is invalid: "+err.Error())}
 	}
-
-	value, present, err := legacyPeerDepsValue(data)
-	if err != nil {
-		return File{}, []model.Diagnostic{diagnostic("compatibility-npmrc-conflict", err.Error())}
-	}
-	if present {
-		if value != "true" {
-			return File{}, []model.Diagnostic{diagnostic("compatibility-npmrc-conflict", fmt.Sprintf("repository .npmrc %s is %q; Pi Git installs require true", legacyPeerDepsKey, value))}
-		}
-		return File{Path: npmrcPath, Bytes: data}, nil
-	}
-
-	separator := len(data) != 0 && data[len(data)-1] != '\n'
-	if separator {
-		data = append(data, '\n')
-	}
-	data = append(data, ownedLegacyPeerDepsSetting...)
-	ownership.LegacyPeerDeps = true
-	ownership.LegacyPeerDepsSeparator = separator
-	return File{Path: npmrcPath, Bytes: data}, nil
+	return true, nil
 }
 
 func cleanupPiNPMRC(workspace string, ownership *piOwnership) (File, bool, bool, []model.Diagnostic) {
@@ -82,23 +67,6 @@ func cleanupPiNPMRC(workspace string, ownership *piOwnership) (File, bool, bool,
 		return File{}, false, true, nil
 	}
 	return File{Path: npmrcPath, Bytes: cleaned}, true, false, nil
-}
-
-func legacyPeerDepsValue(data []byte) (string, bool, error) {
-	var value string
-	found := false
-	for _, line := range npmrcLines(data) {
-		key, candidate, active := npmrcAssignment(line)
-		if !active || key != legacyPeerDepsKey {
-			continue
-		}
-		if found {
-			return "", false, fmt.Errorf("repository .npmrc defines %s more than once", legacyPeerDepsKey)
-		}
-		found = true
-		value = strings.ToLower(candidate)
-	}
-	return value, found, nil
 }
 
 func removeOwnedLegacyPeerDeps(data []byte) ([]byte, bool, error) {

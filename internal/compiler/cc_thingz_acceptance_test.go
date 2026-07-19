@@ -71,9 +71,8 @@ func TestCCThingzRootCompatibilityBuildCheckDriftAndCleanup(t *testing.T) {
 	if data, err := os.ReadFile(filepath.Join(workspace, ".codex/agents/reviewer.toml")); err != nil || len(data) == 0 {
 		t.Fatalf("Codex root agent compatibility artifact: data=%q err=%v", data, err)
 	}
-	generatedNPMRC := "# agentbundler: repository-root Pi compatibility\nlegacy-peer-deps=true\n"
-	if npmrc, err := os.ReadFile(filepath.Join(workspace, ".npmrc")); err != nil || string(npmrc) != generatedNPMRC {
-		t.Fatalf("Pi root .npmrc = %q err=%v", npmrc, err)
+	if _, err := os.Stat(filepath.Join(workspace, ".npmrc")); !os.IsNotExist(err) {
+		t.Fatalf("Pi compatibility unexpectedly generated .npmrc: %v", err)
 	}
 	rootPackage, err := os.ReadFile(filepath.Join(workspace, "package.json"))
 	if err != nil {
@@ -87,12 +86,15 @@ func TestCCThingzRootCompatibilityBuildCheckDriftAndCleanup(t *testing.T) {
 		t.Fatalf("development package fields changed: %#v", packageDocument)
 	}
 	dependencies := packageDocument["dependencies"].(map[string]any)
-	if dependencies["unrelated"] != "1.0.0" || dependencies["pi-subagents"] == nil {
+	if !reflect.DeepEqual(dependencies, map[string]any{"unrelated": "1.0.0"}) {
 		t.Fatalf("root runtime dependencies = %#v", dependencies)
 	}
 	piManifest := packageDocument["pi"].(map[string]any)
-	if piManifest["custom"] != true || !jsonArrayContains(piManifest["extensions"], "./dev/local.ts") || !jsonArrayContains(piManifest["extensions"], "./dist/pi/extensions/agentbundler-hooks.ts") || !jsonArrayContains(piManifest["extensions"], "./node_modules/pi-subagents/src/extension/index.ts") {
+	if piManifest["custom"] != true || !jsonArrayContains(piManifest["extensions"], "./dev/local.ts") || !jsonArrayContains(piManifest["extensions"], "./dist/pi/extensions/agentbundler-hooks.ts") || jsonArrayContains(piManifest["extensions"], "./node_modules/pi-subagents/src/extension/index.ts") || !jsonArrayContains(piManifest["subagents"].(map[string]any)["agents"], "./dist/pi/agents") {
 		t.Fatalf("root Pi manifest = %#v", piManifest)
+	}
+	if strings.Contains(string(rootPackage), "pi-subagents") || strings.Contains(string(rootPackage), "bundledDependencies") {
+		t.Fatalf("root package contains implicit third-party runtime metadata: %s", rootPackage)
 	}
 
 	before := snapshotTree(t, workspace)
@@ -102,21 +104,6 @@ func TestCCThingzRootCompatibilityBuildCheckDriftAndCleanup(t *testing.T) {
 	}
 	if after := snapshotTree(t, workspace); !reflect.DeepEqual(after, before) {
 		t.Fatal("compatibility check changed the repository")
-	}
-
-	npmrcPath := filepath.Join(workspace, ".npmrc")
-	if err := os.WriteFile(npmrcPath, []byte("legacy-peer-deps=false\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	npmrcDrift := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeCheck})
-	if npmrcDrift.Drift || !diagnosticCode(npmrcDrift.Diagnostics, "compatibility-ownership-invalid") {
-		t.Fatalf(".npmrc ownership drift = %#v", npmrcDrift.Diagnostics)
-	}
-	if npmrc, err := os.ReadFile(npmrcPath); err != nil || string(npmrc) != "legacy-peer-deps=false\n" {
-		t.Fatalf("compatibility check rewrote .npmrc: data=%q err=%v", npmrc, err)
-	}
-	if err := os.WriteFile(npmrcPath, []byte(generatedNPMRC), 0o644); err != nil {
-		t.Fatal(err)
 	}
 
 	driftPath := filepath.Join(workspace, ".github/plugin/marketplace.json")
@@ -138,7 +125,7 @@ func TestCCThingzRootCompatibilityBuildCheckDriftAndCleanup(t *testing.T) {
 	}
 	for _, stale := range []string{
 		".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json", ".github/plugin/marketplace.json",
-		".cursor-plugin/marketplace.json", ".codex/agents/reviewer.toml", ".agentbundler/compatibility.json", ".npmrc",
+		".cursor-plugin/marketplace.json", ".codex/agents/reviewer.toml", ".agentbundler/compatibility.json",
 	} {
 		if _, err := os.Stat(filepath.Join(workspace, filepath.FromSlash(stale))); !os.IsNotExist(err) {
 			t.Errorf("stale compatibility path %q remains: %v", stale, err)

@@ -26,7 +26,6 @@ func TestRenderAggregateEmitsOneInstallablePiPackage(t *testing.T) {
 		"README.md", "agents/reviewer.md", "extensions/_agentbundler-hooks/index.ts",
 		"extensions/agentbundler-hooks.ts", "hooks/hooks.v1.json",
 		"hooks/payloads/pre-tool/pre-tool.js", "package.json", "skills/guide/SKILL.md",
-		"node_modules/pi-subagents/src/extension/index.ts",
 	} {
 		_ = aggregateFile(t, plan, path)
 	}
@@ -39,14 +38,14 @@ func TestRenderAggregateEmitsOneInstallablePiPackage(t *testing.T) {
 		t.Fatalf("aggregate manifest metadata = %#v", manifest)
 	}
 	dependencies, ok := manifest["dependencies"].(map[string]any)
-	if !ok || dependencies["aggregate-runtime"] != "1.0.0" || dependencies["shared"] != "2.0.0" || dependencies["pi-subagents"] != "0.34.0" {
+	if !ok || !reflect.DeepEqual(dependencies, map[string]any{"aggregate-runtime": "1.0.0", "author-runtime": "^1.0.0", "shared": "2.0.0"}) {
 		t.Fatalf("dependencies = %#v", manifest["dependencies"])
 	}
 	piManifest, ok := manifest["pi"].(map[string]any)
 	if !ok {
 		t.Fatalf("pi manifest = %#v", manifest["pi"])
 	}
-	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}; !reflect.DeepEqual(got, want) {
+	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pi.extensions = %#v, want %#v", got, want)
 	}
 	if got, want := piManifest["skills"], []any{"./skills"}; !reflect.DeepEqual(got, want) {
@@ -90,7 +89,7 @@ func TestRenderAggregateRegistersDeclarativeNativeExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	piManifest := manifest["pi"].(map[string]any)
-	if got, want := piManifest["extensions"], []any{"./extensions/custom.ts", "./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}; !reflect.DeepEqual(got, want) {
+	if got, want := piManifest["extensions"], []any{"./extensions/custom.ts", "./extensions/agentbundler-hooks.ts"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pi.extensions = %#v, want %#v", got, want)
 	}
 }
@@ -145,7 +144,7 @@ func TestAggregateRuntimeBytesAreEmbeddedDeterministically(t *testing.T) {
 	}
 }
 
-func TestAggregateOmitsPiSubagentsWhenAgentsAreAbsent(t *testing.T) {
+func TestAggregatePreservesExplicitDependenciesWhenAgentsAreAbsent(t *testing.T) {
 	input := aggregateFixture()
 	input.Packages[1].Assets = input.Packages[1].Assets[:1]
 	plan, diagnostics := Render(input)
@@ -157,8 +156,8 @@ func TestAggregateOmitsPiSubagentsWhenAgentsAreAbsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	dependencies := manifest["dependencies"].(map[string]any)
-	if _, exists := dependencies["pi-subagents"]; exists {
-		t.Fatalf("agent-free dependencies = %#v, want pi-subagents omitted", dependencies)
+	if dependencies["author-runtime"] != "^1.0.0" {
+		t.Fatalf("agent-free dependencies = %#v, want explicit dependency preserved", dependencies)
 	}
 	piManifest := manifest["pi"].(map[string]any)
 	if _, exists := piManifest["subagents"]; exists {
@@ -189,19 +188,9 @@ func TestAggregateWithoutHooksStillRegistersOneThinAdapterAndEmptyDescriptor(t *
 		t.Fatal(err)
 	}
 	piManifest := manifest["pi"].(map[string]any)
-	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}; !reflect.DeepEqual(got, want) {
+	if got, want := piManifest["extensions"], []any{"./extensions/agentbundler-hooks.ts"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pi.extensions = %#v, want %#v", got, want)
 	}
-}
-
-func TestAggregateBundlesPiSubagentsWithoutSourceDependency(t *testing.T) {
-	input := aggregateFixture()
-	delete(input.Aggregate.Metadata["dependencies"].(map[string]any), "pi-subagents")
-	plan, diagnostics := Render(input)
-	if len(diagnostics) != 0 {
-		t.Fatalf("Render() diagnostics = %#v", diagnostics)
-	}
-	_ = aggregateFile(t, plan, "node_modules/pi-subagents/src/extension/index.ts")
 }
 
 func TestAggregateRejectsFailClosedOutsidePreTool(t *testing.T) {
@@ -379,7 +368,7 @@ func aggregateFixture() model.TargetRenderInput {
 				"description": "Explicit aggregate metadata",
 				"dependencies": map[string]any{
 					"aggregate-runtime": "1.0.0",
-					"pi-subagents":      "^1.0.0",
+					"author-runtime":    "^1.0.0",
 				},
 			},
 		},

@@ -79,30 +79,8 @@ func renderAggregate(input model.TargetRenderInput) (model.TargetPlan, []model.D
 			return emptyPlan(), []model.Diagnostic{piDiagnostic("invalid-package-output", err.Error())}
 		}
 	}
-	if assetsHaveKind(pkg.Assets, model.AssetKindAgent) {
-		if err := addPiSubagentRuntime(&plan, paths, ""); err != nil {
-			return emptyPlan(), []model.Diagnostic{piDiagnostic("invalid-package-output", err.Error())}
-		}
-	}
 	sort.Slice(plan.Files, func(left, right int) bool { return plan.Files[left].Path < plan.Files[right].Path })
 	return plan, nil
-}
-
-func addPiSubagentRuntime(plan *model.TargetPlan, paths map[model.RelativePath]struct{}, root string) error {
-	runtime, err := piSubagentRuntimeFiles()
-	if err != nil {
-		return fmt.Errorf("read bundled Pi agent runtime: %w", err)
-	}
-	for _, file := range runtime {
-		path := model.RelativePath(file.name)
-		if root != "" {
-			path = model.RelativePath(root + "/" + file.name)
-		}
-		if err := addAggregateRuntimeFile(plan, paths, path, file); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func addAggregateRuntimeFile(plan *model.TargetPlan, paths map[model.RelativePath]struct{}, path model.RelativePath, file runtimeFile) error {
@@ -152,9 +130,6 @@ func mergeAggregatePackage(input model.TargetRenderInput) (model.NormalizedPacka
 		assets = append(assets, pkg.Assets...)
 		acknowledgments = append(acknowledgments, pkg.Acknowledgments...)
 	}
-	if !assetsHaveKind(assets, model.AssetKindAgent) {
-		delete(mergedDependencies, "pi-subagents")
-	}
 	if len(mergedDependencies) != 0 {
 		metadata["dependencies"] = mergedDependencies
 	}
@@ -166,15 +141,6 @@ func mergeAggregatePackage(input model.TargetRenderInput) (model.NormalizedPacka
 		Assets:          assets,
 		Acknowledgments: acknowledgments,
 	}, nil
-}
-
-func assetsHaveKind(assets []model.NormalizedAsset, kind model.AssetKind) bool {
-	for _, asset := range assets {
-		if asset.Kind == kind {
-			return true
-		}
-	}
-	return false
 }
 
 type aggregateAssetOwner struct {

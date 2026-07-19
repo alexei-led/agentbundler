@@ -47,7 +47,7 @@ hooks/hooks.v1.json
 <hook payload files>
 ```
 
-`package.json#pi.extensions` contains the generated thin adapter, bundled subagent adapter when agents exist, and explicit entries from native-resource `piExtensions`. A declared entry must name a copied `extensions/*.ts` or `extensions/*.js` file; entries are never inferred. Runtime helper modules are imported by the thin adapter, not independently registered. The adapter may preserve existing `pi.subagents` metadata where required by the supported agent form.
+`package.json#pi.extensions` contains the generated thin hook adapter and explicit author-owned entries from native-resource `piExtensions`. A declared entry must name a copied `extensions/*.ts` or `extensions/*.js` file; entries are never inferred from agents or dependencies. Runtime helper modules are imported by the thin adapter, not independently registered. Agent files are declared through `pi.subagents.agents`; their standalone execution extension is user-installed and never bundled by this module.
 
 Portable mappings use Pi extension events including `session_start`, idempotent `session_shutdown`, `input`/`before_agent_start`, `tool_call`, `tool_result`, `turn_end`/`agent_end`, and compaction events. `tool_call` preflight is sequential even when sibling tools later execute concurrently. Input rewrite mutates `event.input` only after runtime validation because Pi does not revalidate it.
 
@@ -75,6 +75,7 @@ Aggregation merges dependency maps only when equal values agree. Duplicate depen
 - Aggregate identity/metadata are explicit; separate mode does not silently become aggregate mode.
 - Exactly one generated hook-adapter entry, descriptor, and runtime copy exist in one aggregate artifact; explicit native extension entries are deterministic, validated, and collision-checked.
 - Generated output does not scan Pi install directories or require a global runner singleton.
+- Agents never synthesize dependencies, peers, bundled dependencies, `node_modules` files, or third-party extension registrations; explicit author dependencies are preserved exactly.
 - Generated output does not require Bun, TypeScript, `agbun`, network access, or a separately installed Agent Bundler runtime.
 - Embedded runtime bytes are deterministic compiler inputs. Installed Pi versions, absolute source paths, time, environment, and network are not.
 - Pi has no production native validator. Install/load smoke tests are test-only, opt-in, and use temporary settings/config roots.

@@ -2,9 +2,6 @@
 package pi
 
 import (
-	"fmt"
-	"sort"
-
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 	"github.com/alexei-led/agentbundler/internal/target/packageoutput"
 	"github.com/alexei-led/agentbundler/internal/target/skills"
@@ -12,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetPi
-	FormatRevision = 7
+	FormatRevision = 8
 )
 
 // Adapter renders Pi's lossless native skill subset.
@@ -34,23 +31,6 @@ func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, 
 		if len(diagnostics) != 0 {
 			return plan, diagnostics
 		}
-		paths := make(map[model.RelativePath]struct{}, len(plan.Files))
-		for _, file := range plan.Files {
-			paths[file.Path] = struct{}{}
-		}
-		for _, pkg := range input.Packages {
-			if !assetsHaveKind(pkg.Assets, model.AssetKindAgent) {
-				continue
-			}
-			root := ""
-			if len(input.Packages) > 1 {
-				root = string(pkg.Identity)
-			}
-			if err := addPiSubagentRuntime(&plan, paths, root); err != nil {
-				return model.TargetPlan{Target: Target}, []model.Diagnostic{piDiagnostic("invalid-package-output", fmt.Sprintf("package %q: %v", pkg.Identity, err))}
-			}
-		}
-		sort.Slice(plan.Files, func(left, right int) bool { return plan.Files[left].Path < plan.Files[right].Path })
 		return plan, nil
 	}
 	return skills.Render(adapter.Target(), ".pi/skills", input.Packages)

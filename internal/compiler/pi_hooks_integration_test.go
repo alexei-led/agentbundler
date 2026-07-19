@@ -59,8 +59,16 @@ func TestCompilePiAggregateHooksEndToEndIsDeterministicAndCheckIsReadOnly(t *tes
 	if err := json.Unmarshal(manifestFile.Bytes, &packageManifest); err != nil {
 		t.Fatal(err)
 	}
-	if packageManifest.Name != "pi-hook-suite" || !reflect.DeepEqual(packageManifest.Pi.Extensions, []string{"./extensions/agentbundler-hooks.ts", "./node_modules/pi-subagents/src/extension/index.ts"}) || !reflect.DeepEqual(packageManifest.Pi.Skills, []string{"./skills"}) || !reflect.DeepEqual(packageManifest.Pi.Subagents.Agents, []string{"./agents"}) {
+	if packageManifest.Name != "pi-hook-suite" || !reflect.DeepEqual(packageManifest.Pi.Extensions, []string{"./extensions/agentbundler-hooks.ts"}) || !reflect.DeepEqual(packageManifest.Pi.Skills, []string{"./skills"}) || !reflect.DeepEqual(packageManifest.Pi.Subagents.Agents, []string{"./agents"}) {
 		t.Fatalf("generated package.json = %s", manifestFile.Bytes)
+	}
+	if bytes.Contains(manifestFile.Bytes, []byte("pi-subagents")) || bytes.Contains(manifestFile.Bytes, []byte("bundledDependencies")) {
+		t.Fatalf("generated package.json contains implicit third-party runtime metadata: %s", manifestFile.Bytes)
+	}
+	for _, file := range plan.Files {
+		if strings.HasPrefix(string(file.Path), "node_modules/") {
+			t.Fatalf("generated plan bundles third-party file %q", file.Path)
+		}
 	}
 
 	descriptor := plannedFile(t, plan, "hooks/hooks.v1.json")
@@ -81,6 +89,37 @@ func TestCompilePiAggregateHooksEndToEndIsDeterministicAndCheckIsReadOnly(t *tes
 	}
 	if after := snapshotTree(t, outputRoot); !reflect.DeepEqual(after, before) {
 		t.Fatalf("check changed generated output:\nbefore=%#v\nafter=%#v", before, after)
+	}
+}
+
+func TestCompilePiAggregateReplacesV051BundledRuntimeOutput(t *testing.T) {
+	workspace := copyPiHookFixture(t)
+	stale := filepath.Join(workspace, "generated", "pi", "node_modules", "pi-subagents", "src", "extension", "index.ts")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("stale runtime\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := decodePiHookManifest(t, workspace)
+	result := Compile(CompileRequest{WorkspaceRoot: workspace, Manifest: manifest, Mode: BuildModeBuild})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "generated", "pi", "node_modules")); !os.IsNotExist(err) {
+		t.Fatalf("stale third-party runtime remains after regeneration: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "generated", "pi", "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"pi-subagents", "bundledDependencies", "node_modules/"} {
+		if bytes.Contains(data, []byte(forbidden)) {
+			t.Fatalf("regenerated package contains %q: %s", forbidden, data)
+		}
+	}
+	if !bytes.Contains(data, []byte(`"subagents":{"agents":["./agents"]}`)) {
+		t.Fatalf("regenerated package lost pi.subagents.agents: %s", data)
 	}
 }
 

@@ -3,6 +3,7 @@ package packageoutput_test
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -175,7 +176,7 @@ func TestRenderCursorPackageIncludesMarkdownAgent(t *testing.T) {
 	}
 }
 
-func TestRenderPiPackageBundlesSubagentsWithoutSourceDependency(t *testing.T) {
+func TestRenderPiPackageDoesNotSynthesizeSubagentRuntime(t *testing.T) {
 	pkg := packageFixture(model.TargetPi)
 	delete(pkg.Metadata, "dependencies")
 	plan, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{pkg})
@@ -186,9 +187,23 @@ func TestRenderPiPackageBundlesSubagentsWithoutSourceDependency(t *testing.T) {
 	if err := json.Unmarshal(plannedFiles(plan)["package.json"], &manifest); err != nil {
 		t.Fatal(err)
 	}
-	dependencies := manifest["dependencies"].(map[string]any)
-	if dependencies["pi-subagents"] != "0.34.0" {
-		t.Fatalf("Pi dependencies = %#v", dependencies)
+	if _, exists := manifest["dependencies"]; exists {
+		t.Fatalf("Pi dependencies were synthesized: %#v", manifest)
+	}
+	if _, exists := manifest["bundledDependencies"]; exists {
+		t.Fatalf("Pi bundledDependencies were synthesized: %#v", manifest)
+	}
+	pi := manifest["pi"].(map[string]any)
+	if _, exists := pi["extensions"]; exists {
+		t.Fatalf("Pi extension was synthesized: %#v", pi)
+	}
+	if got := pi["subagents"].(map[string]any)["agents"]; !reflect.DeepEqual(got, []any{"./agents"}) {
+		t.Fatalf("Pi agents = %#v", got)
+	}
+	for path := range plannedFiles(plan) {
+		if strings.HasPrefix(string(path), "node_modules/") {
+			t.Fatalf("Pi package bundles third-party file %q", path)
+		}
 	}
 }
 
@@ -216,9 +231,9 @@ func TestRenderPiSubagentQuotesYAMLScalars(t *testing.T) {
 
 func TestRenderPiPackageRejectsInvalidDependencies(t *testing.T) {
 	pkg := packageFixture(model.TargetPi)
-	pkg.Metadata["dependencies"] = map[string]any{"pi-subagents": 34}
+	pkg.Metadata["dependencies"] = map[string]any{"author-runtime": 34}
 	_, diagnostics := Render(model.TargetPi, []model.NormalizedPackage{pkg})
-	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-manifest" || !contains(diagnostics[0].Message, `dependency "pi-subagents" must have a non-empty string version`) {
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-manifest" || !contains(diagnostics[0].Message, `dependency "author-runtime" must have a non-empty string version`) {
 		t.Fatalf("Render() diagnostics = %#v", diagnostics)
 	}
 }
@@ -267,8 +282,14 @@ func TestRenderPiPackageRegistersSubagents(t *testing.T) {
 		t.Fatalf("Pi subagent registration = %#v", pi)
 	}
 	dependencies, ok := manifest["dependencies"].(map[string]any)
-	if !ok || dependencies["pi-subagents"] != "0.34.0" || dependencies["@earendil-works/pi-tui"] != "0.74.0" || dependencies["jiti"] != "2.7.0" || dependencies["typebox"] != "1.1.24" {
+	if !ok || !reflect.DeepEqual(dependencies, map[string]any{"author-runtime": "1.2.3"}) {
 		t.Fatalf("Pi dependencies = %#v", manifest["dependencies"])
+	}
+	if _, exists := manifest["bundledDependencies"]; exists {
+		t.Fatalf("Pi bundledDependencies were synthesized: %#v", manifest)
+	}
+	if _, exists := pi["extensions"]; exists {
+		t.Fatalf("Pi extension was synthesized: %#v", pi)
 	}
 }
 
@@ -565,7 +586,7 @@ func packageFixture(target model.TargetID) model.NormalizedPackage {
 		Metadata: model.PackageMetadata{
 			"version":      "1.0.0",
 			"description":  "Demo package",
-			"dependencies": map[string]any{"pi-subagents": "0.34.0"},
+			"dependencies": map[string]any{"author-runtime": "1.2.3"},
 		},
 		Assets: []model.NormalizedAsset{
 			{Identity: "skill/demo", Kind: model.AssetKindSkill, Content: model.AssetContent{Frontmatter: map[string]any{"name": "demo", "description": "Demo"}, Body: "Use demo.\n", Files: map[model.RelativePath]model.FileContent{}}},

@@ -14,6 +14,32 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
+var legacyPiRuntimeDependencyNames = map[string]struct{}{
+	"@earendil-works/pi-tui": {},
+	"@types/mime-types":      {},
+	"chalk":                  {},
+	"get-east-asian-width":   {},
+	"jiti":                   {},
+	"marked":                 {},
+	"mime-db":                {},
+	"mime-types":             {},
+	"pi-subagents":           {},
+	"typebox":                {},
+}
+
+const legacyPiSubagentExtension = "./node_modules/pi-subagents/src/extension/index.ts"
+
+func legacyPiOwnershipValue(field, value string) bool {
+	if field == "extension" {
+		return value == legacyPiSubagentExtension
+	}
+	if field == "dependency" {
+		_, exists := legacyPiRuntimeDependencyNames[value]
+		return exists
+	}
+	return false
+}
+
 func preparePiPackage(workspace string, output model.RelativePath, plan model.TargetPlan, previous *piOwnership) (File, *piOwnership, []model.Diagnostic) {
 	generated, diagnostics := piGeneratedPackages(plan)
 	if len(diagnostics) != 0 {
