@@ -1,16 +1,16 @@
+<!-- markdownlint-disable MD013 -->
+
 # Release validation
 
-A release is valid only after source, generated packages, embedded runtime bytes,
-and the CLI version contract pass together. The release workflow does not
-publish vendor plugins or mutate vendor configuration.
+Run from a clean checkout. Release tags are `vMAJOR.MINOR.PATCH` on `master`.
+The release workflow validates, builds six OS/architecture binaries, creates the
+GitHub release, and dispatches the Homebrew update.
 
-## Required gate
-
-From the repository root:
+## Required local gate
 
 ```sh
-changed_go=$(git diff --name-only -- '*.go')
-test -z "$changed_go" || gofmt -d $changed_go
+gofmt -l $(git ls-files -- '*.go')
+git diff --check
 go test ./...
 go test -race ./...
 go vet ./...
@@ -24,95 +24,50 @@ golangci-lint run ./...
 scripts/check-acceptance-fixture
 scripts/check-architecture
 archfit check --config .archfit.yaml --require-tools --progress none
+```
+
+Vendor smoke tests are opt-in. Run them only with isolated vendor config roots:
+
+```sh
 go test -tags=vendor_smoke ./internal/target/... ./internal/compiler/...
-git diff --check
 ```
 
-`vendor_smoke` is opt-in. A missing executable skips with its exact CLI name.
-Cursor also skips when `CURSOR_API_KEY` is absent because it has no offline load
-validator. Every subprocess is time/output bounded and uses temporary config
-roots. Claude, Grok, and Antigravity production-native checks are automatic
-non-mutating vendor validators. The Antigravity smoke protects the normal
-`~/.gemini` tree before and after `agy plugin validate`.
+They may require installed CLIs, credentials, or a model-backed session. A skip
+or failure is a vendor-environment result, not proof that deterministic rendering
+is broken.
 
-## Runtime and version contract
+## Version and tag
 
-The Pi runtime source of record is `internal/target/pi/runtime/src`. Go embeds
-those exact reviewed files. `TestReleaseBuildEmbedsTestedRuntimeAndPrintsInjectedVersion`
-builds a release-shaped `agbun`, generates a Pi package with that binary, and
-byte-compares every emitted runtime module with the source tested by Bun.
+Release builds inject the tag into `internal/buildinfo.releaseVersion`:
 
-Release builds inject the tag through:
-
-```text
--X github.com/alexei-led/agentbundler/internal/buildinfo.releaseVersion=vMAJOR.MINOR.PATCH
+```sh
+go build -ldflags='-X github.com/alexei-led/agentbundler/internal/buildinfo.releaseVersion=vX.Y.Z' ./cmd/agbun
 ```
 
-Both commands must print the same exact line:
+Both commands must print the same version:
 
 ```sh
 agbun version
 agbun --version
-# agbun vMAJOR.MINOR.PATCH
 ```
 
-The release matrix builds Darwin, Linux, and Windows on amd64 and arm64. It
-checks that every artifact contains the injected tag and executes both version
-forms on Linux/amd64. Development builds report the Go module version when
-available, otherwise `agbun-dev`.
-
-## Pinned CI evidence
-
-The CI workflow pins action commits, Bun 1.3.14, Claude Code 2.1.210, Grok
-Build 0.2.101, and Antigravity CLI 1.1.3. The Antigravity Linux x64 archive is
-accepted only when SHA-256
-`7a7239a69b65d3cf3af7e75f27b2ff4e9cce696a7b9a9e5c37c695f1c74eec34`
-passes and `agy --version` prints `1.1.3`. The validator job builds the
-cc-thingz-shaped fixture and runs:
+Release steps:
 
 ```sh
-claude plugin validate --strict testdata/cc-thingz-hooks/generated/claude
-grok plugin validate testdata/cc-thingz-hooks/generated/grok/core-tools
-grok plugin validate testdata/cc-thingz-hooks/generated/grok/workflow-tools
-agy plugin validate testdata/cc-thingz-hooks/generated/antigravity/core-tools
-agy plugin validate testdata/cc-thingz-hooks/generated/antigravity/workflow-tools
+git status --short --branch
+git add -A
+git commit -m '...'
+git push origin master
+git tag -a vX.Y.Z -m 'vX.Y.Z'
+git push origin vX.Y.Z
 ```
 
-The job uses temporary `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, and
-`TMPDIR` roots and blocks network proxies during validation. These commands only
-validate local trees. They do not install plugins, mutate normal vendor state,
-authenticate, publish, or start model sessions.
+Verify the tag-triggered workflow and release:
 
-## v0.5.0 release scope
+```sh
+gh run list --workflow release.yml --limit 1
+gh release view vX.Y.Z
+```
 
-Antigravity CLI is a new public output target, so the intended release is the
-next minor version, `v0.5.0`, not a patch. Release notes must name the strict
-`plugin.json`, skills, narrow agent subset, explicit native-resource
-passthrough, unsupported portable hooks, pinned `agy` 1.1.3 validation,
-Conductor-shaped example, and seven-target fixture. Agent Bundler still does not
-install or publish vendor plugins.
-
-## Release checklist
-
-1. Run the required gate on a clean checkout.
-2. Inspect all seven target trees produced by `testdata/cc-thingz-hooks`
-   against `docs/vendor-package-contracts.md`, including both generated
-   Antigravity package roots.
-3. Confirm `git diff --check`, GitNexus change detection, and Archfit have no
-   unintended dependency-direction regression.
-4. Run the scoped architecture re-review across `internal/compiler/model`,
-   `internal/compiler/source`, `internal/compiler/composition`,
-   `internal/target`, `internal/target/pi/runtime`, and `internal/artifact`.
-5. Tag only a commit on `master` with `vMAJOR.MINOR.PATCH`.
-6. After review, merge, and green CI, create annotated tag `v0.5.0` on
-   `master`; push it and let `.github/workflows/release.yml` validate, build,
-   checksum, create the GitHub release, and dispatch the Homebrew update.
-7. Update the GitHub description and topics only after merge. Repository
-   metadata, merge, tag push, release creation, and Homebrew dispatch are remote
-   owner actions, never RalphEx task actions.
-
-Consuming-repository migration is separate. Passing this gate does not claim
-that cc-thingz source has been migrated, installed, or behavior-compared. That
-repository must still adopt canonical hook directories, configure Pi aggregate
-metadata, run actual vendor installs, and remove legacy compilers only after its
-own checks pass.
+Do not commit generated output, vendor configuration, credentials, or release
+artifacts. Migration of consuming repositories is a separate task.

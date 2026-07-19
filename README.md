@@ -139,18 +139,9 @@ examples.
 
 ## Documentation
 
-- [Docs index](docs/README.md)
-- [User guide: how to think about **Agent Bundler**](docs/guide.md)
-- [Install](docs/install.md)
+- [Documentation index](docs/README.md)
 - [Quick start](docs/quickstart.md)
-- [Configuration and source formats](docs/configuration.md)
-- [Target customization](docs/customization.md)
-- [Targets and CLI reference](docs/targets-and-cli.md)
-- [Repository-root compatibility](docs/repository-root-compatibility.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Architecture](docs/architecture.md)
-- [Release validation](docs/release.md)
-- [**Agent Bundler** Agent Skill](skills/agentbundler/SKILL.md)
+- [Agent skill](skills/agentbundler/SKILL.md)
 
 ## License
 

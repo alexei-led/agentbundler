@@ -1,103 +1,63 @@
-# Vendor Package Contracts
+<!-- markdownlint-disable MD013 -->
 
-This note pins the native package and hook contracts used by Agent Bundler. Primary sources were checked on 2026-07-15. A target adapter must fail an unlisted semantic cell rather than infer parity from a similar name.
+# Target contracts
 
-## Contract summary
+Maintained vendor assumptions used by adapters. Agent Bundler renders files; it
+does not install, publish, authenticate, or modify vendor state.
 
-| Target             | Installable package root                                                         | Hook file                                                               | Catalog path                                     | Production native validator              |
-| ------------------ | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
-| Antigravity CLI    | root `plugin.json`, `skills/`, `agents/`, and explicit native resources          | root `hooks.json` only as an explicit native resource                   | None                                             | `agy plugin validate <root>`             |
-| Claude Code        | `.claude-plugin/plugin.json`, `skills/`, `agents/`                               | `hooks/hooks.json`                                                      | `.claude-plugin/marketplace.json`                | `claude plugin validate --strict <root>` |
-| OpenAI Codex       | `.codex-plugin/plugin.json`, `skills/`, optional `.mcp.json`                     | `hooks/hooks.json`                                                      | `.agents/plugins/marketplace.json`               | None                                     |
-| Pi                 | `package.json`, declared `pi.extensions`, `pi.skills`, and package resources     | Agent Bundler `hooks/hooks.v1.json` consumed by one generated extension | None; install the package root with `pi install` | None                                     |
-| GitHub Copilot CLI | root `plugin.json`, `skills/`, `agents/*.agent.md`                               | root `hooks.json`                                                       | `.github/plugin/marketplace.json`                | None                                     |
-| Cursor             | `.cursor-plugin/plugin.json`, `skills/`, `agents/`                               | `hooks/hooks.json`                                                      | `.cursor-plugin/marketplace.json`                | None                                     |
-| Grok Build         | Grok-tested Claude-compatible `.claude-plugin/plugin.json`, `skills/`, `agents/` | `hooks/hooks.json`                                                      | `.claude-plugin/marketplace.json`                | `grok plugin validate <root>`            |
+| Target | Package root | Catalog | Native validator |
+| --- | --- | --- | --- |
+| Antigravity | `plugin.json`, `skills/`, optional `agents/` and native resources | none | `agy plugin validate <root>` |
+| Claude | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` | `claude plugin validate --strict <root>` |
+| Codex | `.codex-plugin/plugin.json`, `skills/`, `hooks/` | `.agents/plugins/marketplace.json` | none |
+| Pi | `package.json`, `pi`, `skills/`, `hooks/` | none | none |
+| Copilot | `plugin.json`, `skills/`, `agents/`, `hooks.json` | `.github/plugin/marketplace.json` | none |
+| Cursor | `.cursor-plugin/plugin.json`, `skills/`, `agents/`, `hooks/` | `.cursor-plugin/marketplace.json` | none |
+| Grok | Claude-compatible plugin root | `.claude-plugin/marketplace.json` | `grok plugin validate <root>` |
 
-Catalog paths are generated artifacts only. Agent Bundler does not register, publish, submit, install, authenticate, fetch, or change vendor configuration.
+## Boundaries
 
-Repository vendor smokes are opt-in under the `vendor_smoke` build tag. A shared
-test-only harness requires exact CLI names, uses positive subprocess deadlines,
-bounds combined output to 32 KiB, supplies temporary HOME/config/cache roots,
-and verifies normal configuration digests after mutating tests. CI runs only the
-safe local-tree validators, pinned to Claude Code 2.1.210, Grok Build 0.2.101,
-and Antigravity CLI 1.1.3; the Grok and Antigravity Linux binaries are
-checksum-pinned. Codex, Pi, Copilot, and Cursor
-install/load smokes are never production native checks.
+- Package output is target-native and deterministic. Root compatibility is
+  opt-in and never enters target archives.
+- Codex project agents are `.codex/agents/*.toml`; marketplace installation does
+  not install them. Root compatibility may copy canonical profiles there.
+- Grok reads Claude marketplaces. Claude and Grok root compatibility cannot be
+  enabled together.
+- Pi agents remain metadata in `pi.subagents.agents`. Agent Bundler compiles
+  author-owned files only: it does not infer or bundle `pi-subagents`, peers,
+  dependency closures, `bundledDependencies`, `node_modules`, or third-party
+  extension registrations. Users install `pi-subagents` separately when needed.
+- Pi `pi.extensions` entries come from explicit author `piExtensions` resources
+  plus the generated Agent Bundler hook adapter. Explicit dependencies are
+  preserved; implicit dependencies are not created.
+- Portable hooks are translated only where the target preserves the requested
+  event and decision semantics. Unsupported cells fail; advisory losses need an
+  acknowledgment.
+- Native resources are explicit pass-throughs. Validation does not sandbox them.
 
-## Antigravity CLI
+## Verification
 
-- Evidence checked 2026-07-17: official [plugin documentation](https://antigravity.google/docs/cli/plugins), [feature documentation](https://antigravity.google/docs/cli/features), [migration documentation](https://antigravity.google/docs/cli/gcli-migration), and the [Antigravity CLI repository](https://github.com/google-antigravity/antigravity-cli). The Conductor 0.3.0 example was checked at commit [`fb6212e8faee3f9ecb69f0ee19bd5b2a0765bb0a`](https://github.com/gemini-cli-extensions/conductor/tree/fb6212e8faee3f9ecb69f0ee19bd5b2a0765bb0a). The verified local CLI is `agy` 1.1.3. Its Linux x64 [release archive](https://github.com/google-antigravity/antigravity-cli/releases/download/1.1.3/agy_cli_linux_x64.tar.gz) has SHA-256 `7a7239a69b65d3cf3af7e75f27b2ff4e9cce696a7b9a9e5c37c695f1c74eec34` and contains the `antigravity` binary.
-- Source boundary: Antigravity is an outbound target for existing bundle, Claude-plugin, and skills-repository inputs, not a source kind. Agent Bundler does not claim direct import of arbitrary Antigravity plugin repositories. The adapter uses the shared package-output seam rather than a separate renderer.
-- Native layout: `plugin.json` is required at the plugin root. Optional convention-based components are `skills/<name>/SKILL.md`, `agents/*.md`, `rules/*.md`, root `mcp_config.json`, and root `hooks.json`. Antigravity also accepts legacy `commands/`, but Agent Bundler does not generate it because Antigravity compiles skills into slash commands.
-- Manifest: generated `plugin.json` contains required string `name` and optional string `description` only, rejects additional fields, and enforces the published name pattern `^[A-Za-z0-9_-]+$`. Agent Bundler does not infer a schema field, version, author, repository, component paths, hooks, MCP, or rule arrays.
-- Packaging: only package profile with separate package mode is supported. One package renders flat; multiple packages render as independent package-ID roots. There is no verified marketplace or catalog format, so Agent Bundler generates no catalog and no manifest version field.
-- Portable assets: skills retain their normal directories, support files, and frontmatter. Portable agents render only when their frontmatter consists exactly of non-empty string `name` and `description`; model, tool-policy, skill-inheritance, Pi `sandbox_mode`, and all other fields are unsupported.
-- Native resources: an explicit bundle `asset.native-resource` under `src/plugins/antigravity/<component>/` is copied as a complete symlink-free tree at the plugin root without parsing rules, MCP configuration, hooks, or support files. The asset must be Antigravity-owned, non-empty, and must not declare Pi extensions. Existing target allow-lists, paths, collisions, hashes, executable modes, and native-gap actions remain authoritative.
-- Hook limit: portable `asset.hook` and all portable `hook.*` semantics are unsupported. A target-native `hooks.json` may pass through only as the explicit raw native resource above. Agent Bundler does not claim portable event, matcher, timeout, decision, async, ordering, or failure-policy equivalence.
-- Validation: each rendered plugin root declares `agy plugin validate .`, executed by the isolated native-verification subsystem with temporary home, config, and cache roots. CI verifies Antigravity CLI 1.1.3 with the pinned Linux x64 digest above and validates both acceptance-fixture plugin roots. Validation is offline and non-mutating, but it is not a sandbox for raw MCP configuration, hooks, or scripts. Production and tests never install, link, enable, disable, uninstall, authenticate, or access the network.
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+golangci-lint run ./...
+scripts/check-acceptance-fixture
+scripts/check-architecture
+```
 
-## Claude Code
+Vendor smoke tests are opt-in and must use temporary HOME/config/cache roots:
 
-- Native layout: `.claude-plugin/plugin.json` is the manifest; `skills/`, `agents/`, `hooks/`, and payload files remain at the plugin root. The default plugin hook file is `hooks/hooks.json`, or `plugin.json#hooks` may provide an inline object or one or more contained `./`-prefixed plugin-relative paths.
-- Package paths: exec-form command hooks use `command` plus `args`; package-file arguments use `${CLAUDE_PLUGIN_ROOT}`. Shell-form `command` remains explicit shell behavior.
-- Portable events with direct native events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, `PreCompact`, and `PostCompact`.
-- Match and decisions: tool-event matchers can select native tool names. Claude `PreToolUse` can explicitly deny a tool call or return updated input; Agent Bundler's target-owned translator maps canonical block and rewrite decisions to that protocol. Async command hooks are usable only where the portable hook is passive.
-- Limits: command `timeout` is seconds. A general command crash is not the same as portable fail-closed behavior; pre-tool fail-closed is advisory through the translator and requires an exact acknowledgment. HTTP, prompt, agent, and MCP-tool handlers are outside the initial command-hook contract.
-- Validation: `claude plugin validate --strict <root>` is official, offline for a local tree, and non-mutating. It is the only Claude command allowed in production native verification. The `vendor_smoke` test runs it with temporary `HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_CONFIG_HOME` roots and blocked proxy endpoints.
-- Offline fire boundary: installed Claude Code 2.1.210 exposes plugin validation and session-time plugin loading, but no command that fires a hook directly. `--plugin-dir` loads hooks only as part of a Claude session, which requires a model request. Agent Bundler therefore does not claim an installed-CLI fire smoke; the hermetic subprocess protocol test covers stdin, decisions, exit status, timeout, and output limits without a network or model session.
-- Sources: [plugin reference](https://code.claude.com/docs/en/plugins-reference) and [hooks reference](https://code.claude.com/docs/en/hooks).
+```sh
+go test -tags=vendor_smoke ./internal/target/... ./internal/compiler/...
+```
 
-## OpenAI Codex
+Primary references:
 
-- Native layout: `.codex-plugin/plugin.json` is required. Installable plugins may contain `skills/`, `hooks/`, `.mcp.json`, `.app.json`, and assets. The verified plugin contract does **not** define a plugin agent component; Agent Bundler emits agent assets separately at target-root `.codex/agents/*.toml`, outside package plugin roots.
-- Hook path: the default plugin hook file is `hooks/hooks.json`. `plugin.json#hooks` can replace it with one path, several paths, inline hook objects, or an array of inline objects. This corrects the older root-`hooks.json` and plugin-`agents/` assumptions.
-- Package paths: plugin hook commands receive `PLUGIN_ROOT` and `PLUGIN_DATA`, plus Claude-compatible aliases.
-- Portable event candidates: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `PreCompact`, and `PostCompact`. Codex also exposes `PermissionRequest`, `SubagentStart`, and `SubagentStop`, which are not initial portable events. There is no verified `SessionEnd`, `Notification`, or `PostToolUseFailure` equivalent in the current hook list.
-- Match and decisions: matchers are effective for tool and compaction events but ignored for `UserPromptSubmit` and `Stop`. Codex `PreToolUse` can deny supported Bash, `apply_patch`, and MCP calls; Agent Bundler's target-owned translator maps canonical block decisions. Codex input rewriting is not lossless under the documented protocol and remains unsupported. Interception is not a complete enforcement boundary. Matching command hooks launch concurrently, so portable ordering is unsupported where behavior depends on serialized execution.
-- Limits: `timeout` is seconds, default 600. Only command handlers run. Prompt and agent handlers are parsed but skipped. `async` is parsed but async command hooks are skipped. Non-managed plugin hooks require user review and trust.
-- Repository compatibility: a root `.agents/plugins/marketplace.json` can route plugin installs to `dist/codex`, but plugins do not install custom agents. Project agents are discovered only from `.codex/agents/*.toml`; Agent Bundler's opt-in root compatibility copies those canonical generated profile bytes to that root path. The marketplace remains skills/hooks-only when installed outside the repository project.
-- Validation: no official stable offline non-mutating validator covers the required package and hook behavior. Marketplace add/list, install/load, and trust checks are test-only, opt-in, and use temporary `CODEX_HOME`/configuration.
-- Sources: [plugins](https://developers.openai.com/codex/plugins), [build plugins](https://developers.openai.com/codex/build-plugins), [hooks](https://developers.openai.com/codex/hooks), and [subagents](https://developers.openai.com/codex/subagents).
-
-## Pi
-
-- Evidence pinned: installed `@earendil-works/pi-coding-agent` 0.80.7, `docs/packages.md`, `docs/extensions.md`, `README.md`, and `examples/extensions/`.
-- Native layout: package resources are declared in root `package.json#pi`. `pi.extensions` accepts package-relative `.ts`/`.js` paths and `pi.skills` accepts skill roots. Agent Bundler copies a declared native extension tree and registers only explicit `piExtensions` entries. Pi can install a local package root directly with `pi install <path>`.
-- Loader/runtime: Pi loads TypeScript extensions through `jiti`, so generated packages need no compilation step, Bun, TypeScript package, or Agent Bundler executable. Agent Bundler emits one tested dependency-free hook runtime plus one thin adapter. Only explicit author-owned native resource entries add further declared `pi.extensions` paths. Agent files are declared under `pi.subagents.agents`, but their standalone execution extension is not bundled or registered.
-- Event mapping: portable session start/end, prompt submit, pre/post tool, stop/passive turn completion, and compaction map through Pi extension events such as `session_start`, idempotent `session_shutdown`, `input`/`before_agent_start`, sequential-preflight `tool_call`, `tool_result`, `turn_end`/`agent_end`, and `session_before_compact`/`session_compact`.
-- Match and decisions: `tool_call` can block. Its mutable input can implement rewrite only after the runtime validates the replacement because Pi does not revalidate after mutation. Parallel tool calls are preflighted sequentially and then may execute concurrently. Extension callbacks receive cancellation signals where the Pi API exposes them.
-- Limits: Pi has no declarative hook JSON contract, timeout, failure, environment, or process-output policy. Those semantics belong to the embedded Agent Bundler runtime. Pi logs extension errors and continues for lifecycle events other than `tool_call`, so portable fail-closed is accepted only for pre-tool hooks, where a block result is enforceable; all other events require fail-open. Hook subprocesses inherit only `PATH`, plus `PATHEXT`, `SYSTEMROOT`, `WINDIR`, and `COMSPEC` on Windows; ambient credentials and all other variables are omitted. The generated descriptor is `hooks/hooks.v1.json`, not a Pi-native manifest.
-- Repository compatibility: Agent Bundler routes resources to `dist/pi` and merges only explicit author dependencies. It does not install or register `pi-subagents`; users install it separately for packaged agents. Regeneration removes v0.5.1 compiler-owned runtime entries while preserving unrelated root dependencies and `.npmrc` keys.
-- Validation: Pi has no stable offline non-mutating package validator. The opt-in `vendor_smoke` test runs installed Pi 0.80.7 `pi install -l` and `pi list` from a temporary project, sets `PI_CODING_AGENT_DIR` to a temporary directory, and byte-checks that the normal user settings path is unchanged. A second smoke imports only the generated Agent Bundler hook adapter through Pi's real `jiti` extension loader and proves one extension/handler registration plus adapter-path schema diagnostics. Standalone `pi-subagents` is outside generated-package validation. Tool-call execution remains in the deterministic fake-runtime tests because firing it through the CLI requires an active model turn.
-
-## GitHub Copilot CLI
-
-- Native layout: `plugin.json` is at the plugin root. Default component roots are `skills/` and `agents/`; agents use `*.agent.md`. The manifest points hooks to root `hooks.json`. Copilot also recognizes `hooks/hooks.json`, but Agent Bundler uses the documented root form.
-- Package paths: `${PLUGIN_ROOT}` refers to plugin files. Hook command entries are shell commands (`bash`, `powershell`, or cross-platform `command`). Agent Bundler emits only the `bash` field for portable exec handlers, with Bash quoting for literal and package-file arguments; explicit shell handlers retain the author-supplied cross-platform `command`. PowerShell is not emitted, so exec hooks do not run on Windows hosts.
-- Portable events: Copilot accepts both camelCase native names and PascalCase/VS Code-compatible names. Agent Bundler emits `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, and `PreCompact` to retain Claude-compatible payloads. There is no `PostCompact` event in the documented list.
-- Match and decisions: Copilot `PreToolUse` can allow, deny, ask, or replace arguments. Agent Bundler's target-owned translator maps portable block and rewrite results. PascalCase `PreToolUse` uses the documented Claude-compatible matcher names. Hook entries of one event execute in order. Notification is inherently asynchronous and never blocks.
-- Limits: `timeoutSec` is seconds, default 30. Most failures are fail-open. A `preToolUse` command crash/nonzero exit is fail-closed, but its timeout is fail-open; therefore portable closed-failure is supported only when the requested failure cases exactly match, never as a blanket claim. HTTP and prompt hooks are outside the initial command-hook contract.
-- Validation: no stable official offline non-mutating plugin validator is documented. The opt-in smoke verified Copilot CLI 1.0.70 local marketplace add, direct local plugin install, and list under temporary `HOME`, `COPILOT_HOME`, and cache roots. It hashes the normal Copilot configuration and cache trees before and after to prove they are unchanged.
-- Sources: [CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference) and [hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
-
-## Cursor
-
-- Native layout: `.cursor-plugin/plugin.json` is required. Default component roots include `skills/`, `agents/`, and `hooks/hooks.json`. Multi-plugin repositories use `.cursor-plugin/marketplace.json`.
-- Package paths: plugin scripts are package-relative. Command hook entries are command strings; explicit shell stays shell, and canonical exec may be rendered only through a proven equivalent representation.
-- Portable events: `sessionStart`, `sessionEnd`, `beforeSubmitPrompt`, `preToolUse`, `postToolUse`, `postToolUseFailure`, `stop`, and `preCompact`. The hook API also exposes event-specific shell, MCP, file, subagent, Tab, and workspace hooks. There is no documented portable `postCompact` equivalent.
-- Match and decisions: generic tool hooks match documented `Shell`, `Read`, `Write`, `Grep`, `Delete`, `Task`, and `MCP:<tool_name>` names. Only portable tool categories with exact native names are enabled. Cursor `preToolUse` supports `permission: allow|deny` and `updated_input`; Agent Bundler's target-owned translator maps portable block and rewrite decisions to those results. Documented `failClosed: true` is emitted only for applicable event failure behavior. Session lifecycle and compaction hooks are observational where documented.
-- Limits: `timeout` is seconds. Exit 0 uses JSON output, exit 2 blocks an applicable action, and other failures default fail-open. Prompt handler hooks are outside the initial command-hook contract.
-- Validation: Cursor documents no stable official offline non-mutating plugin validator. Cursor Agent 2026.07.09-a3815c0 exposes noninteractive `--plugin-dir` only as part of a model-backed `--print` session. The opt-in smoke therefore runs only with `CURSOR_API_KEY`, isolates home/config/cache/workspace roots, and verifies a private skill token; otherwise it skips with the exact offline boundary.
-- Sources: [plugins](https://cursor.com/docs/plugins), [plugin reference](https://cursor.com/docs/reference/plugins), and [hooks](https://cursor.com/docs/hooks).
-
-## Grok Build
-
-- Native layout: Grok states full Claude Code compatibility and reads Claude marketplaces, plugins, skills, agents, and hooks. Agent Bundler therefore emits a Grok-tested Claude-compatible tree with `.claude-plugin/plugin.json`, `skills/`, `agents/`, and `hooks/hooks.json`. The direct project profile remains separate at `.grok/skills/`.
-- Repository-root limit: Grok automatically reads the Claude root marker and documents no Grok-native repository marketplace manifest; native marketplace sources are user configuration and native project plugins use `.grok/plugins`. Claude and Grok root routing therefore collide at `.claude-plugin/marketplace.json`. Agent Bundler rejects enabling both compatibility routes. Grok-only compatibility may point the shared marker to `dist/grok`; otherwise distribute Grok through its native target archive or explicit local install.
-- Package paths: plugin hook processes receive `GROK_PLUGIN_ROOT` and `GROK_PLUGIN_DATA`. Generated Grok commands use those variables rather than assuming Claude's root variable.
-- Portable events: `SessionStart`, `SessionEnd`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `Stop`, `Notification`, `PreCompact`, and `PostCompact` have documented events.
-- Match and decisions: matchers are regular expressions over mapped tool names. Grok `PreToolUse` is the only blocking event and supports explicit deny; Agent Bundler's target-owned translator maps portable block decisions. Grok documents no input-rewrite decision.
-- Limits: timeout is seconds, default 5. Exit 0 allows and exit 2 denies. Timeouts, crashes, and malformed output fail open, so pre-tool closed-failure is advisory through the translator and requires an acknowledgment; rewrite-input is unsupported. HTTP handlers are outside the initial command-hook contract.
-- Validation: `grok plugin validate <root>` validates a local plugin manifest without installing it. It is the only Grok command allowed in production native verification.
-- Sources: [skills, plugins, and marketplaces](https://docs.x.ai/build/features/skills-plugins-marketplaces) and [hooks](https://docs.x.ai/build/features/hooks).
+- [Antigravity plugins](https://antigravity.google/docs/cli/plugins)
+- [Claude plugins](https://code.claude.com/docs/en/plugins-reference)
+- [Codex plugins](https://developers.openai.com/codex/plugins)
+- [Pi packages](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/docs)
+- [Copilot plugins](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)
+- [Cursor plugins](https://cursor.com/docs/plugins)
+- [Grok plugins and marketplaces](https://docs.x.ai/build/features/skills-plugins-marketplaces)

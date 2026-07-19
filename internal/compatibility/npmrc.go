@@ -9,6 +9,8 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
+// This file exists only for v0.5.1 root-compatibility cleanup. Remove it when
+// that migration path is no longer supported.
 const (
 	npmrcPath                  = model.RelativePath(".npmrc")
 	legacyPeerDepsKey          = "legacy-peer-deps"

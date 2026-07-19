@@ -1,26 +1,11 @@
-# Configuration and source formats
+# Configuration
 
-**Agent Bundler** reads one strict JSON file named `agentbundle.json`. Unknown
-fields, duplicate keys, unsafe paths, and invalid target names fail validation.
+Agent Bundler reads strict JSON from `agentbundle.json`. Unknown or duplicate
+fields, invalid target IDs, unsafe paths, and symlinks in source/sidecar paths
+fail. Paths are normalized relative paths: no absolute paths, `..`, backslashes,
+empty components, or NUL bytes.
 
-## Manifest shape
-
-The common fields are:
-
-- `version`: use `1`. The current decoder also accepts omission.
-- `kind`: `skills-repository`, `bundle`, or `claude-plugin`.
-- `root`: source root, relative to the manifest directory.
-- `targets`: one or more supported target IDs: `antigravity`, `claude`, `codex`,
-  `pi`, `copilot`, `grok`, or `cursor`.
-- `output`: dedicated generated-output directory.
-- `distribution`: optional target-wide JSON metadata for generated catalogs.
-- `compatibility`: optional repository-root vendor discovery generation. Its
-  `rootManifests` array lists opted-in targets.
-- `composition`: optional target-wide policy, once per target at most. It may
-  declare `packageMode` and an `aggregate` package.
-- Source block: exactly one block matching `kind`.
-
-The smallest useful `skills-repository` manifest is:
+## Manifest
 
 ```json
 {
@@ -37,59 +22,39 @@ The smallest useful `skills-repository` manifest is:
 }
 ```
 
-Paths are normalized relative paths. Absolute paths, `..`, backslashes, empty
-components, duplicate separators, NUL bytes, and symlinks in source/sidecar
-paths are rejected.
+Common fields:
 
-Repository-root compatibility is disabled by default. For configuration,
-ownership, target collisions, Pi dependency handling, and install behavior, see
-[repository-root compatibility](repository-root-compatibility.md).
+- `version`: `1`; omission remains accepted.
+- `kind`: `skills-repository`, `bundle`, or `claude-plugin`.
+- `root`: source root relative to the manifest.
+- `targets`: one or more of `antigravity`, `claude`, `codex`, `pi`, `copilot`,
+  `grok`, or `cursor`.
+- `output`: dedicated generated directory. `build` replaces all of it.
+- `distribution`: optional catalog metadata for compatible separate package
+  targets.
+- `composition`: optional target package/profile policy.
+- `compatibility`: optional root discovery configuration; see
+  [repository-root compatibility](repository-root-compatibility.md).
+- Exactly one source block matching `kind`.
 
-## Choose a source kind
+## Source kinds
 
-### `skills-repository`
+### Skills repository
 
-Use it for ordinary skill folders. It recursively finds `SKILL.md` below each
-listed root. Other regular files become support files. Here `<root>` means the
-manifest's source root, not one individual skills directory. Centralized
-sidecars use `<root>/.agentbundler/assets/skill/<name>/…`.
-
-### `bundle`
-
-Use it for explicit package membership or several named packages. Package JSON
-lists exact asset paths; entries are not globs. Sidecars live beside each bundle
-asset under `<asset>/.agentbundler/…`.
-
-> **Build warning:** `build` replaces the complete configured output directory,
-> even when selecting one target or package. Keep `output` dedicated.
-
-### `claude-plugin`
-
-Use it to import an existing Claude plugin. The importer reads
-`.claude-plugin/plugin.json`, skills, direct agents/hooks, and native gaps.
-Centralized sidecars use `.agentbundler/assets/<kind>/<name>/…` inside the plugin.
-
-#### Example skills-repository layout
+Use ordinary skill folders. Agent Bundler finds `SKILL.md` recursively below
+`skillsRepository.roots`; each containing directory is one skill. Other files
+in that directory are support files. Duplicate skill names fail.
 
 ```text
 source/
 ├── skills/explain-query/SKILL.md
-└── .agentbundler/
-    └── assets/skill/explain-query/targets/pi.json
+└── .agentbundler/assets/skill/explain-query/targets/pi.json
 ```
 
-The directory name containing `SKILL.md` becomes the skill name. Duplicate skill
-names across roots fail.
+### Bundle
 
-#### Example bundle layout
-
-```text
-bundle/
-├── packages/team.json
-└── src/skills/explain-query/SKILL.md
-```
-
-Manifest:
+Use explicit packages or asset membership. Package assets are exact paths, not
+globs.
 
 ```json
 {
@@ -102,171 +67,26 @@ Manifest:
 }
 ```
 
-Package file:
-
 ```json
 {
   "id": "team-skills",
   "metadata": {},
   "assets": [
     "src/skills/explain-query",
-    { "path": "src/agents/reviewer.md", "targets": ["claude", "codex", "pi"] },
-    { "path": "src/resources/templates", "targets": ["claude", "codex", "pi"] }
+    { "path": "src/agents/reviewer.md", "targets": ["claude", "pi"] }
   ]
 }
 ```
 
-Bundle package assets use exact forms such as `src/skills/<name>`,
-`src/agents/<name>.md`, `src/resources/<name>`, `src/hooks/<name>`, and
+Assets use paths such as `src/skills/<name>`, `src/agents/<name>.md`,
+`src/hooks/<name>`, `src/resources/<name>`, or
 `src/plugins/<target>/<file-or-directory>`. The `src/` prefix is optional.
-Asset target lists are exact allow-lists. An Antigravity-native resource entry
-must list exactly `antigravity`; earlier target-native entries may retain the
-version-1 string shorthand, and their path target still prevents them from
-rendering for other targets. Portable resource directories render under
-`resources/` in package profiles. Pi-native extension trees require an explicit
-`piExtensions` declaration. Antigravity-native trees require an explicit
-`asset.native-resource` declaration. Other target-native resources remain
-explicit gaps. The old exact `src/hooks/<name>.json` form remains compatible
-only for a payload-free descriptor.
+`targets` is an exact allow-list. Portable resources render under `resources/`;
+target-native resources require an explicit native-resource declaration.
 
-Pi package metadata may include a `dependencies` object with package-name keys
-and non-empty string versions. **Agent Bundler** writes exactly those explicit
-author dependencies to Pi `package.json`. It never infers dependencies from
-agents, vendors dependency trees, or registers third-party extensions. Pi agent
-files remain declared through `pi.subagents.agents`; users who want the
-`pi-subagents` tools must install that extension separately.
+### Claude plugin
 
-### Declarative Pi-native extension
-
-```text
-src/plugins/pi/team-tools/
-├── .agentbundler/asset.json
-└── extensions/
-    ├── team-tools.ts
-    └── shared.ts
-```
-
-```json
-{
-  "capabilities": ["asset.native-resource"],
-  "piExtensions": ["extensions/team-tools.ts"]
-}
-```
-
-List the directory as an asset in a Pi-eligible package. Every registered entry
-must be a contained `extensions/*.ts` or `extensions/*.js` file. Agent Bundler
-copies the complete tree so relative imports remain valid, then registers only
-listed entries in `package.json#pi.extensions`. It does not infer entrypoints,
-install dependencies, or register unlisted files.
-
-### Explicit Antigravity native resource
-
-Use a bundle asset when an Antigravity CLI plugin needs a vendor-native rule,
-raw MCP configuration, raw `hooks.json`, or support script:
-
-```text
-src/plugins/antigravity/conductor-ux/
-├── .agentbundler/asset.json
-├── rules/conductor_antigravity.md
-├── mcp_config.json
-└── scripts/check.sh
-```
-
-```json
-{ "capabilities": ["asset.native-resource"] }
-```
-
-The package entry must use exactly `"targets": ["antigravity"]`. Agent Bundler
-copies the complete non-empty, symlink-free tree to the plugin root without
-parsing it. Raw MCP configuration, hooks, and scripts are trusted
-code/configuration; validation is not a sandbox. Do not add `piExtensions` to an
-Antigravity resource.
-
-### Canonical command hook
-
-A payload-owning hook is one directory. `hook.json` is strict JSON. Other
-regular files in the directory are copied as hook payloads; walks are sorted,
-contained, and symlink-free.
-
-```text
-src/hooks/command-guard/
-├── hook.json
-├── check.sh
-├── rules.json
-└── .agentbundler/
-    ├── asset.json
-    └── targets/copilot.json
-```
-
-Exact descriptor:
-
-```json
-{
-  "event": "pre-tool",
-  "matcher": { "tools": ["command"] },
-  "handler": {
-    "mode": "exec",
-    "program": "bash",
-    "arguments": [
-      { "literal": "-eu" },
-      { "packageFile": "check.sh" },
-      { "packageFile": "rules.json" }
-    ]
-  },
-  "timeoutMilliseconds": 5000,
-  "asynchronous": false,
-  "failurePolicy": "open",
-  "order": 10
-}
-```
-
-Use `exec` for canonical hooks. Literal and package-file arguments remain
-separate until the target renders its own package-root syntax. Use `shell` only
-when arbitrary shell syntax is intentional:
-
-```json
-{
-  "event": "stop",
-  "handler": { "mode": "shell", "shellCommand": "printf '%s\\n' done" },
-  "timeoutMilliseconds": 1000,
-  "asynchronous": false,
-  "failurePolicy": "open",
-  "order": 20
-}
-```
-
-A hook that can deny or rewrite must declare that semantic capability in
-`.agentbundler/asset.json`, for example:
-
-```json
-{ "capabilities": ["hook.decision.block"] }
-```
-
-Target-specific advisories require an exact acknowledgment. This example accepts
-Copilot's safe exec-to-command-string conversion without changing the hook:
-
-```json
-{
-  "acknowledgments": [
-    {
-      "asset": "hook/command-guard",
-      "target": "copilot",
-      "key": "hook.command.exec",
-      "reason": "Copilot uses a quoted command string."
-    }
-  ]
-}
-```
-
-Put it at
-`src/hooks/command-guard/.agentbundler/targets/copilot.json`. Target allow-lists
-on the package asset entry are the right way to exclude a hook from targets
-that cannot preserve its semantics. Antigravity rejects every portable hook
-cell; only an explicit raw native `hooks.json` resource can be preserved without
-semantic validation. See the complete seven-target example in
-`testdata/cc-thingz-hooks`.
-
-#### Example manifest
+Use an existing plugin as source:
 
 ```json
 {
@@ -279,175 +99,67 @@ semantic validation. See the complete seven-target example in
 }
 ```
 
-Expected input:
+The importer reads `.claude-plugin/plugin.json`, skills, direct agents/hooks,
+and known native gaps. Unsupported portable behavior reports a capability
+diagnostic rather than guessing.
 
-```text
-source/plugin/
-├── .claude-plugin/plugin.json
-└── skills/explain-query/SKILL.md
-```
+## Native resources and hooks
 
-Agents and command hooks are normalized during import and render only when the
-selected target preserves their declared semantics. Unsupported event, matcher,
-decision, timeout, async, shell, or failure behavior returns an exact capability
-diagnostic. Unrecognized regular files in a Claude plugin remain Claude-native
-gaps, not portable support files.
-
-## Distribution and package mode
-
-`distribution` is optional target-wide publication metadata. When it is present
-on a separate package-profile build, Agent Bundler emits a deterministic local
-catalog for Claude, Codex, Copilot, Cursor, and Grok. Pi and Antigravity emit
-no catalog.
-Catalog generation never publishes, registers, installs, authenticates,
-fetches, or changes vendor configuration.
-
-Catalog distribution metadata is strict:
-
-- `name`: lowercase kebab-case catalog ID;
-- `owner`: non-empty string, or an object with non-empty `name` and optional
-  valid `email`;
-- `description`: non-empty trimmed text;
-- `version`: semantic version.
-
-No other distribution fields are accepted. Each package included in a catalog
-must have lowercase kebab-case `id` and these metadata fields:
-
-- `description` and semantic `version`;
-- `author` as a non-empty string, or an object with `name` and optional `email`
-  and HTTP(S) `url`;
-- absolute HTTP(S) `homepage` and `repository` URLs without credentials;
-- non-empty `license`;
-- a non-empty array of unique string `keywords`.
-
-Keywords and catalog entries are sorted. A single package is rendered at the
-flat catalog source `.`; two or more packages use their package IDs as source
-roots. Target serializers add the native `./` prefix or local-source object when
-the vendor schema requires it. Duplicate identities, source roots, or generated
-catalog paths fail instead of overwriting output.
-
-Generated catalog paths are:
-
-```text
-claude  .claude-plugin/marketplace.json
-codex   .agents/plugins/marketplace.json
-copilot .github/plugin/marketplace.json
-cursor  .cursor-plugin/marketplace.json
-grok        .claude-plugin/marketplace.json
-pi          no catalog
-antigravity no catalog
-```
-
-Each target composition may set `packageMode`:
-
-- `separate`: render independent package roots. This is the version-1 default
-  when `packageMode` is omitted.
-- `aggregate`: render one explicitly declared package. In version 1 this is
-  valid only for target `pi` with profile `package`.
-
-Antigravity requires `profile: "package"` and `packageMode: "separate"`.
-Package IDs become `plugin.json#name` and must match `^[A-Za-z0-9_-]+$`.
-Generated `plugin.json` contains only `name` and an optional string
-`description`. Portable agents must contain exactly non-empty string `name` and
-`description` frontmatter. One selected package renders flat; multiple packages
-render under package-ID roots, with no target-wide marketplace.
-
-An `aggregate` object is valid only with `packageMode: "aggregate"`. It requires
-both `identity` and `metadata`; `metadata` must be present even when it is `{}`.
-Package dependency maps must contain non-empty string versions. Equal versions
-may merge, while conflicting versions fail validation.
-
-Separate catalog example:
+A Pi native extension tree needs `.agentbundler/asset.json`:
 
 ```json
 {
-  "version": 1,
-  "kind": "bundle",
-  "root": "bundle",
-  "targets": ["claude"],
-  "output": "generated",
-  "distribution": {
-    "name": "team-tools",
-    "owner": {
-      "name": "Platform Team",
-      "email": "plugins@example.com"
-    },
-    "description": "Shared developer tools",
-    "version": "2.0.0"
-  },
-  "composition": [
-    {
-      "target": "claude",
-      "profile": "package",
-      "packageMode": "separate"
-    }
-  ],
-  "bundle": { "packages": ["packages/team.json"] }
+  "capabilities": ["asset.native-resource"],
+  "piExtensions": ["extensions/team-tools.ts"]
 }
 ```
 
-The referenced package file must provide publication metadata, for example:
+Agent Bundler copies the tree and registers only listed contained
+`extensions/*.ts` or `extensions/*.js` entries. It does not infer entrypoints or
+install dependencies.
 
-```json
-{
-  "id": "team-tools",
-  "metadata": {
-    "description": "Shared developer workflows",
-    "version": "1.2.3",
-    "author": "Platform Team",
-    "homepage": "https://example.com/team-tools",
-    "repository": "https://github.com/example/team-tools",
-    "license": "MIT",
-    "keywords": ["agents", "tools"]
-  },
-  "assets": ["src/skills/explain-query"]
-}
-```
+An Antigravity native resource uses the same capability declaration, but the
+bundle asset must use exactly `"targets": ["antigravity"]`. Its contents are
+trusted raw vendor configuration or code.
 
-Explicit Pi aggregate example:
+A portable hook is a directory with strict `hook.json`; remaining regular files
+are its payload. Use `exec` with literal and `packageFile` arguments unless
+shell syntax is intentional. Decision or rewrite hooks require the matching
+capability in `.agentbundler/asset.json`. Target-specific capability loss needs
+an acknowledgment sidecar. See `testdata/cc-thingz-hooks` for the complete
+seven-target example.
 
-```json
-{
-  "version": 1,
-  "kind": "bundle",
-  "root": "bundle",
-  "targets": ["pi"],
-  "output": "generated",
-  "composition": [
-    {
-      "target": "pi",
-      "profile": "package",
-      "packageMode": "aggregate",
-      "aggregate": {
-        "identity": "team-tools",
-        "metadata": {
-          "version": "1.0.0",
-          "description": "Shared team tools"
-        }
-      }
-    }
-  ],
-  "bundle": {
-    "packages": ["packages/core.json", "packages/review.json"]
-  }
-}
-```
+Pi package `metadata.dependencies` is copied exactly. Agents remain declared in
+`pi.subagents.agents`; Agent Bundler never infers `pi-subagents` or other
+third-party runtime dependencies.
 
-Aggregate mode is explicit and never inferred from package count. The Pi
-aggregate renderer emits one installable package root and no marketplace file.
+## Composition and distribution
 
-## Package selection
+`packageMode` defaults to `separate`. `aggregate` is explicit and currently
+valid only for Pi package output. It requires an `identity` and `metadata`.
+Equal explicit dependency versions merge; conflicts fail.
 
-A manifest may describe more than one bundle package. Separate package mode
-renders every selected package in one target plan. Select packages explicitly
-when needed:
+`distribution` creates a local deterministic catalog for Claude, Codex,
+Copilot, Cursor, and Grok in separate package mode. It never publishes or
+changes vendor configuration. Catalog metadata requires a kebab-case `name`,
+owner, description, and semantic version. Package publication metadata requires
+description, semantic version, author, HTTP(S) homepage/repository, license,
+and keywords.
+
+Antigravity always uses separate package output. Pi and Antigravity have no
+catalog.
+
+## Selection
+
+Select declared targets or bundle package IDs when needed:
 
 ```sh
 agbun build --package team-skills
 agbun check --target codex --package team-skills
 ```
 
-Selectors must name manifest-declared targets or imported package IDs. Repeated
-selectors are allowed but duplicate values fail.
+Root compatibility requires every configured compatibility target and all
+packages; `--package` is rejected for that mode.
 
-Next: [customization](customization.md) or [targets and CLI](targets-and-cli.md).
+Next: [customization](customization.md) or
+[targets and CLI](targets-and-cli.md).
