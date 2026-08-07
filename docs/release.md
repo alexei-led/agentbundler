@@ -23,7 +23,6 @@ golangci-lint run ./...
 )
 scripts/check-acceptance-fixture
 scripts/check-architecture
-archfit check --config .archfit.yaml --require-tools --progress none
 ```
 
 Vendor smoke tests are opt-in. Run them only with isolated vendor config roots:

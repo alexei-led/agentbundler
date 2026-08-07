@@ -25,6 +25,7 @@ func TestInspectClaudePluginImportsOfficialDefaultHooksPayloadsAndComponents(t *
 	writeFixture(t, workspace, "source/plugin/skills/alpha/scripts/run.sh", "#!/bin/sh\n")
 	writeFixture(t, workspace, "source/plugin/agents/review.md", "---\n{\"model\":\"sonnet\"}\n---\nReview.\n")
 	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/agent/review/asset.json", `{"capabilities":["tool-use"]}`)
+	writeFixture(t, workspace, "source/plugin/commands/malformed.md", "---\n[invalid\n---\nBody.\n")
 	writeFixture(t, workspace, "source/plugin/commands/native.md", "native\n")
 
 	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
@@ -68,10 +69,17 @@ func TestInspectClaudePluginImportsOfficialDefaultHooksPayloadsAndComponents(t *
 	if got := pkg.Assets[0].CapabilityUses; len(got) != 1 || got[0].Key != "tool-use" {
 		t.Fatalf("agent capabilities = %#v", got)
 	}
-	if len(inventory.NativeGaps) != 1 || inventory.NativeGaps[0].Component != "source/plugin/commands/native.md" || inventory.NativeGaps[0].Target == nil || *inventory.NativeGaps[0].Target != model.TargetClaude {
+	wantNativeGaps := []string{"source/plugin/commands/malformed.md", "source/plugin/commands/native.md"}
+	if len(inventory.NativeGaps) != len(wantNativeGaps) {
 		t.Fatalf("native gaps = %#v", inventory.NativeGaps)
 	}
-	if len(inventory.Inputs) != 9 || !containsInput(inventory, "source/plugin/hooks/hooks.json") || !containsInput(inventory, "source/plugin/scripts/check.sh") {
+	for index, component := range wantNativeGaps {
+		gap := inventory.NativeGaps[index]
+		if gap.Component != component || gap.Target == nil || *gap.Target != model.TargetClaude {
+			t.Fatalf("native gap %d = %#v, want Claude gap %q", index, gap, component)
+		}
+	}
+	if len(inventory.Inputs) != 10 || !containsInput(inventory, "source/plugin/hooks/hooks.json") || !containsInput(inventory, "source/plugin/scripts/check.sh") {
 		t.Fatalf("inputs = %#v", inventory.Inputs)
 	}
 }
@@ -394,6 +402,35 @@ func TestInspectClaudePluginRejectsPartialNativeMatcherCategories(t *testing.T) 
 				t.Fatalf("inventory = %#v, diagnostics = %#v", inventory, diagnostics)
 			}
 		})
+	}
+}
+
+func TestInspectClaudePluginImportsPortableMarkdownCommand(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "source/plugin/.claude-plugin/plugin.json", `{"name":"demo"}`)
+	writeFixture(t, workspace, "source/plugin/commands/resume-from.md", "---\n{\"description\":\"Resume from a saved handoff.\"}\n---\nResume the session.\n")
+	writeFixture(t, workspace, "source/plugin/.agentbundler/assets/command/resume-from/targets/pi.json", `{"frontmatterPatch":{"description":"Resume a Pi session."}}`)
+
+	inventory, diagnostics := InspectClaudePlugin(testManifest(), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+	assets := inventory.Packages[0].Assets
+	if len(assets) != 1 || assets[0].Identity != "command/resume-from" || assets[0].Command == nil {
+		t.Fatalf("assets = %#v", assets)
+	}
+	command := assets[0]
+	if command.Command.Name != "resume-from" || command.Command.Description != "Resume from a saved handoff." || command.Base.Body != "Resume the session.\n" {
+		t.Fatalf("command = %#v", command)
+	}
+	if got := capabilityKeys(command.CapabilityUses); !reflect.DeepEqual(got, []model.CapabilityKey{"asset.command"}) {
+		t.Fatalf("capabilities = %#v", got)
+	}
+	if len(command.Overlays) != 1 || command.Overlays[0].Target != model.TargetPi {
+		t.Fatalf("overlays = %#v", command.Overlays)
+	}
+	if len(inventory.NativeGaps) != 0 {
+		t.Fatalf("native gaps = %#v", inventory.NativeGaps)
 	}
 }
 

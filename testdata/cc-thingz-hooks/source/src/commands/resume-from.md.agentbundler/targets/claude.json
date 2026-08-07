@@ -1,0 +1,9 @@
+{
+  "frontmatterPatch": {
+    "description": "Resume a Claude session from a saved handoff."
+  },
+  "bodyPatch": {
+    "mode": "replace",
+    "text": "Resume the Claude session from the supplied handoff.\n"
+  }
+}

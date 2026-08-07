@@ -40,7 +40,7 @@ render(Adapter, TargetRenderInput) -> TargetPlan + [Diagnostic]
 
 ## Native Renderer Contract
 
-Every adapter emits a vendor-native supported subset. Portable hooks use exact semantic cells in addition to `asset.hook`:
+Every adapter emits a vendor-native supported subset. `asset.command` is native only for the verified Claude Markdown layouts; every other target marks it unsupported. Portable hooks use exact semantic cells in addition to `asset.hook`:
 
 ```text
 hook.command.exec
@@ -62,14 +62,14 @@ hook.async
 hook.failure.closed
 ```
 
-A leaf may mark only proven cells native/equivalent; advisory needs exact acknowledgment, unsupported fails. Decision capabilities require a canonical author-payload process protocol and a target-owned vendor translator. Claude, Copilot, Cursor, and Pi translate the supported decision cells; Codex and Grok reject input rewrite because their documented protocols have no lossless mapping. Adapters defensively reject any asset or semantic cell composition should have blocked. No hook, executable intent, package, catalog entry, or security decision is silently omitted or weakened.
+A leaf may mark only proven cells native/equivalent; advisory needs exact acknowledgment, unsupported fails. Decision capabilities require a canonical author-payload process protocol and a target-owned vendor translator. Claude, Copilot, Cursor, and Pi translate the supported decision cells; Codex and Grok reject input rewrite because their documented protocols have no lossless mapping. Adapters defensively reject any asset or semantic cell composition should have blocked. No command, hook, executable intent, package, catalog entry, or security decision is silently omitted or weakened.
 
 `separate` renders stable independent package roots and is the compatibility default. In source version 1, `aggregate` is accepted only by Pi package profile. Pi aggregation produces one explicitly named installable package; it is not inferred and is not a global singleton claim.
 
 Package profiles render verified native forms:
 
 - Antigravity: root `plugin.json`, skills, narrow Markdown agents, portable resources, and exact explicit native resources; no catalog.
-- Claude: `.claude-plugin/plugin.json`, skills, agents, `hooks/hooks.json`, payloads.
+- Claude: `.claude-plugin/plugin.json`, skills, `commands/<name>.md`, agents, `hooks/hooks.json`, payloads; project profile uses `.claude/commands/<name>.md`.
 - Codex: `.codex-plugin/plugin.json`, skills, default `hooks/hooks.json`, payloads, and `.mcp.json` only when already modeled. Plugin agents are unsupported until an official component path exists.
 - Pi: one explicit package root with `package.json`, skills, agents, one generated hook descriptor, one thin extension, and the embedded runtime.
 - Copilot CLI: root `plugin.json`, skills, `agents/*.agent.md`, root `hooks.json`, payloads.

@@ -315,11 +315,28 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 	}
 
 	overlayDir := metadataDir
-	if kind == model.AssetKindAgent && strings.HasSuffix(string(assetPath), ".md") {
+	if (kind == model.AssetKindAgent || kind == model.AssetKindCommand) && strings.HasSuffix(string(assetPath), ".md") {
 		overlayDir = string(assetPath)
 	}
-	capabilities, native := i.readAssetMetadata(metadataDir, kind)
+	assetMetadataDir := metadataDir
+	if kind == model.AssetKindCommand {
+		assetMetadataDir = overlayDir
+	}
+	capabilities, native := i.readAssetMetadata(assetMetadataDir, kind)
 	var hook *model.HookDescriptor
+	var command *model.CommandDescriptor
+	if kind == model.AssetKindCommand {
+		description, ok := content.Frontmatter["description"].(string)
+		if !ok || strings.TrimSpace(description) == "" {
+			i.addDiagnostic(model.RelativePath(mainFile), "command requires non-empty string description frontmatter")
+			return model.SourceAsset{}, nil, false
+		}
+		command = &model.CommandDescriptor{
+			Identity: identity, Location: model.SourceLocation{Path: model.RelativePath(mainFile)},
+			Name: name, Description: description,
+		}
+		capabilities = mergeCapabilityUses([]model.CapabilityUse{{Key: "asset.command", Location: command.Location}}, capabilities)
+	}
 	if kind == model.AssetKindHook {
 		descriptorPath := model.RelativePath(mainFile)
 		descriptor, err := model.DecodeHookDescriptorJSON([]byte(content.Body), identity, model.SourceLocation{Path: descriptorPath})
@@ -337,6 +354,7 @@ func (i *inspector) inspectAsset(assetPath model.RelativePath) (model.SourceAsse
 		Kind:           kind,
 		Base:           content,
 		Hook:           hook,
+		Command:        command,
 		Native:         native,
 		CapabilityUses: capabilities,
 		Overlays:       i.readOverlays(overlayDir, identity),
@@ -388,13 +406,15 @@ func classifyAsset(assetPath string) (model.AssetKind, string, string, string, b
 		return model.AssetKindHook, strings.TrimSuffix(parts[1], ".json"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), false, false, nil
 	case len(parts) == 2 && parts[0] == "hooks" && parts[1] != "":
 		return model.AssetKindHook, parts[1], assetPath + "/hook.json", assetPath, false, true, nil
+	case len(parts) == 2 && parts[0] == "commands" && strings.HasSuffix(parts[1], ".md") && strings.TrimSuffix(parts[1], ".md") != "":
+		return model.AssetKindCommand, strings.TrimSuffix(parts[1], ".md"), assetPath, filepath.ToSlash(filepath.Dir(assetPath)), true, false, nil
 	case len(parts) == 3 && parts[0] == "plugins" && parts[1] != "" && parts[2] != "":
 		if _, err := parseTarget(parts[1]); err != nil {
 			return "", "", "", "", false, false, err
 		}
 		return model.AssetKindNativeResource, parts[2], assetPath, assetPath, false, false, nil
 	default:
-		return "", "", "", "", false, false, fmt.Errorf("asset path %q is not a canonical skill, agent, resource, hook, or native resource", assetPath)
+		return "", "", "", "", false, false, fmt.Errorf("asset path %q is not a canonical skill, agent, command, resource, hook, or native resource", assetPath)
 	}
 }
 
@@ -641,7 +661,7 @@ func mergeCapabilityUses(groups ...[]model.CapabilityUse) []model.CapabilityUse 
 }
 
 func (i *inspector) readAssetMetadata(assetDir string, kind model.AssetKind) ([]model.CapabilityUse, *model.NativeResourceOptions) {
-	path := model.RelativePath(filepath.ToSlash(filepath.Join(assetDir, ".agentbundler/asset.json")))
+	path := model.RelativePath(filepath.ToSlash(filepath.Join(overlaySidecarRoot(assetDir), "asset.json")))
 	data, exists, ok := i.readOptionalRegular(path)
 	if !exists {
 		return nil, nil

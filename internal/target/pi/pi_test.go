@@ -29,6 +29,27 @@ func TestProjectRenderRejectsAgent(t *testing.T) {
 	}
 }
 
+func TestAggregateRenderRejectsPortableCommandWithoutPartialOutput(t *testing.T) {
+	location := model.SourceLocation{Path: "source/commands/resume-from.md"}
+	asset := model.NormalizedAsset{
+		Identity: "command/resume-from", Kind: model.AssetKindCommand,
+		Content:        model.AssetContent{Frontmatter: map[string]any{"description": "Resume."}, Body: "Resume.\n", Files: map[model.RelativePath]model.FileContent{}},
+		Command:        &model.CommandDescriptor{Identity: "command/resume-from", Location: location, Name: "resume-from", Description: "Resume."},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.command", Location: location}},
+	}
+	pkg := model.NormalizedPackage{Identity: "demo", Target: Target, Profile: model.TargetProfilePackage, Assets: []model.NormalizedAsset{asset}}
+	plan, diagnostics := Render(model.TargetRenderInput{
+		Packages: []model.NormalizedPackage{pkg}, PackageMode: model.TargetPackageModeAggregate,
+		Aggregate: &model.AggregatePackage{Identity: "combined", Metadata: model.PackageMetadata{"version": "1.0.0"}},
+	})
+	if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" {
+		t.Fatalf("Render() = (%#v, %#v)", plan, diagnostics)
+	}
+	if len(plan.Files) != 0 || len(plan.NativeChecks) != 0 {
+		t.Fatalf("unsupported aggregate command produced partial plan: %#v", plan)
+	}
+}
+
 func TestRuntimeSchemaFixtureMatchesPortableModel(t *testing.T) {
 	data, err := os.ReadFile("runtime/testdata/hooks.v1.json")
 	if err != nil {
@@ -163,6 +184,7 @@ func TestCapabilitiesExposeAggregatePiHooksAndSubagents(t *testing.T) {
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent":                 model.CapabilityStateEquivalent,
 		"asset.hook":                  model.CapabilityStateNative,
+		"asset.command":               model.CapabilityStateUnsupported,
 		"asset.native-resource":       model.CapabilityStateNative,
 		"hook.command.exec":           model.CapabilityStateNative,
 		"hook.command.shell":          model.CapabilityStateNative,

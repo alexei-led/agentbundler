@@ -16,6 +16,7 @@ const cursorHooksPath = "hooks/hooks.json"
 var capabilityRules = []model.CapabilityRule{
 	{Key: "asset.agent", State: model.CapabilityStateNative},
 	{Key: "asset.hook", State: model.CapabilityStateNative},
+	{Key: "asset.command", State: model.CapabilityStateUnsupported},
 	{Key: "asset.resource", State: model.CapabilityStateNative},
 	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
 	{Key: "asset.skill", State: model.CapabilityStateNative},

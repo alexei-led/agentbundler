@@ -13,7 +13,15 @@ import (
 // Render emits one native skill-root tree. Project output remains single-package;
 // installable multi-package output is handled by packageoutput.
 func Render(target model.TargetID, root string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
-	return render(target, root, "", packages)
+	return render(target, root, "", "", packages)
+}
+
+// RenderWithCommands emits native skills and Markdown command files.
+func RenderWithCommands(target model.TargetID, skillRoot, commandRoot string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+	if commandRoot == "" {
+		return empty(target), []model.Diagnostic{diagnostic("invalid-command-root", "native command root must not be empty")}
+	}
+	return render(target, skillRoot, "", commandRoot, packages)
 }
 
 // RenderProject emits skills and declared portable resources beneath one native project root.
@@ -21,10 +29,10 @@ func RenderProject(target model.TargetID, skillRoot, resourceRoot string, packag
 	if resourceRoot == "" {
 		return empty(target), []model.Diagnostic{diagnostic("invalid-resource-root", "native project resource root must not be empty")}
 	}
-	return render(target, skillRoot, resourceRoot, packages)
+	return render(target, skillRoot, resourceRoot, "", packages)
 }
 
-func render(target model.TargetID, root, resourceRoot string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
+func render(target model.TargetID, root, resourceRoot, commandRoot string, packages []model.NormalizedPackage) (model.TargetPlan, []model.Diagnostic) {
 	if len(packages) != 1 {
 		return empty(target), []model.Diagnostic{diagnostic("unsupported-package-aggregation", "target-native skill output requires exactly one package")}
 	}
@@ -63,6 +71,22 @@ func render(target model.TargetID, root, resourceRoot string, packages []model.N
 			if err := add(&files, paths, model.RelativePath(base+"/SKILL.md"), model.FileContent{Bytes: content}); err != nil {
 				return empty(target), []model.Diagnostic{diagnostic("duplicate-output-path", err.Error())}
 			}
+		case model.AssetKindCommand:
+			if commandRoot == "" {
+				return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support %q", target, expectedCapability))}
+			}
+			// A target must define a verified support-file layout before this shared renderer can emit one.
+			if len(asset.Content.Files) != 0 {
+				return empty(target), []model.Diagnostic{diagnostic("unsupported-command-support-files", fmt.Sprintf("command %q cannot contain support files", asset.Identity))}
+			}
+			content, err := markdown(asset.Content.Frontmatter, asset.Content.Body)
+			if err != nil {
+				return empty(target), []model.Diagnostic{diagnostic("invalid-command-frontmatter", err.Error())}
+			}
+			if err := add(&files, paths, model.RelativePath(strings.TrimSuffix(commandRoot, "/")+"/"+name+".md"), model.FileContent{Bytes: content, Origin: []model.SourceLocation{asset.Command.Location}}); err != nil {
+				return empty(target), []model.Diagnostic{diagnostic("duplicate-output-path", err.Error())}
+			}
+			continue
 		case model.AssetKindResource:
 			if resourceRoot == "" {
 				return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support %q", target, expectedCapability))}
@@ -99,7 +123,7 @@ func markdown(frontmatter map[string]any, body string) ([]byte, error) {
 	}
 	encoded, err := json.Marshal(frontmatter)
 	if err != nil {
-		return nil, fmt.Errorf("encode skill frontmatter: %w", err)
+		return nil, fmt.Errorf("encode frontmatter: %w", err)
 	}
 	return []byte("---\n" + string(encoded) + "\n---\n" + body), nil
 }

@@ -53,6 +53,108 @@ func TestValidateNativeResourceOptions(t *testing.T) {
 	}
 }
 
+func TestCloneCommandDescriptorDetachesLocation(t *testing.T) {
+	t.Parallel()
+
+	if clone := CloneCommandDescriptor(nil); clone != nil {
+		t.Fatalf("CloneCommandDescriptor(nil) = %#v", clone)
+	}
+	line, column := 3, 7
+	descriptor := &CommandDescriptor{
+		Identity: "command/resume-from", Location: SourceLocation{Path: "source/commands/resume-from.md", Line: &line, Column: &column},
+		Name: "resume-from", Description: "Resume from a saved handoff.",
+	}
+	clone := CloneCommandDescriptor(descriptor)
+	if !reflect.DeepEqual(clone, descriptor) {
+		t.Fatalf("clone = %#v, want %#v", clone, descriptor)
+	}
+	*clone.Location.Line = 30
+	*clone.Location.Column = 70
+	clone.Description = "Changed."
+	if line != 3 || column != 7 || descriptor.Description != "Resume from a saved handoff." {
+		t.Fatal("command descriptor clone aliases its source")
+	}
+}
+
+func TestValidateCommandAsset(t *testing.T) {
+	t.Parallel()
+
+	location := SourceLocation{Path: "src/commands/resume-from.md"}
+	valid := NormalizedAsset{
+		Identity: "command/resume-from", Kind: AssetKindCommand,
+		Content:        AssetContent{Frontmatter: map[string]any{"description": "Resume from a saved handoff."}, Body: "Resume the session.\n", Files: map[RelativePath]FileContent{}},
+		Command:        &CommandDescriptor{Identity: "command/resume-from", Location: location, Name: "resume-from", Description: "Resume from a saved handoff."},
+		CapabilityUses: []CapabilityUse{{Key: "asset.command", Location: location}},
+	}
+	if diagnostics := validateNormalizedAsset(valid); len(diagnostics) != 0 {
+		t.Fatalf("valid command diagnostics = %#v", diagnostics)
+	}
+	if id, err := NewAssetID("command/resume-from"); err != nil || id != valid.Identity {
+		t.Fatalf("NewAssetID(command) = (%q, %v)", id, err)
+	}
+
+	cases := []struct {
+		name   string
+		mutate func(*NormalizedAsset)
+		want   string
+	}{
+		{name: "missing descriptor", mutate: func(asset *NormalizedAsset) { asset.Command = nil }, want: "requires a command descriptor"},
+		{name: "descriptor on another kind", mutate: func(asset *NormalizedAsset) { asset.Kind = AssetKindSkill; asset.Identity = "skill/resume-from" }, want: "non-command asset"},
+		{name: "identity mismatch", mutate: func(asset *NormalizedAsset) { asset.Command.Identity = "command/other" }, want: "does not match"},
+		{name: "invalid name", mutate: func(asset *NormalizedAsset) { asset.Command.Name = "Resume_From" }, want: "kebab-case"},
+		{name: "empty description", mutate: func(asset *NormalizedAsset) { asset.Content.Frontmatter["description"] = "" }, want: "non-empty string description"},
+		{name: "description mismatch", mutate: func(asset *NormalizedAsset) { asset.Content.Frontmatter["description"] = "Target wording." }, want: "does not match frontmatter"},
+		{name: "missing capability", mutate: func(asset *NormalizedAsset) { asset.CapabilityUses = nil }, want: "requires capability"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			asset := valid
+			asset.Content.Frontmatter = map[string]any{"description": valid.Content.Frontmatter["description"]}
+			descriptor := *valid.Command
+			asset.Command = &descriptor
+			test.mutate(&asset)
+			diagnostics := validateNormalizedAsset(asset)
+			if !hasError(diagnostics) || !diagnosticsContainText(diagnostics, test.want) {
+				t.Fatalf("diagnostics = %#v, want %q", diagnostics, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateCommandNameBoundaries(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name  string
+		valid bool
+	}{
+		{name: "resume-from", valid: true},
+		{name: "resume-2", valid: true},
+		{name: "2-resume", valid: true},
+		{name: "-resume", valid: false},
+		{name: "resume-", valid: false},
+		{name: "resume--from", valid: false},
+		{name: "Resume", valid: false},
+		{name: "resume_from", valid: false},
+		{name: "résumé", valid: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			identity := AssetID("command/" + test.name)
+			location := SourceLocation{Path: "source/commands/command.md"}
+			asset := NormalizedAsset{
+				Identity: identity, Kind: AssetKindCommand,
+				Content:        AssetContent{Frontmatter: map[string]any{"description": "Resume."}, Files: map[RelativePath]FileContent{}},
+				Command:        &CommandDescriptor{Identity: identity, Location: location, Name: test.name, Description: "Resume."},
+				CapabilityUses: []CapabilityUse{{Key: "asset.command", Location: location}},
+			}
+			hasDiagnostics := len(validateNormalizedAsset(asset)) != 0
+			if hasDiagnostics == test.valid {
+				t.Fatalf("valid = %v, diagnostics = %#v", test.valid, validateNormalizedAsset(asset))
+			}
+		})
+	}
+}
+
 func TestDecodeSourceManifestJSONRejectsStrictInvalidInput(t *testing.T) {
 	t.Parallel()
 
@@ -915,6 +1017,15 @@ func diagnosticsHaveCode(diagnostics []Diagnostic, code string) bool {
 func diagnosticsContain(diagnostics []Diagnostic, message string) bool {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Message == message {
+			return true
+		}
+	}
+	return false
+}
+
+func diagnosticsContainText(diagnostics []Diagnostic, text string) bool {
+	for _, diagnostic := range diagnostics {
+		if strings.Contains(diagnostic.Message, text) {
 			return true
 		}
 	}

@@ -146,6 +146,19 @@ func renderAsset(files *[]model.PlannedFile, paths map[model.RelativePath]output
 			}
 		}
 		return nil
+	case model.AssetKindCommand:
+		if codec.CommandRoot == "" {
+			return fmt.Errorf("target %q does not support commands in installable packages", codec.Target)
+		}
+		// A target must define a verified support-file layout before this shared renderer can emit one.
+		if len(asset.Content.Files) != 0 {
+			return fmt.Errorf("command %q cannot contain support files", asset.Identity)
+		}
+		data, err := markdown(asset.Content.Frontmatter, asset.Content.Body)
+		if err != nil {
+			return err
+		}
+		return addGenerated(files, paths, rootedPath(root, codec.CommandRoot+"/"+name+".md"), data, model.CloneSourceLocations([]model.SourceLocation{asset.Command.Location}), fmt.Sprintf("command %q", asset.Identity))
 	case model.AssetKindAgent:
 		if codec.Agent == nil || codec.AgentRoot == "" {
 			return fmt.Errorf("target %q does not support agents in installable packages", codec.Target)
@@ -433,6 +446,11 @@ func validateCodec(codec Codec) []model.Diagnostic {
 	}
 	if (codec.Agent == nil) != (codec.AgentRoot == "") {
 		return []model.Diagnostic{diagnostic("invalid-codec", "agent serializer and root must be configured together")}
+	}
+	if codec.CommandRoot != "" {
+		if _, err := model.NewRelativePath(codec.CommandRoot); err != nil {
+			return []model.Diagnostic{diagnostic("invalid-codec", fmt.Sprintf("command root: %v", err))}
+		}
 	}
 	if codec.AgentRoot != "" {
 		if _, err := model.NewRelativePath(codec.AgentRoot); err != nil {

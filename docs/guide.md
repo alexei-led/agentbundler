@@ -40,13 +40,15 @@ by hand or point `output` at a project root containing unrelated agent files.
 ## What Agent Bundler does today
 
 The current adapters render skills, portable package resources, supported native
-agent forms, typed command hooks with payloads, and deterministic catalogs into
-target-native project or installable package layouts. Separate profiles can
-render multiple package-owned roots; Pi supports one explicit aggregate package
-with one embedded hook runtime. Antigravity CLI uses package profile and
-separate mode, generates a strict `plugin.json` with no catalog, accepts only a
-narrow portable-agent subset, and rejects portable hooks. Explicit native rules,
-MCP configuration, hooks, and scripts can pass through without interpretation.
+agent forms, typed lifecycle command hooks with payloads, and deterministic
+catalogs into target-native project or installable package layouts. Claude also
+renders portable user-invoked Markdown commands; every other target rejects
+`asset.command` before output. Separate profiles can render multiple
+package-owned roots; Pi supports one explicit aggregate package with one
+embedded hook runtime. Antigravity CLI uses package profile and separate mode, generates a
+strict `plugin.json` with no catalog, accepts only a narrow portable-agent subset,
+and rejects portable commands and hooks. Explicit native rules, MCP
+configuration, hooks, and scripts can pass through without interpretation.
 Adapters do not install an agent, run a model, or publish a marketplace package.
 
 Hook event, matcher, decision, timeout, async, and failure semantics differ by

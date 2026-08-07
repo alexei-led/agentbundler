@@ -99,6 +99,74 @@ func TestCompileRecordsResolvedAdapterRevision(t *testing.T) {
 	}
 }
 
+func TestCompilePortableCommandForClaudeAndRejectsPi(t *testing.T) {
+	newWorkspace := func(t *testing.T) string {
+		workspace := t.TempDir()
+		writeCompilerFixture(t, workspace, "source/packages/base.json", `{"id":"base","metadata":{"version":"1.0.0"},"assets":["src/commands/resume-from.md"]}`)
+		writeCompilerFixture(t, workspace, "source/src/commands/resume-from.md", "---\n{\"description\":\"Resume from a saved handoff.\"}\n---\nResume the session.\n")
+		writeCompilerFixture(t, workspace, "source/src/commands/resume-from.md.agentbundler/targets/claude.json", `{"frontmatterPatch":{"description":"Resume a Claude session."},"bodyPatch":{"mode":"replace","text":"Resume Claude.\n"}}`)
+		return workspace
+	}
+	manifest := func(targetID model.TargetID) model.SourceManifest {
+		return model.SourceManifest{
+			Version: 1, Kind: model.SourceKindBundle, Root: "source", Targets: []model.TargetID{targetID}, Output: "generated",
+			Composition: []model.TargetComposition{{Target: targetID, Profile: model.TargetProfilePackage, PackageMode: model.TargetPackageModeSeparate}},
+			Bundle:      &model.BundleSourceConfig{Packages: []model.RelativePath{"packages/base.json"}},
+		}
+	}
+
+	t.Run("Claude", func(t *testing.T) {
+		workspace := newWorkspace(t)
+		request := CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest(model.TargetClaude), Mode: BuildModeBuild}
+		first := Compile(request)
+		if len(first.Diagnostics) != 0 || len(first.Plan.Targets) != 1 {
+			t.Fatalf("Compile() = (%#v, %#v)", first.Plan, first.Diagnostics)
+		}
+		var command []byte
+		for _, file := range first.Plan.Targets[0].Files {
+			if file.Path == "commands/resume-from.md" {
+				command = file.Bytes
+			}
+		}
+		if got, want := string(command), "---\n{\"description\":\"Resume a Claude session.\"}\n---\nResume Claude.\n"; got != want {
+			t.Fatalf("command = %q, want %q", got, want)
+		}
+		second := Compile(request)
+		if len(second.Diagnostics) != 0 || !reflect.DeepEqual(first.Plan, second.Plan) {
+			t.Fatalf("repeat Compile() differs: diagnostics = %#v", second.Diagnostics)
+		}
+	})
+
+	t.Run("invalid Claude overlay", func(t *testing.T) {
+		workspace := newWorkspace(t)
+		writeCompilerFixture(t, workspace, "source/src/commands/resume-from.md.agentbundler/targets/claude.json", `{"frontmatterPatch":{"description":false}}`)
+		result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest(model.TargetClaude), Mode: BuildModeBuild})
+		if len(result.Diagnostics) == 0 || !strings.Contains(result.Diagnostics[0].Message, "description frontmatter") {
+			t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+		}
+		if len(result.Plan.Targets) != 0 {
+			t.Fatalf("invalid command overlay produced target plans: %#v", result.Plan.Targets)
+		}
+		if _, err := os.Stat(filepath.Join(workspace, "generated")); !os.IsNotExist(err) {
+			t.Fatalf("invalid command overlay generated output: %v", err)
+		}
+	})
+
+	t.Run("Pi", func(t *testing.T) {
+		workspace := newWorkspace(t)
+		result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest(model.TargetPi), Mode: BuildModeBuild})
+		if len(result.Diagnostics) == 0 || !strings.Contains(result.Diagnostics[0].Message, "asset.command") {
+			t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+		}
+		if len(result.Plan.Targets) != 0 {
+			t.Fatalf("unsupported command produced target plans: %#v", result.Plan.Targets)
+		}
+		if _, err := os.Stat(filepath.Join(workspace, "generated")); !os.IsNotExist(err) {
+			t.Fatalf("unsupported command generated output: %v", err)
+		}
+	})
+}
+
 func TestCompileRejectsSymlinkedOutputAncestor(t *testing.T) {
 	workspace := t.TempDir()
 	outside := t.TempDir()

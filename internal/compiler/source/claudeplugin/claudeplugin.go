@@ -94,6 +94,7 @@ func InspectClaudePluginRoot(manifest model.SourceManifest, workspaceRoot string
 	}
 	inspector.skills(pluginRoot, assets, recognized)
 	inspector.agents(pluginRoot, assets, recognized)
+	inspector.commands(pluginRoot, assets, recognized)
 	inspector.hooks(pluginRoot, pluginPath, plugin.Hooks, assets, recognized)
 	inspector.nativeGaps(pluginRoot, recognized)
 	for index := range inspector.native {
@@ -537,6 +538,54 @@ func (i *claudeInspector) agents(root string, assets map[model.AssetID]model.Sou
 	}
 }
 
+func (i *claudeInspector) commands(root string, assets map[model.AssetID]model.SourceAsset, recognized map[string]struct{}) {
+	entries, err := i.readDir(filepath.Join(root, "commands"))
+	if err != nil {
+		if !os.IsNotExist(err) {
+			i.error(i.relativePath(filepath.Join(root, "commands")), "read commands: "+err.Error())
+		}
+		return
+	}
+	for _, entry := range entries {
+		path := filepath.Join(root, "commands", entry.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			i.error(i.relativePath(path), "source symlinks are not allowed")
+			continue
+		}
+		if entry.IsDir() || !entry.Type().IsRegular() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".md")
+		identity, err := model.NewAssetID("command/" + name)
+		if err != nil {
+			i.error(i.relativePath(path), "command identity: "+err.Error())
+			continue
+		}
+		data, ok := i.readInput(path)
+		if !ok {
+			continue
+		}
+		frontmatter, body, err := parseFrontmatter(data)
+		if err != nil {
+			continue
+		}
+		description, ok := frontmatter["description"].(string)
+		if !ok || strings.TrimSpace(description) == "" {
+			continue
+		}
+		caps, overlays := i.sidecars(identity, model.AssetKindCommand, name)
+		location := model.SourceLocation{Path: model.RelativePath(i.relativePath(path))}
+		caps = mergeDeclaredCapabilities([]model.CapabilityUse{{Key: "asset.command", Location: location}}, caps)
+		assets[identity] = model.SourceAsset{
+			Identity: identity, Kind: model.AssetKindCommand,
+			Base:           model.AssetContent{Frontmatter: frontmatter, Body: body, Files: map[model.RelativePath]model.FileContent{}},
+			Command:        &model.CommandDescriptor{Identity: identity, Location: location, Name: name, Description: description},
+			CapabilityUses: caps, Overlays: overlays,
+		}
+		recognized[path] = struct{}{}
+	}
+}
+
 func (i *claudeInspector) hooks(pluginRoot, pluginPath string, source json.RawMessage, assets map[model.AssetID]model.SourceAsset, recognized map[string]struct{}) {
 	hooks := i.loadHookSpecs(pluginRoot, pluginPath, source, recognized)
 	ordinals := make(map[string]int)
@@ -868,11 +917,16 @@ func mergeHookCapabilities(descriptor model.HookDescriptor, declared []model.Cap
 	if descriptor.FailurePolicy == model.HookFailurePolicyClosed {
 		uses = append(uses, model.CapabilityUse{Key: "hook.failure.closed", Location: location})
 	}
-	uses = append(uses, declared...)
-	byKey := make(map[model.CapabilityKey]model.CapabilityUse, len(uses))
-	for _, use := range uses {
-		if _, exists := byKey[use.Key]; !exists {
-			byKey[use.Key] = use
+	return mergeDeclaredCapabilities(uses, declared)
+}
+
+func mergeDeclaredCapabilities(groups ...[]model.CapabilityUse) []model.CapabilityUse {
+	byKey := make(map[model.CapabilityKey]model.CapabilityUse)
+	for _, group := range groups {
+		for _, use := range group {
+			if _, exists := byKey[use.Key]; !exists {
+				byKey[use.Key] = use
+			}
 		}
 	}
 	keys := make([]model.CapabilityKey, 0, len(byKey))

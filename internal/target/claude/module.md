@@ -6,11 +6,11 @@
 
 ## Purpose
 
-This module renders Claude Code-native project and installable-plugin output, including typed command hooks, payloads, catalog metadata, and safe strict-validator declarations.
+This module renders Claude Code-native project and installable-plugin output, including user-invoked commands, typed lifecycle command hooks, payloads, catalog metadata, and safe strict-validator declarations.
 
 ## Functional Responsibilities
 
-- Render `.claude-plugin/plugin.json`, skills, agents, resources, hooks, and payload files.
+- Render `.claude-plugin/plugin.json`, skills, user-invoked commands, agents, resources, hooks, and payload files.
 - Map portable hooks to verified Claude events, tool matchers, commands, timeouts, async flags, and decisions.
 - Render target-wide `.claude-plugin/marketplace.json` in separate mode.
 - Declare exact capability states, format revision, and official native checks.
@@ -38,10 +38,13 @@ Package-profile separate roots contain:
 ```text
 .claude-plugin/plugin.json
 skills/<name>/SKILL.md
+commands/<name>.md
 agents/<name>.md
 hooks/hooks.json
 <payload files>
 ```
+
+Project-profile commands render at `.claude/commands/<name>.md`. Package-profile commands render at `commands/<name>.md`. Both preserve description frontmatter and the overlaid Markdown body.
 
 When distribution metadata is present, the target root also contains one
 `.claude-plugin/marketplace.json`. Its entries use `./` for one flat package or
@@ -51,6 +54,7 @@ Package-file command arguments render with `${CLAUDE_PLUGIN_ROOT}` and contained
 
 Verified initial semantic cells:
 
+- native: `asset.command` as a Markdown slash-command entry point;
 - native/equivalent: `asset.hook`, `hook.command.exec`, explicit adopted `hook.command.shell`, events `session-start`, `session-end`, `prompt-submit`, `pre-tool`, `post-tool`, `post-tool-failure`, `stop`, `notification`, `pre-compact`, `post-compact`, and tool-category matchers;
 - native only for passive compatible events: `hook.async`;
 - native through the target-owned pre-tool translator: `hook.decision.block` and `hook.decision.rewrite-input`;
@@ -61,7 +65,7 @@ A similarly named event is not enough: unsupported matcher, mutation, async, tim
 
 The adapter declares `claude plugin validate --strict <plugin-root>` as a `NativeCheck` for each generated installable root. When a catalog is present, one strict check at `.` validates the marketplace and all local plugin roots together. Rendering does not invoke the process.
 
-Primary sources: <https://code.claude.com/docs/en/plugins-reference> and <https://code.claude.com/docs/en/hooks>, accessed 2026-07-15. See `docs/vendor-package-contracts.md`.
+Primary sources: <https://code.claude.com/docs/en/plugins-reference>, <https://code.claude.com/docs/en/hooks>, and <https://docs.anthropic.com/en/docs/claude-code/skills>, accessed 2026-08-07. See `docs/vendor-package-contracts.md`.
 
 ## Integrations
 
@@ -74,6 +78,7 @@ Primary sources: <https://code.claude.com/docs/en/plugins-reference> and <https:
 
 ## Constraints and Invariants
 
+- Native command files are `commands/<name>.md` in plugins and `.claude/commands/<name>.md` in projects. Claude documents these as simple Markdown files, so support files fail until a target-owned payload layout is verified.
 - Native hook manifest is `hooks/hooks.json`; no target-neutral interchange file is emitted.
 - Arbitrary adopted shell remains explicit shell; canonical exec is not rendered through an implicit shell when native exec form preserves it.
 - Closed-failure security policy is never presented as equivalent to explicit deny behavior.
@@ -83,7 +88,7 @@ Primary sources: <https://code.claude.com/docs/en/plugins-reference> and <https:
 
 ## Test Specification
 
-- Golden trees cover hook-free and mixed hook packages, command roots, event/matcher/timeout/async mappings, payload modes, collisions, and catalogs.
+- Tests cover deterministic project/plugin command layouts, hook-free and mixed hook packages, event/matcher/timeout/async mappings, payload modes, collisions, and catalogs.
 - Decision capability tests prove rejection before output until protocol translation exists.
 - Unsupported semantic cells produce no partial plan.
 - Official strict validator declarations are exact and process-free at render time.

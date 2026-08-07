@@ -52,6 +52,32 @@ func TestComposeAppliesOverlayAndSkillPreamble(t *testing.T) {
 	}
 }
 
+func TestComposeAppliesCommandOverlayToDescriptorAndBody(t *testing.T) {
+	location := model.SourceLocation{Path: "src/commands/resume-from.md"}
+	replacement := "Resume Claude.\n"
+	inventory := model.SourceInventory{Packages: []model.SourcePackage{{
+		Identity: "bundle",
+		Assets: []model.SourceAsset{{
+			Identity: "command/resume-from", Kind: model.AssetKindCommand,
+			Base:           model.AssetContent{Frontmatter: map[string]any{"description": "Resume from a saved handoff."}, Body: "Resume.\n", Files: map[model.RelativePath]model.FileContent{}},
+			Command:        &model.CommandDescriptor{Identity: "command/resume-from", Location: location, Name: "resume-from", Description: "Resume from a saved handoff."},
+			CapabilityUses: []model.CapabilityUse{{Key: "asset.command", Location: location}},
+			Overlays:       []model.TargetOverlay{{Target: model.TargetClaude, FrontmatterPatch: &map[string]any{"description": "Resume a Claude session."}, BodyPatch: &model.BodyPatch{Mode: model.BodyModeReplace, Text: &replacement}}},
+		}},
+	}}}
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetClaude, Capabilities: []model.CapabilityRule{{Key: "asset.command", State: model.CapabilityStateNative}}})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose diagnostics = %#v", diagnostics)
+	}
+	asset := packages[0].Assets[0]
+	if asset.Command == nil || asset.Command.Description != "Resume a Claude session." || asset.Content.Body != replacement {
+		t.Fatalf("command asset = %#v", asset)
+	}
+	if inventory.Packages[0].Assets[0].Command.Description != "Resume from a saved handoff." {
+		t.Fatal("Compose mutated the source command descriptor")
+	}
+}
+
 func TestComposeSelectsTargetFilteredAssets(t *testing.T) {
 	inventory := model.SourceInventory{Packages: []model.SourcePackage{{
 		Identity: "bundle",

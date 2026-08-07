@@ -95,6 +95,90 @@ func TestInspectBundleImportsExplicitAssetsAndOverlayFilesTree(t *testing.T) {
 	}
 }
 
+func TestInspectBundleImportsPortableCommandAndOverlay(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/commands/resume-from.md"]}`)
+	writeFixture(t, workspace, "bundle/src/commands/resume-from.md", "---\n{\"description\":\"Resume from a saved handoff.\"}\n---\nResume the session.\n")
+	writeFixture(t, workspace, "bundle/src/commands/resume-from.md.agentbundler/targets/claude.json", `{"frontmatterPatch":{"description":"Resume a Claude session."},"bodyPatch":{"mode":"replace","text":"Resume Claude.\n"}}`)
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	asset := inventory.Packages[0].Assets[0]
+	if asset.Identity != "command/resume-from" || asset.Kind != model.AssetKindCommand || asset.Command == nil {
+		t.Fatalf("command asset = %#v", asset)
+	}
+	if got, want := *asset.Command, (model.CommandDescriptor{Identity: asset.Identity, Location: model.SourceLocation{Path: "src/commands/resume-from.md"}, Name: "resume-from", Description: "Resume from a saved handoff."}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("command descriptor = %#v, want %#v", got, want)
+	}
+	if got := capabilityKeys(asset.CapabilityUses); !reflect.DeepEqual(got, []model.CapabilityKey{"asset.command"}) {
+		t.Fatalf("command capabilities = %#v", got)
+	}
+	if len(asset.Overlays) != 1 || asset.Overlays[0].BodyPatch == nil || asset.Overlays[0].FrontmatterPatch == nil {
+		t.Fatalf("command overlays = %#v", asset.Overlays)
+	}
+	for _, path := range []model.RelativePath{"packages/base.json", "src/commands/resume-from.md", "src/commands/resume-from.md.agentbundler/targets/claude.json"} {
+		if !containsInput(inventory, path) {
+			t.Fatalf("input %q was not recorded: %#v", path, inventory.Inputs)
+		}
+	}
+}
+
+func TestInspectBundleUsesIndependentMetadataForFlatCommands(t *testing.T) {
+	workspace := t.TempDir()
+	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["src/commands/alpha.md","src/commands/beta.md"]}`)
+	writeFixture(t, workspace, "bundle/src/commands/alpha.md", "---\n{\"description\":\"Alpha.\"}\n---\nAlpha.\n")
+	writeFixture(t, workspace, "bundle/src/commands/beta.md", "---\n{\"description\":\"Beta.\"}\n---\nBeta.\n")
+	writeFixture(t, workspace, "bundle/src/commands/alpha.md.agentbundler/asset.json", `{"capabilities":["command.alpha"]}`)
+	writeFixture(t, workspace, "bundle/src/commands/beta.md.agentbundler/asset.json", `{"capabilities":["command.beta"]}`)
+	writeFixture(t, workspace, "bundle/src/commands/.agentbundler/asset.json", `{"capabilities":["command.shared"]}`)
+
+	inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+	if len(diagnostics) != 0 {
+		t.Fatalf("InspectBundle() diagnostics = %#v", diagnostics)
+	}
+	assets := inventory.Packages[0].Assets
+	if len(assets) != 2 {
+		t.Fatalf("assets = %#v", assets)
+	}
+	if got, want := capabilityKeys(assets[0].CapabilityUses), []model.CapabilityKey{"asset.command", "command.alpha"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("alpha capabilities = %#v, want %#v", got, want)
+	}
+	if got, want := capabilityKeys(assets[1].CapabilityUses), []model.CapabilityKey{"asset.command", "command.beta"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("beta capabilities = %#v, want %#v", got, want)
+	}
+	for _, path := range []model.RelativePath{"src/commands/alpha.md.agentbundler/asset.json", "src/commands/beta.md.agentbundler/asset.json"} {
+		if !containsInput(inventory, path) {
+			t.Fatalf("input %q was not recorded: %#v", path, inventory.Inputs)
+		}
+	}
+	if containsInput(inventory, "src/commands/.agentbundler/asset.json") {
+		t.Fatal("shared commands metadata was applied to a flat command")
+	}
+}
+
+func TestInspectBundleRejectsInvalidPortableCommands(t *testing.T) {
+	for _, test := range []struct {
+		name, filename, content, want string
+	}{
+		{name: "invalid name", filename: "Resume_From.md", content: "---\n{\"description\":\"Resume.\"}\n---\nBody.\n", want: "kebab-case"},
+		{name: "missing description", filename: "resume-from.md", content: "Resume.\n", want: "description frontmatter"},
+		{name: "wrong description type", filename: "resume-from.md", content: "---\n{\"description\":true}\n---\nResume.\n", want: "description frontmatter"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			path := "src/commands/" + test.filename
+			writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":["`+path+`"]}`)
+			writeFixture(t, workspace, "bundle/"+path, test.content)
+			inventory, diagnostics := InspectBundle(bundleManifest("packages/base.json"), workspace)
+			if !reflect.DeepEqual(inventory, model.SourceInventory{}) || !diagnosticsContainText(diagnostics, test.want) {
+				t.Fatalf("inventory = %#v, diagnostics = %#v, want %q", inventory, diagnostics, test.want)
+			}
+		})
+	}
+}
+
 func TestInspectBundleImportsDeclarativePiNativeExtensionTree(t *testing.T) {
 	workspace := t.TempDir()
 	writeFixture(t, workspace, "bundle/packages/base.json", `{"id":"base","metadata":{},"assets":[{"path":"src/plugins/pi/cc-thingz","targets":["pi"]}]}`)

@@ -9,7 +9,7 @@ import (
 
 const (
 	Target         = model.TargetClaude
-	FormatRevision = 6
+	FormatRevision = 7
 )
 
 // Adapter renders Claude project skills and installable plugins.
@@ -31,7 +31,7 @@ func (adapter Adapter) Render(input model.TargetRenderInput) (model.TargetPlan, 
 		plan.NativeChecks = nativeChecks(plan.Packages, input.Distribution != nil)
 		return plan, nil
 	}
-	return skills.Render(adapter.Target(), ".claude/skills", input.Packages)
+	return skills.RenderWithCommands(adapter.Target(), ".claude/skills", ".claude/commands", input.Packages)
 }
 func Render(input model.TargetRenderInput) (model.TargetPlan, []model.Diagnostic) {
 	return New().Render(input)

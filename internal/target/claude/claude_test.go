@@ -22,6 +22,53 @@ func TestRenderUsesClaudeNativeSkillRoot(t *testing.T) {
 	}
 }
 
+func TestRenderCommandsInProjectAndPackageLayouts(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		profile model.TargetProfile
+		path    model.RelativePath
+	}{
+		{name: "project", profile: model.TargetProfileProject, path: ".claude/commands/resume-from.md"},
+		{name: "package", profile: model.TargetProfilePackage, path: "commands/resume-from.md"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pkg := model.NormalizedPackage{Identity: "demo", Target: Target, Profile: test.profile, Metadata: model.PackageMetadata{"version": "1.0.0"}, Assets: []model.NormalizedAsset{commandAsset("resume-from")}}
+			plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
+			if len(diagnostics) != 0 {
+				t.Fatalf("Render() diagnostics = %#v", diagnostics)
+			}
+			file, exists := plannedFiles(plan)[test.path]
+			if !exists || string(file.Bytes) != "---\n{\"description\":\"Resume from a saved handoff.\"}\n---\nResume the session.\n" {
+				t.Fatalf("command file = %#v; paths = %#v", file, sortedPlannedPaths(plan))
+			}
+			reversed := pkg
+			reversed.Assets = []model.NormalizedAsset{commandAsset("z-last"), commandAsset("resume-from")}
+			first, diagnostics := Render(separate([]model.NormalizedPackage{reversed}))
+			if len(diagnostics) != 0 {
+				t.Fatalf("first Render() diagnostics = %#v", diagnostics)
+			}
+			reversed.Assets[0], reversed.Assets[1] = reversed.Assets[1], reversed.Assets[0]
+			second, diagnostics := Render(separate([]model.NormalizedPackage{reversed}))
+			if len(diagnostics) != 0 || !reflect.DeepEqual(first, second) {
+				t.Fatalf("command rendering is not deterministic: diagnostics = %#v", diagnostics)
+			}
+		})
+	}
+}
+
+func TestRenderRejectsCommandSupportFilesWithoutPartialOutput(t *testing.T) {
+	asset := commandAsset("resume-from")
+	asset.Content.Files["script.sh"] = model.FileContent{Bytes: []byte("exit 0\n")}
+	pkg := model.NormalizedPackage{Identity: "demo", Target: Target, Profile: model.TargetProfilePackage, Assets: []model.NormalizedAsset{asset}}
+	plan, diagnostics := Render(separate([]model.NormalizedPackage{pkg}))
+	if len(diagnostics) != 1 || diagnostics[0].Code != "invalid-package-output" || !strings.Contains(diagnostics[0].Message, "cannot contain support files") {
+		t.Fatalf("Render() = (%#v, %#v)", plan, diagnostics)
+	}
+	if len(plan.Files) != 0 || len(plan.NativeChecks) != 0 {
+		t.Fatalf("rejected command produced partial output: %#v", plan)
+	}
+}
+
 func TestRenderRejectsNonSkillAssets(t *testing.T) {
 	pkg := skillPackage()[0]
 	pkg.Assets[0].Kind = model.AssetKindAgent
@@ -33,12 +80,13 @@ func TestRenderRejectsNonSkillAssets(t *testing.T) {
 }
 
 func TestClaudeCapabilitiesAndFormatRevision(t *testing.T) {
-	if FormatRevision != 6 {
-		t.Fatalf("FormatRevision = %d, want 6", FormatRevision)
+	if FormatRevision != 7 {
+		t.Fatalf("FormatRevision = %d, want 7", FormatRevision)
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent":                  model.CapabilityStateNative,
 		"asset.hook":                   model.CapabilityStateNative,
+		"asset.command":                model.CapabilityStateNative,
 		"asset.resource":               model.CapabilityStateNative,
 		"asset.native-resource":        model.CapabilityStateUnsupported,
 		"asset.skill":                  model.CapabilityStateNative,
@@ -349,6 +397,17 @@ func skillPackage() []model.NormalizedPackage {
 		Content:        model.AssetContent{Frontmatter: map[string]any{"name": "guide"}, Body: "# Guide\n", Files: map[model.RelativePath]model.FileContent{"docs/readme.md": {Bytes: []byte("help")}}},
 		CapabilityUses: []model.CapabilityUse{{Key: "asset.skill", Location: model.SourceLocation{Path: "source/SKILL.md"}}},
 	}}}}
+}
+
+func commandAsset(name string) model.NormalizedAsset {
+	identity := model.AssetID("command/" + name)
+	location := model.SourceLocation{Path: model.RelativePath("source/commands/" + name + ".md")}
+	return model.NormalizedAsset{
+		Identity: identity, Kind: model.AssetKindCommand,
+		Content:        model.AssetContent{Frontmatter: map[string]any{"description": "Resume from a saved handoff."}, Body: "Resume the session.\n", Files: map[model.RelativePath]model.FileContent{}},
+		Command:        &model.CommandDescriptor{Identity: identity, Location: location, Name: name, Description: "Resume from a saved handoff."},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.command", Location: location}},
+	}
 }
 
 func goldenHookPackage() model.NormalizedPackage {

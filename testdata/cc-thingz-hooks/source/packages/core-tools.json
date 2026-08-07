@@ -18,6 +18,12 @@
   "assets": [
     "src/skills/review",
     {
+      "path": "src/commands/resume-from.md",
+      "targets": [
+        "claude"
+      ]
+    },
+    {
       "path": "src/agents/reviewer.md",
       "targets": [
         "antigravity",

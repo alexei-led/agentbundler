@@ -18,6 +18,7 @@ func TestCursorCapabilitiesAndFormatRevision(t *testing.T) {
 	}
 	want := map[model.CapabilityKey]model.CapabilityState{
 		"asset.agent": model.CapabilityStateNative, "asset.hook": model.CapabilityStateNative,
+		"asset.command":  model.CapabilityStateUnsupported,
 		"asset.resource": model.CapabilityStateNative, "asset.native-resource": model.CapabilityStateUnsupported,
 		"asset.skill": model.CapabilityStateNative, "hook.async": model.CapabilityStateUnsupported,
 		"hook.command.exec": model.CapabilityStateAdvisory, "hook.command.shell": model.CapabilityStateNative,

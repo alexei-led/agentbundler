@@ -22,6 +22,17 @@ func CloneHookDescriptor(descriptor HookDescriptor) HookDescriptor {
 	return clone
 }
 
+// CloneCommandDescriptor returns a detached command descriptor value.
+func CloneCommandDescriptor(descriptor *CommandDescriptor) *CommandDescriptor {
+	if descriptor == nil {
+		return nil
+	}
+	return &CommandDescriptor{
+		Identity: descriptor.Identity, Location: CloneSourceLocation(descriptor.Location),
+		Name: descriptor.Name, Description: descriptor.Description,
+	}
+}
+
 // CloneNativeResourceOptions returns a detached native resource configuration.
 func CloneNativeResourceOptions(options *NativeResourceOptions) *NativeResourceOptions {
 	if options == nil {

@@ -63,6 +63,11 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 			if target.SkillPreamble != nil && sourceAsset.Kind == model.AssetKindSkill {
 				content.Body = joinPreamble(*target.SkillPreamble, content.Body)
 			}
+			command := model.CloneCommandDescriptor(sourceAsset.Command)
+			if command != nil {
+				description, _ := content.Frontmatter["description"].(string)
+				command.Description = description
+			}
 
 			acknowledgments := acknowledgmentsForAsset(overlay, sourceAsset.Identity, target.Target)
 			for _, use := range sourceAsset.CapabilityUses {
@@ -100,6 +105,7 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 				Kind:           sourceAsset.Kind,
 				Content:        content,
 				Hook:           cloneHookDescriptor(sourceAsset.Hook),
+				Command:        command,
 				Native:         model.CloneNativeResourceOptions(sourceAsset.Native),
 				CapabilityUses: cloneCapabilityUses(sourceAsset.CapabilityUses),
 			})

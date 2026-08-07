@@ -24,9 +24,25 @@ Bundle skill:
 bundle/src/skills/explain-query/.agentbundler/targets/pi.json
 ```
 
-Claude-plugin imports use the skills-repository location inside the plugin root.
-Sidecars customize portable assets only; they do not make raw vendor files
-portable.
+Bundle command:
+
+```text
+bundle/src/commands/resume-from.md.agentbundler/asset.json
+bundle/src/commands/resume-from.md.agentbundler/targets/claude.json
+```
+
+Claude-plugin command:
+
+```text
+<plugin-root>/.agentbundler/assets/command/resume-from/asset.json
+<plugin-root>/.agentbundler/assets/command/resume-from/targets/claude.json
+```
+
+Other Claude-plugin imports use the skills-repository location inside the plugin
+root. Sidecars customize portable assets only; they do not make raw vendor files
+portable. Command overlays may patch frontmatter and body. Current command
+renderers reject support-file additions and deletions until a target-owned
+payload layout is verified.
 
 ## Overlay fields
 

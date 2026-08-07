@@ -6,12 +6,12 @@
 
 ## Purpose
 
-This module owns the immutable, target-neutral language of compilation: source declarations, typed hooks, discovered inventories, normalized assets, render requests, diagnostics, and declarative output/check plans. Without it, importers, composition, adapters, and artifact operations would share private or vendor-shaped values.
+This module owns the immutable, target-neutral language of compilation: source declarations, typed commands and hooks, discovered inventories, normalized assets, render requests, diagnostics, and declarative output/check plans. Without it, importers, composition, adapters, and artifact operations would share private or vendor-shaped values.
 
 ## Functional Responsibilities
 
 - Define and validate source, composition, render, and build-plan values.
-- Represent hook semantics and file executable intent before target rendering.
+- Represent user-invoked command descriptors, hook semantics, and file executable intent before target rendering.
 - Define semantic capability and diagnostic classifications.
 - Keep model values deterministic, relative-path-only data with no I/O or process behavior.
 
@@ -40,7 +40,7 @@ DistributionMetadata = Map<String, JsonValue>
 
 SourceKind = bundle | claude-plugin | skills-repository
 TargetID = antigravity | claude | codex | pi | copilot | grok | cursor
-AssetKind = skill | agent | hook | resource | native-resource
+AssetKind = skill | agent | hook | command | resource | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
 Severity = error | warning | information
@@ -62,6 +62,7 @@ HookHandlerMode = exec | shell
 HookArgument = { literal: String } | { packageFile: RelativePath }
 HookCommand = { mode: HookHandlerMode, program: String?, arguments: [HookArgument], shellCommand: String? }
 HookFailurePolicy = open | closed
+CommandDescriptor = { identity: AssetID, location: SourceLocation, name: String, description: String }
 HookDescriptor = {
   identity: AssetID,
   location: SourceLocation,
@@ -88,10 +89,10 @@ BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
 SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, distribution: DistributionMetadata?, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
-SourceAsset = { identity: AssetID, kind: AssetKind, targets: [TargetID]?, base: AssetContent, hook: HookDescriptor?, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
+SourceAsset = { identity: AssetID, kind: AssetKind, targets: [TargetID]?, base: AssetContent, hook: HookDescriptor?, command: CommandDescriptor?, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
 SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
-NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, hook: HookDescriptor?, native: NativeResourceOptions?, capabilityUses: [CapabilityUse] }
+NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, hook: HookDescriptor?, command: CommandDescriptor?, native: NativeResourceOptions?, capabilityUses: [CapabilityUse] }
 NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, profile: TargetProfile?, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
 TargetRenderInput = { packages: [NormalizedPackage], distribution: DistributionMetadata, packageMode: TargetPackageMode, aggregate: AggregatePackage? }
 
@@ -127,7 +128,7 @@ The Go Contract Projection in `docs/tech-stack.md` defines exported representati
 
 ## Internal Design
 
-`FileContent` is the only pre-render payload shape; bytes and executable intent cannot be separated during import, overlay, or composition. A hook is one typed descriptor plus its `AssetContent.files`. Target adapters translate portable events, matchers, arguments, timeouts, decisions, and failure policy to verified native forms.
+`FileContent` is the only pre-render payload shape; bytes and executable intent cannot be separated during import, overlay, or composition. A command is one typed name/description descriptor plus Markdown content. A hook is one typed descriptor plus its `AssetContent.files`. Target adapters translate portable events, matchers, arguments, timeouts, decisions, and failure policy to verified native forms.
 
 ## Change Vectors
 
@@ -138,6 +139,7 @@ The Go Contract Projection in `docs/tech-stack.md` defines exported representati
 ## Constraints and Invariants
 
 - No type carries an absolute path, filesystem/process handle, clock, environment map, vendor root variable, or target-private schema.
+- A command-kind asset has one matching descriptor, a kebab-case identity name, non-empty string description frontmatter, and `asset.command`; non-command assets have no command descriptor.
 - A hook-kind asset has exactly one descriptor with matching identity; non-hook assets have none.
 - `exec` requires a non-empty program and forbids `shellCommand`; `shell` requires `shellCommand` and forbids program/arguments. A hook argument has exactly one of `literal` or `packageFile`; exec arguments are ordered and may repeat.
 - Package-file arguments resolve only to files in the same hook payload. Paths are contained, normalized, and symlink-free at import.
@@ -153,5 +155,5 @@ The Go Contract Projection in `docs/tech-stack.md` defines exported representati
 ## Test Specification
 
 - Strict decode covers duplicate/unknown fields, hook command exclusivity, paths, timeouts, async restrictions, and package modes.
-- Model tests cover valid exec and shell hooks, executable file intent, semantic capability keys, aggregate requirements, and deterministic ordering.
+- Model tests cover valid command descriptors, exec and shell hooks, executable file intent, semantic capability keys, aggregate requirements, and deterministic ordering.
 - Render-input validation proves only Pi package profile can aggregate and that separate remains the default.

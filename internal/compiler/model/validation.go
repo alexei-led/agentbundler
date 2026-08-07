@@ -412,6 +412,7 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Base)...)
 	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Base, asset.CapabilityUses)...)
+	diagnostics = append(diagnostics, validateCommandAsset(asset.Identity, asset.Kind, asset.Command, asset.Base, asset.CapabilityUses)...)
 	diagnostics = append(diagnostics, validateNativeResourceOptions(asset.Identity, asset.Kind, asset.Native)...)
 	if len(asset.Targets) > 0 {
 		targets := make(map[TargetID]struct{}, len(asset.Targets))
@@ -489,6 +490,7 @@ func validateNormalizedAsset(asset NormalizedAsset) []Diagnostic {
 	diagnostics = append(diagnostics, validateAssetIdentity(asset.Identity, asset.Kind)...)
 	diagnostics = append(diagnostics, validateAssetContent(asset.Content)...)
 	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Content, asset.CapabilityUses)...)
+	diagnostics = append(diagnostics, validateCommandAsset(asset.Identity, asset.Kind, asset.Command, asset.Content, asset.CapabilityUses)...)
 	diagnostics = append(diagnostics, validateNativeResourceOptions(asset.Identity, asset.Kind, asset.Native)...)
 	diagnostics = append(diagnostics, validateCapabilityUses(asset.Identity, asset.CapabilityUses)...)
 	return diagnostics
@@ -625,6 +627,59 @@ func validateHookAsset(identity AssetID, kind AssetKind, hook *HookDescriptor, c
 		}
 	}
 	return diagnostics
+}
+
+func validateCommandAsset(identity AssetID, kind AssetKind, command *CommandDescriptor, content AssetContent, capabilities []CapabilityUse) []Diagnostic {
+	if kind != AssetKindCommand {
+		if command != nil {
+			return appendInvalid(nil, fmt.Sprintf("non-command asset %q has a command descriptor", identity))
+		}
+		return nil
+	}
+	if command == nil {
+		return appendInvalid(nil, fmt.Sprintf("command asset %q requires a command descriptor", identity))
+	}
+
+	var diagnostics []Diagnostic
+	if command.Identity != identity {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("command descriptor identity %q does not match asset %q", command.Identity, identity))
+	}
+	diagnostics = append(diagnostics, validateSourceLocation(command.Location)...)
+	name := strings.TrimPrefix(string(identity), string(AssetKindCommand)+"/")
+	if command.Name != name || !validCommandName(command.Name) {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("command %q requires a kebab-case name matching its asset identity", identity))
+	}
+	description, ok := content.Frontmatter["description"].(string)
+	if !ok || strings.TrimSpace(description) == "" || strings.ContainsRune(description, '\x00') {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("command %q requires non-empty string description frontmatter", identity))
+	} else if command.Description != description {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("command descriptor description for %q does not match frontmatter", identity))
+	}
+	if !usesCapabilityKey(capabilities, "asset.command") {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("command %q requires capability %q", identity, "asset.command"))
+	}
+	return diagnostics
+}
+
+func usesCapabilityKey(capabilities []CapabilityUse, key CapabilityKey) bool {
+	for _, capability := range capabilities {
+		if capability.Key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func validCommandName(value string) bool {
+	if value == "" || value[0] == '-' || value[len(value)-1] == '-' {
+		return false
+	}
+	for _, character := range value {
+		if character != '-' && (character < 'a' || character > 'z') && (character < '0' || character > '9') {
+			return false
+		}
+	}
+	return !strings.Contains(value, "--")
 }
 
 func validateHookCommand(identity AssetID, command HookCommand, files map[RelativePath]FileContent) []Diagnostic {
@@ -910,7 +965,7 @@ func validTargetID(target TargetID) bool {
 
 func validAssetKind(kind AssetKind) bool {
 	switch kind {
-	case AssetKindSkill, AssetKindAgent, AssetKindHook, AssetKindResource, AssetKindNativeResource:
+	case AssetKindSkill, AssetKindAgent, AssetKindHook, AssetKindCommand, AssetKindResource, AssetKindNativeResource:
 		return true
 	default:
 		return false

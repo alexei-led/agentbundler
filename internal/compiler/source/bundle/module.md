@@ -6,13 +6,13 @@
 
 ## Purpose
 
-This module imports Agent Bundler's canonical owned-source layout, including first-class portable hook directories and their payload files.
+This module imports Agent Bundler's canonical owned-source layout, including first-class portable command Markdown and hook directories with payload files.
 
 ## Functional Responsibilities
 
 - Strictly decode `agentbundle.json`, package manifests, hook descriptors, and sidecars.
 - Build package membership from exact manifest entries.
-- Import skills, agents, resources, hooks, and target-native resources.
+- Import skills, agents, commands, resources, hooks, and target-native resources.
 - Capture payload bytes, executable intent, source origins, target allow-lists, capabilities, and input hashes.
 
 ### Canonical Layout and Schema
@@ -22,6 +22,9 @@ agentbundle.json
 packages/<package>.json
 src/skills/<name>/SKILL.md
 src/agents/<name>.md
+src/commands/<name>.md
+src/commands/<name>.md.agentbundler/asset.json
+src/commands/<name>.md.agentbundler/targets/<target>.json
 src/resources/<name>/...
 src/hooks/<hook-id>/hook.json
 src/hooks/<hook-id>/<payload files>
@@ -34,6 +37,8 @@ src/plugins/<target>/<name>/...
 ```
 
 `bundle.packages` lists exact package-manifest paths. A package manifest remains `{ "id": String, "metadata": Object, "assets": [String | AssetEntry] }`, where `AssetEntry` is `{ "path": RelativePath, "targets": [TargetID]? }`. Hook entries normally identify `src/hooks/<hook-id>/`; the exact `src/hooks/<name>.json` compatibility form is accepted only for descriptor-only hooks with no payload files.
+
+Each canonical command is `src/commands/<kebab-case-name>.md`. Its frontmatter requires a non-empty string `description`; the importer assigns the command name from the filename and adds `asset.command`. Flat command sidecars own per-command capability metadata and may patch frontmatter and body.
 
 Each canonical hook directory contains exactly one strict `hook.json` using the model-owned JSON fields:
 
@@ -65,7 +70,7 @@ A native-resource path may be one file or one directory. Its target is the exact
 
 ## Encapsulated Knowledge
 
-- Canonical path conventions and strict JSON spellings.
+- Canonical command/hook path conventions and strict JSON spellings.
 - Explicit package membership and target allow-lists.
 - Hook payload ownership, source-mode capture, and sidecar containment.
 
@@ -77,7 +82,7 @@ A native-resource path may be one file or one directory. Its target is the exact
 inspect-bundle(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 ```
 
-A hook directory maps to exactly one hook-kind `SourceAsset` with one `HookDescriptor`, deterministic payload `FileContent` values, semantic capability uses, and source input hashes. The importer adds `asset.hook` and exact uses for command form, event, matcher, decision behavior, async, and closed failure policy. It does not translate any vendor event or command-root variable.
+A command Markdown file maps to one command-kind `SourceAsset` with one `CommandDescriptor`, `asset.command`, overlays, and source input hashes. A hook directory maps to exactly one hook-kind `SourceAsset` with one `HookDescriptor`, deterministic payload `FileContent` values, semantic capability uses, and source input hashes. The importer adds `asset.hook` and exact uses for command form, event, matcher, decision behavior, async, and closed failure policy. It does not translate any vendor event or command-root variable.
 
 ## Integrations
 
@@ -99,6 +104,7 @@ A hook directory maps to exactly one hook-kind `SourceAsset` with one `HookDescr
 
 ## Test Specification
 
-- Canonical and legacy hook forms import deterministically.
+- Canonical commands, canonical hooks, and legacy hook forms import deterministically.
+- Invalid command names and descriptions fail with source evidence.
 - Invalid descriptor combinations, missing package files, traversal, symlinks, duplicate fields, and mode conflicts fail with source locations.
 - POSIX fixtures preserve executable intent while non-executable interpreter-backed scripts remain valid.

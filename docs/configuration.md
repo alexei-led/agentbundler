@@ -73,16 +73,40 @@ globs.
   "metadata": {},
   "assets": [
     "src/skills/explain-query",
+    "src/commands/resume-from.md",
     { "path": "src/agents/reviewer.md", "targets": ["claude", "pi"] }
   ]
 }
 ```
 
 Assets use paths such as `src/skills/<name>`, `src/agents/<name>.md`,
-`src/hooks/<name>`, `src/resources/<name>`, or
+`src/commands/<name>.md`, `src/hooks/<name>`, `src/resources/<name>`, or
 `src/plugins/<target>/<file-or-directory>`. The `src/` prefix is optional.
 `targets` is an exact allow-list. Portable resources render under `resources/`;
 target-native resources require an explicit native-resource declaration.
+
+A portable command is user-invoked, unlike a lifecycle hook. Its Markdown file
+name is the stable kebab-case command name and its frontmatter requires a
+non-empty string `description`:
+
+```markdown
+---
+description: Resume from a saved handoff.
+---
+Resume the session from the supplied handoff.
+```
+
+Flat command sidecars use `src/commands/<name>.md.agentbundler/`.
+`asset.json` declares per-command capabilities and
+`targets/<target>.json` patches frontmatter and body. Claude documents commands
+as simple Markdown files, so the initial mapping rejects support files and file
+patches instead of inventing
+a payload layout. Use a portable resource or explicit native resource until a
+target's command support-file contract is verified. Claude emits
+`commands/<name>.md` for package profiles and
+`.claude/commands/<name>.md` for project profiles. Codex, Pi, Copilot, Cursor,
+Grok, and Antigravity currently reject `asset.command` with an explicit
+capability diagnostic and produce no command artifact.
 
 ### Claude plugin
 
@@ -99,9 +123,19 @@ Use an existing plugin as source:
 }
 ```
 
-The importer reads `.claude-plugin/plugin.json`, skills, direct agents/hooks,
-and known native gaps. Unsupported portable behavior reports a capability
-diagnostic rather than guessing.
+The importer reads `.claude-plugin/plugin.json`, skills, direct agents,
+portable top-level `commands/*.md` files with description frontmatter, hooks,
+and known native gaps. Command files outside the portable subset remain native
+gaps. Unsupported portable behavior reports a capability diagnostic rather
+than guessing.
+
+## Skills, hooks, commands, and native resources
+
+A skill is reusable instruction content that the host may select. A hook reacts
+to a lifecycle event and can run a typed command handler. A command is an
+explicit slash-command entry point selected by the user. A native resource is
+opaque target-owned configuration or code; use it only when no portable asset
+kind represents the behavior.
 
 ## Native resources and hooks
 

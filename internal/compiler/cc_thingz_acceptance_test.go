@@ -316,6 +316,7 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 		},
 		model.TargetClaude: {
 			".claude-plugin/marketplace.json",
+			"core-tools/commands/resume-from.md",
 			"core-tools/hooks/command-guard/check.sh",
 			"core-tools/hooks/command-guard/rules.json",
 			"workflow-tools/hooks/file-audit/audit.sh",
@@ -385,6 +386,17 @@ func TestCCThingzAcceptanceMatrixBuildCheckSelectorsDriftAndDeterminism(t *testi
 	claudePlan := acceptanceTargetPlan(t, first.Plan, model.TargetClaude)
 	if len(claudePlan.NativeChecks) != 1 || claudePlan.NativeChecks[0].Program != "claude" {
 		t.Fatalf("Claude native checks = %#v, want one strict catalog validation", claudePlan.NativeChecks)
+	}
+	var commandBytes []byte
+	for _, file := range claudePlan.Files {
+		if file.Path == "core-tools/commands/resume-from.md" {
+			commandBytes = file.Bytes
+			break
+		}
+	}
+	wantCommand := "---\n{\"description\":\"Resume a Claude session from a saved handoff.\"}\n---\nResume the Claude session from the supplied handoff.\n"
+	if got := string(commandBytes); got != wantCommand {
+		t.Fatalf("Claude acceptance command = %q, want %q", got, wantCommand)
 	}
 	grokPlan := acceptanceTargetPlan(t, first.Plan, model.TargetGrok)
 	if len(grokPlan.NativeChecks) != 2 {

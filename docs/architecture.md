@@ -25,8 +25,8 @@ flowchart LR
    Source importers share root-containment and no-symlink checks for workspace
    paths; text parsers reject malformed UTF-8 before string conversion.
 3. **Source importers** read one of `skills-repository`, `bundle`, or
-   `claude-plugin` and normalize packages, typed hooks, executable-aware payload
-   files, metadata, capabilities, and native gaps.
+   `claude-plugin` and normalize packages, typed commands and hooks,
+   executable-aware payload files, metadata, capabilities, and native gaps.
 4. **Composition** clones each selected package for a target, applies overlays
    and preambles, checks capability acknowledgments, and resolves native-gap
    policy without translating vendor event names.
@@ -56,8 +56,9 @@ flowchart LR
 - `internal/compiler/composition`: overlays, preambles, capabilities,
   acknowledgments, and native gaps.
 - `internal/target`: target adapters and target-relative build plans.
-- `internal/target/packageoutput`: shared package-root, payload, and collision
-  mechanics. Target leaves own package, agent, hook, and catalog serialization.
+- `internal/target/packageoutput`: shared package-root, command, payload, and
+  collision mechanics. Target leaves own package, agent, hook, and catalog
+  serialization.
 - `internal/target/marketplace`: pure validation and deterministic ordering of
   common catalog entries; it has no publication, filesystem, process, clock,
   Git, or network behavior.
@@ -159,8 +160,8 @@ CI installs Archfit v1.6.0 and pinned SCIP, ast-grep, and jscpd analyzers, then
 runs the deterministic gate in strict tool mode. It also runs Go tests/race/vet,
 Go lint, the pinned Bun TypeScript gate, the seven-target deterministic fixture,
 and checksum/version-pinned Claude, Grok, and Antigravity validators. Local
-pre-push uses the same architecture config and requires its analyzers, but local tool versions may
-differ. The pre-push hook fails closed if Archfit or a required analyzer is
+pre-push uses the same architecture config and requires its analyzers, but local
+tool versions may differ. The pre-push hook fails closed if Archfit or a required analyzer is
 missing. Update versions, config, CI pins, and validator evidence together; run
 `archfit doctor` after an upgrade.
 
@@ -170,11 +171,14 @@ or changing package responsibilities.
 
 ## Current boundary
 
-The portable contract covers command hooks with typed event, matcher, arguments,
-timeout, async, failure-policy, order, decision capabilities, payload bytes, and
-executable intent. HTTP, prompt-handler, agent-handler, and MCP-tool-handler
-hooks remain outside it. Pi-native extension trees are supported only through
-explicit declarative entries. Antigravity native-resource trees are retained
+The portable contract separates user-invoked commands from lifecycle command
+hooks. A command has a stable kebab-case identity, description, Markdown body,
+and target overlays. Claude has the verified initial mapping; unverified targets
+reject `asset.command` before output. Hooks retain typed event, matcher,
+arguments, timeout, async, failure-policy, order, decision capabilities, payload
+bytes, and executable intent. HTTP, prompt-handler, agent-handler, and
+MCP-tool-handler hooks remain outside it. Pi-native extension trees are supported
+only through explicit declarative entries. Antigravity native-resource trees are retained
 only for the Antigravity target and copied without vendor-file parsing. Other
 target-native resources remain explicit gaps.
 

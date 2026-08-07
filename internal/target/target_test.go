@@ -2,6 +2,7 @@ package target
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -117,6 +118,44 @@ func TestTargetsRejectUnsupportedDecisionCellsBeforeOutput(t *testing.T) {
 				}
 				if len(plan.Files) != 0 || len(plan.NativeChecks) != 0 {
 					t.Fatalf("rejected decision hook produced partial plan: %#v", plan)
+				}
+			})
+		}
+	}
+}
+
+func TestTargetsRejectUnsupportedCommandsBeforeOutput(t *testing.T) {
+	t.Parallel()
+
+	for _, targetID := range []model.TargetID{model.TargetAntigravity, model.TargetCodex, model.TargetCopilot, model.TargetCursor, model.TargetGrok, model.TargetPi} {
+		profiles := []model.TargetProfile{model.TargetProfileProject, model.TargetProfilePackage}
+		if targetID == model.TargetAntigravity {
+			profiles = []model.TargetProfile{model.TargetProfilePackage}
+		}
+		for _, profile := range profiles {
+			targetID, profile := targetID, profile
+			t.Run(string(targetID)+"/"+string(profile), func(t *testing.T) {
+				location := model.SourceLocation{Path: "source/commands/resume-from.md"}
+				identity := model.AssetID("command/resume-from")
+				pkg := model.NormalizedPackage{
+					Identity: "demo", Target: targetID, Profile: profile,
+					Assets: []model.NormalizedAsset{{
+						Identity: identity, Kind: model.AssetKindCommand,
+						Content:        model.AssetContent{Frontmatter: map[string]any{"description": "Resume from a saved handoff."}, Body: "Resume the session.\n", Files: map[model.RelativePath]model.FileContent{}},
+						Command:        &model.CommandDescriptor{Identity: identity, Location: location, Name: "resume-from", Description: "Resume from a saved handoff."},
+						CapabilityUses: []model.CapabilityUse{{Key: "asset.command", Location: location}},
+					}},
+				}
+				adapter, diagnostics := Resolve(targetID)
+				if len(diagnostics) != 0 {
+					t.Fatalf("Resolve(%q) diagnostics = %#v", targetID, diagnostics)
+				}
+				plan, diagnostics := Render(adapter, model.TargetRenderInput{Packages: []model.NormalizedPackage{pkg}, PackageMode: model.TargetPackageModeSeparate})
+				if len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-capability" || !strings.Contains(diagnostics[0].Message, "asset.command") {
+					t.Fatalf("Render(%q) = (%#v, %#v), want unsupported-capability", targetID, plan, diagnostics)
+				}
+				if len(plan.Files) != 0 || len(plan.NativeChecks) != 0 {
+					t.Fatalf("rejected command produced partial plan: %#v", plan)
 				}
 			})
 		}

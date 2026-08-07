@@ -11,8 +11,8 @@ This module owns target-neutral package rooting, common asset copying, hook payl
 ## Functional Responsibilities
 
 - Render ordered separate package roots under stable package identities.
-- Provide narrow codec callbacks for target-owned package, agent, hook, and catalog manifests.
-- Copy skills, resources, agent inputs, hook payloads, origins, and executable intent deterministically.
+- Provide narrow codec configuration and callbacks for target-owned package, command, agent, hook, and catalog output.
+- Copy skills, commands, resources, agent inputs, hook payloads, origins, and executable intent deterministically.
 - Detect duplicate package, asset, hook, and output paths with all source origins.
 
 ## Subdomain Classification
@@ -35,11 +35,11 @@ HookInput = immutable { descriptor, payloadRoot, payloadFiles }
 HookRenderInput = immutable { packageID, hooks ordered by order/identity/source }
 HookManifest = target-owned { path, bytes }
 CatalogManifest = target-owned { path, bytes }
-PackageCodec = target-owned pure callbacks for package manifest, optional agent, hook manifest, and catalog serialization
+PackageCodec = target-owned paths and pure callbacks for package manifest, optional command/agent output, hook manifest, and catalog serialization
 render-with-codec(TargetRenderInput, PackageCodec) -> TargetPlan + [Diagnostic]
 ```
 
-The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. When distribution metadata is present, the shared marketplace builder returns ordered common entries and the codec returns one target-owned catalog path and byte sequence. Catalog paths pass through the same containment and collision gate as all generated files. The codec owns native schemas, manifest paths and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables. Agent serialization and its output root are configured together only for package contracts that define an agent component.
+A configured command root emits deterministic `<root>/<command-name>.md` files through the common collision gate. Command support files are rejected until a target codec owns a verified payload layout. The hook callback receives detached descriptor and payload views. Shared code places payload bytes under the codec-selected contained payload root, copies bytes/mode/origin into the plan, and detects collisions before accepting the callback's result. When distribution metadata is present, the shared marketplace builder returns ordered common entries and the codec returns one target-owned catalog path and byte sequence. Catalog paths pass through the same containment and collision gate as all generated files. The codec owns native schemas, manifest paths and bytes, event names, matcher representation, decisions, timeout units, shell/exec representation, and root variables. Agent serialization and its output root are configured together only for package contracts that define an agent component.
 
 ## Integrations
 
@@ -71,7 +71,7 @@ The hook callback receives detached descriptor and payload views. Shared code pl
 
 ## Test Specification
 
-- Mixed packages preserve payload bytes, origins, executable intent, and stable roots.
+- Mixed packages preserve command Markdown, payload bytes, origins, executable intent, and stable roots.
 - Duplicate packages, assets, hooks, payloads, catalogs, and output paths fail with all origins.
 - Reordered input produces the same sorted plan.
 - Shared code is checked for vendor-specific strings.

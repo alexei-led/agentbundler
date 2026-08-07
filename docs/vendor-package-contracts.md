@@ -8,7 +8,7 @@ does not install, publish, authenticate, or modify vendor state.
 | Target | Package root | Catalog | Native validator |
 | --- | --- | --- | --- |
 | Antigravity | `plugin.json`, `skills/`, optional `agents/` and native resources | none | `agy plugin validate <root>` |
-| Claude | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` | `claude plugin validate --strict <root>` |
+| Claude | `.claude-plugin/plugin.json`, `skills/`, `commands/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` | `claude plugin validate --strict <root>` |
 | Codex | `.codex-plugin/plugin.json`, `skills/`, `hooks/` | `.agents/plugins/marketplace.json` | none |
 | Pi | `package.json`, `pi`, `skills/`, `hooks/` | none | none |
 | Copilot | `plugin.json`, `skills/`, `agents/`, `hooks.json` | `.github/plugin/marketplace.json` | none |
@@ -21,7 +21,9 @@ does not install, publish, authenticate, or modify vendor state.
   opt-in and never enters target archives.
 - Codex project agents are `.codex/agents/*.toml`; marketplace installation does
   not install them. Root compatibility may copy canonical profiles there.
-- Claude Code 2.1.19 auto-loads `hooks/hooks.json` from generated plugin roots.
+- Claude Code discovers user-invoked command Markdown at `commands/<name>.md`
+  in generated plugin roots and `.claude/commands/<name>.md` in project output.
+- Claude Code 2.1.210 auto-loads `hooks/hooks.json` from generated plugin roots.
   Claude manifests omit `hooks` for that standard path to avoid duplicate loading.
 - Grok reads Claude marketplaces. Claude and Grok root compatibility cannot be
   enabled together.
@@ -32,6 +34,8 @@ does not install, publish, authenticate, or modify vendor state.
 - Pi `pi.extensions` entries come from explicit author `piExtensions` resources
   plus the generated Agent Bundler hook adapter. Explicit dependencies are
   preserved; implicit dependencies are not created.
+- Portable commands are emitted only for Claude's verified Markdown layouts.
+  Other targets fail `asset.command` before output.
 - Portable hooks are translated only where the target preserves the requested
   event and decision semantics. Unsupported cells fail; advisory losses need an
   acknowledgment.

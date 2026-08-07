@@ -34,6 +34,65 @@ func TestRenderProducesDeterministicNativeSkillTree(t *testing.T) {
 	}
 }
 
+func TestRenderWithCommandsProducesDeterministicCommandTree(t *testing.T) {
+	line := 4
+	location := model.SourceLocation{Path: "source/commands/resume-from.md", Line: &line}
+	command := model.NormalizedAsset{
+		Identity: "command/resume-from", Kind: model.AssetKindCommand,
+		Content:        model.AssetContent{Frontmatter: map[string]any{"description": "Resume from a saved handoff."}, Body: "Resume the session.\n", Files: map[model.RelativePath]model.FileContent{}},
+		Command:        &model.CommandDescriptor{Identity: "command/resume-from", Location: location, Name: "resume-from", Description: "Resume from a saved handoff."},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.command", Location: location}},
+	}
+	skill := model.NormalizedAsset{Identity: "skill/guide", Kind: model.AssetKindSkill, Content: model.AssetContent{Body: "# Guide\n", Files: map[model.RelativePath]model.FileContent{}}}
+	pkg := model.NormalizedPackage{Identity: "demo", Target: model.TargetClaude, Assets: []model.NormalizedAsset{skill, command}}
+
+	first, diagnostics := RenderWithCommands(model.TargetClaude, ".claude/skills", ".claude/commands", []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("RenderWithCommands() diagnostics = %#v", diagnostics)
+	}
+	if got, want := []model.RelativePath{first.Files[0].Path, first.Files[1].Path}, []model.RelativePath{".claude/commands/resume-from.md", ".claude/skills/guide/SKILL.md"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("paths = %#v, want %#v", got, want)
+	}
+	if got, want := string(first.Files[0].Bytes), "---\n{\"description\":\"Resume from a saved handoff.\"}\n---\nResume the session.\n"; got != want {
+		t.Fatalf("command = %q, want %q", got, want)
+	}
+	if !reflect.DeepEqual(first.Files[0].Origin, []model.SourceLocation{location}) {
+		t.Fatalf("command origin = %#v, want %#v", first.Files[0].Origin, location)
+	}
+	*first.Files[0].Origin[0].Line = 99
+	if line != 4 {
+		t.Fatal("planned command origin aliases normalized input")
+	}
+
+	pkg.Assets[0], pkg.Assets[1] = pkg.Assets[1], pkg.Assets[0]
+	second, diagnostics := RenderWithCommands(model.TargetClaude, ".claude/skills", ".claude/commands", []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 || !reflect.DeepEqual(first.Files[0].Bytes, second.Files[0].Bytes) || !reflect.DeepEqual([]model.RelativePath{first.Files[0].Path, first.Files[1].Path}, []model.RelativePath{second.Files[0].Path, second.Files[1].Path}) {
+		t.Fatalf("reordered command render = (%#v, %#v)", second, diagnostics)
+	}
+}
+
+func TestRenderWithCommandsRejectsInvalidRootAndSupportFiles(t *testing.T) {
+	location := model.SourceLocation{Path: "source/commands/resume-from.md"}
+	asset := model.NormalizedAsset{
+		Identity: "command/resume-from", Kind: model.AssetKindCommand,
+		Content:        model.AssetContent{Frontmatter: map[string]any{"description": "Resume."}, Body: "Resume.\n", Files: map[model.RelativePath]model.FileContent{}},
+		Command:        &model.CommandDescriptor{Identity: "command/resume-from", Location: location, Name: "resume-from", Description: "Resume."},
+		CapabilityUses: []model.CapabilityUse{{Key: "asset.command", Location: location}},
+	}
+	pkg := model.NormalizedPackage{Identity: "demo", Target: model.TargetClaude, Assets: []model.NormalizedAsset{asset}}
+
+	plan, diagnostics := RenderWithCommands(model.TargetClaude, ".claude/skills", "", []model.NormalizedPackage{pkg})
+	if len(plan.Files) != 0 || len(diagnostics) != 1 || diagnostics[0].Code != "invalid-command-root" {
+		t.Fatalf("empty command root = (%#v, %#v)", plan, diagnostics)
+	}
+
+	pkg.Assets[0].Content.Files["script.sh"] = model.FileContent{Bytes: []byte("exit 0\n")}
+	plan, diagnostics = RenderWithCommands(model.TargetClaude, ".claude/skills", ".claude/commands", []model.NormalizedPackage{pkg})
+	if len(plan.Files) != 0 || len(diagnostics) != 1 || diagnostics[0].Code != "unsupported-command-support-files" {
+		t.Fatalf("command support files = (%#v, %#v)", plan, diagnostics)
+	}
+}
+
 func TestRenderProducesSiblingResourceTree(t *testing.T) {
 	pkg := model.NormalizedPackage{
 		Identity: "demo",

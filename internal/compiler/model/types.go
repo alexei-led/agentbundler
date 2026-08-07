@@ -42,6 +42,7 @@ const (
 	AssetKindSkill          AssetKind = "skill"
 	AssetKindAgent          AssetKind = "agent"
 	AssetKindHook           AssetKind = "hook"
+	AssetKindCommand        AssetKind = "command"
 	AssetKindResource       AssetKind = "resource"
 	AssetKindNativeResource AssetKind = "native-resource"
 )
@@ -217,6 +218,14 @@ type HookDescriptor struct {
 	Order               int               `json:"order"`
 }
 
+// CommandDescriptor describes one portable user-invoked command.
+type CommandDescriptor struct {
+	Identity    AssetID        `json:"identity"`
+	Location    SourceLocation `json:"location"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+}
+
 // TargetOverlay describes target-specific asset changes.
 type TargetOverlay struct {
 	Target           TargetID         `json:"target"`
@@ -346,6 +355,7 @@ type SourceAsset struct {
 	Targets        []TargetID             `json:"targets,omitempty"`
 	Base           AssetContent           `json:"base"`
 	Hook           *HookDescriptor        `json:"hook,omitempty"`
+	Command        *CommandDescriptor     `json:"command,omitempty"`
 	Native         *NativeResourceOptions `json:"native,omitempty"`
 	CapabilityUses []CapabilityUse        `json:"capabilityUses"`
 	Overlays       []TargetOverlay        `json:"overlays"`
@@ -371,6 +381,7 @@ type NormalizedAsset struct {
 	Kind           AssetKind              `json:"kind"`
 	Content        AssetContent           `json:"content"`
 	Hook           *HookDescriptor        `json:"hook,omitempty"`
+	Command        *CommandDescriptor     `json:"command,omitempty"`
 	Native         *NativeResourceOptions `json:"native,omitempty"`
 	CapabilityUses []CapabilityUse        `json:"capabilityUses"`
 }

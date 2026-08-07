@@ -19,6 +19,7 @@ const (
 var capabilityRules = []model.CapabilityRule{
 	{Key: "asset.agent", State: model.CapabilityStateNative},
 	{Key: "asset.hook", State: model.CapabilityStateNative},
+	{Key: "asset.command", State: model.CapabilityStateNative},
 	{Key: "asset.resource", State: model.CapabilityStateNative},
 	{Key: "asset.native-resource", State: model.CapabilityStateUnsupported},
 	{Key: "asset.skill", State: model.CapabilityStateNative},
@@ -47,6 +48,7 @@ func PackageCodec() packageoutput.Codec {
 		Target:          Target,
 		ManifestPath:    ".claude-plugin/plugin.json",
 		AgentRoot:       "agents",
+		CommandRoot:     "commands",
 		HookPayloadRoot: "hooks",
 		Capabilities:    append([]model.CapabilityRule(nil), capabilityRules...),
 		Manifest:        manifest,

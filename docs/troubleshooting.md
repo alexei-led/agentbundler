@@ -31,7 +31,7 @@ write files.
   preserve requested semantics. Remove the target, use an explicit native
   resource, or provide an acknowledged advisory mapping.
 - Antigravity agents require exact non-empty string `name` and `description`.
-  Portable hooks are unsupported there.
+  Portable commands and hooks are unsupported there.
 - A Markdown section patch must name one exact ATX heading path. Missing,
   duplicate, or overlapping paths fail.
 - Tree-backed overlay files override JSON `files` entries at the same path.

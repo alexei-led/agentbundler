@@ -35,7 +35,7 @@ canonical source + manifest
           ▼
    import → customize → render
           │
-          ├── Claude Code   .claude-plugin/ + hooks/ + skills/ + agents/
+          ├── Claude Code   .claude-plugin/ + hooks/ + skills/ + commands/ + agents/
           ├── Codex         .codex-plugin/ + hooks/ + skills/
           ├── Pi            package.json + hook runtime + declared TS extensions
           ├── Copilot CLI   plugin.json + hooks.json + skills/ + agents/
@@ -46,20 +46,24 @@ canonical source + manifest
 
 ## Current scope
 
-Package profiles produce **skills, agents, portable resources, command hooks,
-payload files, and deterministic catalogs** in each vendor's native layout.
-Claude, Codex, Copilot CLI, Cursor, Grok, and Antigravity CLI use separate
-plugin roots. Antigravity requires package profile and separate mode, emits no
-catalog, supports only agents with `name` and `description`, and rejects
-portable hooks. Explicit Antigravity-native rules, MCP configuration, hooks, and
+Package profiles produce **skills, agents, portable resources, lifecycle
+command hooks, payload files, and deterministic catalogs** in each vendor's
+native layout. Portable user-invoked commands are a separate asset kind; Claude
+emits `commands/<name>.md`, while unverified targets fail explicitly instead of
+dropping the command. Claude, Codex, Copilot CLI, Cursor, Grok, and Antigravity
+CLI use separate plugin roots. Antigravity requires package profile and
+separate mode, emits no catalog, supports only agents with `name` and
+`description`, and rejects portable commands and hooks. Explicit Antigravity-native rules, MCP configuration, hooks, and
 scripts can be copied as opaque native resources. Pi can merge several logical
 packages into one explicit aggregate package with its typed hook runtime and
 explicitly declared native TypeScript extensions. Project profiles remain
 available for their narrower target layouts.
 
-Hook portability is semantic, not name-based. An unsupported event, matcher,
-decision, timeout, async mode, or failure policy fails with an exact diagnostic;
-Agent Bundler never silently weakens a security hook or drops an asset.
+Skills provide reusable instructions, hooks react to lifecycle events, commands
+provide explicit user-invoked entry points, and native resources preserve opaque
+target-owned behavior. Hook and command portability is semantic, not name-based.
+Unsupported behavior fails with an exact diagnostic; Agent Bundler never
+silently weakens a security hook or drops an asset.
 
 **Agent Bundler** is a compiler, not an agent runtime, installer, marketplace, or
 publisher. It creates target-ready files; your project or release workflow

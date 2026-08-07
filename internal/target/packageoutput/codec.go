@@ -13,6 +13,7 @@ type Codec struct {
 	Target          model.TargetID
 	ManifestPath    string
 	AgentRoot       string
+	CommandRoot     string
 	HookPayloadRoot string
 	Capabilities    []model.CapabilityRule
 	Manifest        func(model.NormalizedPackage) ([]byte, error)

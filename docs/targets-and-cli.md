@@ -10,7 +10,7 @@ deterministic and offline. Installation and publication are external actions.
 | Target | Package root | Catalog |
 | --- | --- | --- |
 | Antigravity | `plugin.json`, `skills/`, supported `agents/`, explicit native resources | none |
-| Claude | `.claude-plugin/plugin.json`, `skills/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` |
+| Claude | `.claude-plugin/plugin.json`, `skills/`, `commands/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` |
 | Codex | `.codex-plugin/plugin.json`, `skills/`, `hooks/` | `.agents/plugins/marketplace.json` |
 | Pi | `package.json`, `skills/`, optional `agents/`, hooks, generated adapter | none |
 | Copilot | `plugin.json`, `skills/`, `agents/`, `hooks.json` | `.github/plugin/marketplace.json` |
@@ -27,20 +27,21 @@ or register `pi-subagents`. Install that extension separately when needed.
 
 ## Capability boundaries
 
-Portable hooks are semantic, not name-based. Unsupported behavior fails;
-advisory behavior needs an acknowledgment.
+Portable hooks and user-invoked commands are separate capabilities. Unsupported
+behavior fails; advisory behavior needs an acknowledgment.
 
-| Capability | Claude | Codex | Pi | Copilot | Cursor | Grok |
-| --- | --- | --- | --- | --- | --- | --- |
-| Command `exec` | native | native | native | advisory | advisory | native |
-| Explicit shell | native | native | native | native | native | native |
-| Async | passive | unsupported | passive | notification only | unsupported | unsupported |
-| Block | native mapping | native mapping | native | native mapping | native mapping | native mapping |
-| Rewrite input | native mapping | unsupported | native | native mapping | native mapping | unsupported |
-| Package agents | native | project agents only | metadata; install separately | native | native | native |
+| Capability | Claude | Codex | Pi | Copilot | Cursor | Grok | Antigravity |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| User-invoked command | native | unsupported | unsupported | unsupported | unsupported | unsupported | unsupported |
+| Hook command `exec` | native | native | native | advisory | advisory | native | unsupported |
+| Explicit shell | native | native | native | native | native | native | unsupported |
+| Async | passive | unsupported | passive | notification only | unsupported | unsupported | unsupported |
+| Block | native mapping | native mapping | native | native mapping | native mapping | native mapping | unsupported |
+| Rewrite input | native mapping | unsupported | native | native mapping | native mapping | unsupported | unsupported |
+| Package agents | native | project agents only | metadata; install separately | native | native | native | narrow subset |
 
 Antigravity supports portable skills, resources, and agents with exact
-non-empty `name` and `description` frontmatter. Portable hooks are unsupported.
+non-empty `name` and `description` frontmatter. Portable commands and hooks are unsupported.
 Use an explicit Antigravity native resource for vendor hooks, rules, MCP config,
 or scripts; those files are trusted and validator checks are not a sandbox.
 
