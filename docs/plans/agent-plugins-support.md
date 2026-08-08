@@ -158,14 +158,14 @@ Manual checks:
   absolute workspace details.
 - Confirm no test intentionally writes or deletes outside its temporary root.
 
-- [ ] Capture the baseline and add focused regression cases for every known
+- [x] Capture the baseline and add focused regression cases for every known
       overlap and archive-name escape.
-- [ ] Implement `WorkspaceLayoutGuard` and invoke it before `source.Import`.
-- [ ] Revalidate the guard at write, compare, and archive boundaries.
-- [ ] Validate archive/distribution basenames and destination containment.
-- [ ] Wire the package CLI archive caller through the guard and add pre-mutation
+- [x] Implement `WorkspaceLayoutGuard` and invoke it before `source.Import`.
+- [x] Revalidate the guard at write, compare, and archive boundaries.
+- [x] Validate archive/distribution basenames and destination containment.
+- [x] Wire the package CLI archive caller through the guard and add pre-mutation
       command tests.
-- [ ] Update module contracts and run Task 1 verification commands.
+- [x] Update module contracts and run Task 1 verification commands.
 
 ### Task 2: Add the pinned wire module and canonical package representation
 
