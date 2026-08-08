@@ -39,7 +39,7 @@ Exit status is zero on success, one on source/capability/render/write/archive fa
   - **Direction**: displays model diagnostics without defining look-alike model types.
 - **Counterpart**: `internal/artifact`
   - **Direction**: invokes the artifact facade for package archives; it does not import archive implementation leaves.
-  - **Shared knowledge**: validated `BuildPlan`, source manifest metadata, archive destination, and diagnostics.
+  - **Shared knowledge**: validated `BuildPlan`, source manifest metadata, archive destination, `WorkspaceLayoutGuard`, and diagnostics.
 
 ## Constraints and Invariants
 
@@ -48,6 +48,7 @@ Exit status is zero on success, one on source/capability/render/write/archive fa
 - `check` never writes. `check --native` can run only checks already declared in the compiled plan after no drift.
 - No command publishes, installs, submits, authenticates, fetches packages, or changes vendor configuration.
 - Human output goes to stderr; JSON mode emits one versioned stdout object.
+- The `package` command constructs a `WorkspaceLayoutGuard` before calling `artifact.Archive`; invalid source/output layout is rejected before archive mutation (defense-in-depth on top of the compile-time guard).
 
 ## Test Specification
 

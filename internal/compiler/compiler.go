@@ -65,6 +65,19 @@ func Compile(request CompileRequest) CompilationResult {
 		return result
 	}
 
+	// Gate 0: validate workspace layout before source ingestion. Both source and
+	// output roots must be disjoint (not equal, not one inside the other, not
+	// symlink aliases of each other). This check runs before source.Import so
+	// that a misconfigured or adversarially crafted manifest cannot cause source
+	// traversal to read or overwrite output files.
+	sourceRoot := filepath.Join(request.WorkspaceRoot, filepath.FromSlash(string(request.Manifest.Root)))
+	outputRoot := filepath.Join(request.WorkspaceRoot, filepath.FromSlash(string(request.Manifest.Output)))
+	layoutGuard, layoutErr := artifact.NewWorkspaceLayoutGuard(request.WorkspaceRoot, sourceRoot, outputRoot)
+	if layoutErr != nil {
+		result.Diagnostics = append(result.Diagnostics, errorDiagnostic("invalid-workspace-layout", layoutErr.Error()))
+		return result
+	}
+
 	selectedTargets, diagnostics := selectTargets(request.Manifest, request.Targets)
 	result.Diagnostics = append(result.Diagnostics, diagnostics...)
 	if hasErrors(result.Diagnostics) {
@@ -128,20 +141,19 @@ func Compile(request CompileRequest) CompilationResult {
 	if hasErrors(compatibilityDiagnostics) {
 		return result
 	}
-	outputRoot := filepath.Join(request.WorkspaceRoot, filepath.FromSlash(string(request.Manifest.Output)))
 	if err := noSymlinkComponents(request.WorkspaceRoot, outputRoot); err != nil && !os.IsNotExist(err) {
 		result.Diagnostics = append(result.Diagnostics, errorDiagnostic("invalid-output-root", err.Error()))
 		return result
 	}
 	if request.Mode == BuildModeBuild {
-		result.Diagnostics = append(result.Diagnostics, artifact.Write(result.Plan, outputRoot)...)
+		result.Diagnostics = append(result.Diagnostics, artifact.Write(layoutGuard, result.Plan, outputRoot)...)
 		if hasErrors(result.Diagnostics) {
 			return result
 		}
 		result.Diagnostics = append(result.Diagnostics, compatibility.Write(compatibilityPlan, request.WorkspaceRoot)...)
 		return result
 	}
-	driftDiagnostics, outputDrift := artifact.Compare(result.Plan, outputRoot)
+	driftDiagnostics, outputDrift := artifact.Compare(layoutGuard, result.Plan, outputRoot)
 	result.Diagnostics = append(result.Diagnostics, driftDiagnostics...)
 	compatibilityDriftDiagnostics, compatibilityDrift := compatibility.Compare(compatibilityPlan, request.WorkspaceRoot)
 	result.Diagnostics = append(result.Diagnostics, compatibilityDriftDiagnostics...)

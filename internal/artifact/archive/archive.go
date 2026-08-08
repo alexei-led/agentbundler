@@ -23,12 +23,15 @@ func WriteTargetRoots(workspace string, manifest model.SourceManifest, plan mode
 	if output == "" {
 		return nil, fmt.Errorf("archive output directory is required")
 	}
-	if err := os.MkdirAll(output, 0o755); err != nil {
-		return nil, fmt.Errorf("create archive output: %w", err)
-	}
 	name, ok := manifest.Distribution["name"].(string)
 	if !ok || name == "" {
 		return nil, fmt.Errorf("distribution.name is required for release archives")
+	}
+	if err := validateArchiveName(name); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(output, 0o755); err != nil {
+		return nil, fmt.Errorf("create archive output: %w", err)
 	}
 	paths := make([]string, 0, len(plan.Targets))
 	for _, target := range plan.Targets {
@@ -36,7 +39,15 @@ func WriteTargetRoots(workspace string, manifest model.SourceManifest, plan mode
 		if target.Target == model.TargetPi {
 			extension = ".tgz"
 		}
-		archivePath := filepath.Join(output, name+"-"+string(target.Target)+extension)
+		basename := name + "-" + string(target.Target) + extension
+		archivePath := filepath.Join(output, basename)
+		// Verify the computed path stays within the requested output directory.
+		// filepath.Join normalises separators; a malicious name like "../x" could
+		// escape. Rel detects that by returning a path starting with "..".
+		rel, err := filepath.Rel(output, archivePath)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return nil, fmt.Errorf("archive name %q escapes the output directory", basename)
+		}
 		root := filepath.Join(workspace, filepath.FromSlash(string(manifest.Output)), string(target.Target))
 		if err := writeTarGzip(archivePath, root); err != nil {
 			return nil, fmt.Errorf("archive target %q: %w", target.Target, err)
@@ -45,6 +56,33 @@ func WriteTargetRoots(workspace string, manifest model.SourceManifest, plan mode
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+// validateArchiveName checks that name is a safe filename component for use in
+// archive paths. It must be non-empty, contain no path separators or null
+// bytes, and not use platform-reserved device names.
+func validateArchiveName(name string) error {
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("distribution name %q contains a path separator", name)
+	}
+	if strings.ContainsRune(name, '\x00') {
+		return fmt.Errorf("distribution name %q contains a null byte", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("distribution name %q is a reserved path component", name)
+	}
+	// Reject Windows reserved device names for cross-platform portability.
+	upper := strings.ToUpper(strings.SplitN(name, ".", 2)[0])
+	switch upper {
+	case "CON", "PRN", "AUX", "NUL", "CLOCK$":
+		return fmt.Errorf("distribution name %q uses a reserved device name", name)
+	}
+	if len(upper) == 4 && (strings.HasPrefix(upper, "COM") || strings.HasPrefix(upper, "LPT")) {
+		if upper[3] >= '1' && upper[3] <= '9' {
+			return fmt.Errorf("distribution name %q uses a reserved device name", name)
+		}
+	}
+	return nil
 }
 
 func writeTarGzip(destination, root string) (err error) {

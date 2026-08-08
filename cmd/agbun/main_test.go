@@ -426,6 +426,58 @@ func writeCLIFile(t *testing.T, root, relative, contents string) {
 	}
 }
 
+func TestRunPackageRejectsDistributionNameWithPathSeparator(t *testing.T) {
+	// A distribution name containing "/" would escape the archive output dir.
+	// The archive layer must catch this before writing any file.
+	root := t.TempDir()
+	// Use a JSON-encoded name with a forward slash embedded in the value.
+	manifest := `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","distribution":{"name":"../evil"},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`
+	writeCLIFile(t, root, "agentbundle.json", manifest)
+	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+
+	// Build first so output is current.
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+
+	// Package must fail before creating any archive.
+	status := run([]string{"package", "--out", "release"}, root, &stdout, &stderr, compiler.Compile)
+	if status == 0 {
+		t.Fatal("package with path-separator distribution name should fail")
+	}
+	// No archive must have escaped the output directory.
+	if _, err := os.Stat(filepath.Join(root, "evil-claude.tar.gz")); !os.IsNotExist(err) {
+		t.Fatal("archive escaped the output directory")
+	}
+}
+
+func TestRunPackageGuardConstructedBeforeArchiveMutation(t *testing.T) {
+	// When source and output roots overlap the guard must fail without creating
+	// any archive file. We use a manifest where root and output are the same dir.
+	root := t.TempDir()
+	// output == source (both "source"): guard must fire, no archive written.
+	manifest := `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"source","distribution":{"name":"demo"},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`
+	writeCLIFile(t, root, "agentbundle.json", manifest)
+	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+
+	var stdout, stderr bytes.Buffer
+	// build is expected to fail (invalid-workspace-layout) — no output produced.
+	status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile)
+	if status == 0 {
+		t.Fatal("build with source=output should fail")
+	}
+	if !strings.Contains(stderr.String()+stdout.String(), "invalid-workspace-layout") {
+		t.Fatalf("expected invalid-workspace-layout diagnostic; stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	// Release dir must not have been created.
+	if _, err := os.Stat(filepath.Join(root, "release")); !os.IsNotExist(err) {
+		t.Fatal("archive output directory was created despite invalid layout")
+	}
+}
+
 func TestReleaseBuildEmbedsTestedRuntimeAndPrintsInjectedVersion(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "agbun")
 	const version = "v9.8.7"

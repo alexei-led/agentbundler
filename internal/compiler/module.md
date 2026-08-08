@@ -24,7 +24,8 @@ This module coordinates one deterministic compilation without owning source topo
 
 ## Encapsulated Knowledge
 
-- The only legal sequence: import, compose, render, provenance, write/compare, optional verify.
+- The only legal sequence: **Gate 0 layout guard**, import, compose, render, provenance, write/compare, optional verify.
+- Gate 0 constructs `artifact.WorkspaceLayoutGuard` from manifest source and output roots before any filesystem read or write. Equal, containing, or symlink-aliased source/output pairs are rejected with `invalid-workspace-layout` before import runs.
 - Selector defaulting and target-wide render-request construction.
 - The difference between pure build-plan generation and artifact effects.
 

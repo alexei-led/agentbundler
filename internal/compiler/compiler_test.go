@@ -167,6 +167,46 @@ func TestCompilePortableCommandForClaudeAndRejectsPi(t *testing.T) {
 	})
 }
 
+func TestCompileRejectsSourceOutputOverlapBeforeImport(t *testing.T) {
+	// Both Root and Output point at the same directory. The layout guard must
+	// fail before source.Import runs (no import error, no output written).
+	workspace := t.TempDir()
+	manifest := skillsManifest(model.TargetClaude)
+	manifest.Output = "source" // same as Root
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(workspace),
+		Manifest:      manifest,
+		Mode:          BuildModeCheck,
+	})
+	if len(result.Diagnostics) != 1 || result.Diagnostics[0].Code != "invalid-workspace-layout" {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+	// No output directory should exist: import and write were both blocked.
+	if _, err := os.Stat(filepath.Join(workspace, "source", "claude")); !os.IsNotExist(err) {
+		t.Fatal("importer or writer ran despite layout conflict")
+	}
+}
+
+func TestCompileRejectsOutputInsideSourceBeforeImport(t *testing.T) {
+	// Output is a subdirectory of source. A write would corrupt source files.
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/skills/demo/SKILL.md", "# Demo\n")
+	manifest := skillsManifest(model.TargetClaude)
+	manifest.Output = "source/out" // nested inside source
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(workspace),
+		Manifest:      manifest,
+		Mode:          BuildModeBuild,
+	})
+	if len(result.Diagnostics) == 0 || result.Diagnostics[0].Code != "invalid-workspace-layout" {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+	// Generated output must not appear inside the source tree.
+	if _, err := os.Stat(filepath.Join(workspace, "source", "out")); !os.IsNotExist(err) {
+		t.Fatal("output was written inside source tree")
+	}
+}
+
 func TestCompileRejectsSymlinkedOutputAncestor(t *testing.T) {
 	workspace := t.TempDir()
 	outside := t.TempDir()

@@ -18,6 +18,7 @@ import (
 
 const (
 	diagnosticInvalidPlan      = "invalid-model"
+	diagnosticLayoutGuard      = "invalid-workspace-layout"
 	diagnosticArchive          = "archive-write-failed"
 	diagnosticExecutable       = "ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED"
 	diagnosticProvenance       = "PROVENANCE_INVALID"
@@ -56,8 +57,13 @@ type ProvenanceInput struct {
 	AdapterRevisions []AdapterRevision
 }
 
-// Write validates plan and atomically replaces outputRoot with its generated output.
-func Write(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
+// Write validates the layout guard and plan, then atomically replaces outputRoot
+// with its generated output. The guard must have been constructed with
+// NewWorkspaceLayoutGuard before source ingestion.
+func Write(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) []model.Diagnostic {
+	if err := guard.Revalidate(); err != nil {
+		return []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
+	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return diagnostics
 	}
@@ -67,8 +73,13 @@ func Write(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
 	return write.ReplaceOutput(plan, outputRoot)
 }
 
-// Archive writes deterministic archives for the target roots in a validated plan.
-func Archive(workspace string, manifest model.SourceManifest, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
+// Archive validates the layout guard and plan, then writes deterministic archives
+// for the target roots. The guard must have been constructed with
+// NewWorkspaceLayoutGuard before source ingestion.
+func Archive(guard WorkspaceLayoutGuard, workspace string, manifest model.SourceManifest, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
+	if err := guard.Revalidate(); err != nil {
+		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
+	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return nil, diagnostics
 	}
@@ -79,9 +90,14 @@ func Archive(workspace string, manifest model.SourceManifest, plan model.BuildPl
 	return paths, nil
 }
 
-// Compare validates plan and reports exact generated-output drift below outputRoot.
-// The returned bool distinguishes observed drift from an output-observation failure.
-func Compare(plan model.BuildPlan, outputRoot string) ([]model.Diagnostic, bool) {
+// Compare validates the layout guard and plan, then reports exact generated-output
+// drift below outputRoot. The returned bool distinguishes observed drift from an
+// output-observation failure. The guard must have been constructed with
+// NewWorkspaceLayoutGuard before source ingestion.
+func Compare(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) ([]model.Diagnostic, bool) {
+	if err := guard.Revalidate(); err != nil {
+		return []model.Diagnostic{layoutGuardDiagnostic(err.Error())}, false
+	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return diagnostics, false
 	}
@@ -240,6 +256,14 @@ func hasExecutableFile(plan model.BuildPlan) bool {
 func invalidPlanDiagnostic(message string) model.Diagnostic {
 	return model.Diagnostic{
 		Code:     diagnosticInvalidPlan,
+		Severity: model.SeverityError,
+		Message:  message,
+	}
+}
+
+func layoutGuardDiagnostic(message string) model.Diagnostic {
+	return model.Diagnostic{
+		Code:     diagnosticLayoutGuard,
 		Severity: model.SeverityError,
 		Message:  message,
 	}

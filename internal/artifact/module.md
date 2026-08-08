@@ -31,12 +31,21 @@ This module is the only owner of generated-output effects and observations. It v
 <!-- contract: BuildPlan, PlannedFile, NativeCheck, Diagnostic — restated from internal/compiler/model/module.md -->
 
 ```text
-write(BuildPlan, output-root) -> [Diagnostic]
-compare(BuildPlan, output-root) -> [Diagnostic] + Boolean
+NewWorkspaceLayoutGuard(workspace-root, source-root, output-root) -> WorkspaceLayoutGuard + error
+WorkspaceLayoutGuard.Revalidate() -> error
+write(WorkspaceLayoutGuard, BuildPlan, output-root) -> [Diagnostic]
+compare(WorkspaceLayoutGuard, BuildPlan, output-root) -> [Diagnostic] + Boolean
 provenance(BuildPlan, ProvenanceInput) -> BuildPlan + [Diagnostic]
-archive(workspace-root, SourceManifest, BuildPlan, archive-output) -> [ArchivePath] + [Diagnostic]
+archive(WorkspaceLayoutGuard, workspace-root, SourceManifest, BuildPlan, archive-output) -> [ArchivePath] + [Diagnostic]
 verify([NativeCheck], output-root) -> NativeVerificationResult
 ```
+
+`WorkspaceLayoutGuard` is an opaque value that proves source and output roots are
+disjoint (not equal, not one inside the other, not symlink/junction aliases). Construct
+with `NewWorkspaceLayoutGuard` before source ingestion. Pass to every mutating operation
+(`write`, `archive`) and to `compare`. The zero value is rejected by all three operations
+with diagnostic code `invalid-workspace-layout`. `Revalidate` re-checks physical
+disjointness and should be called at TOCTOU-sensitive write/compare/archive boundaries.
 
 `PlannedFile.executable` is semantic data, not an inferred extension or shebang property. On POSIX it means at least one execute bit; false means none. On Windows any true value is rejected before a child artifact operation with `ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED`. Interpreter-backed scripts remain buildable on Windows when their explicit intent is false.
 
@@ -57,6 +66,8 @@ The parent validates one complete `BuildPlan` before any child operation. Proven
 
 ## Constraints and Invariants
 
+- `write`, `compare`, and `archive` require a valid `WorkspaceLayoutGuard` and reject the zero value with `invalid-workspace-layout`.
+- The guard is constructed before source ingestion (Gate 0) and re-verified at each mutating operation boundary.
 - Paths are relative, contained, symlink-free, collision-free after case folding, and valid for supported platforms.
 - Native package roots contain only target-native files; `.agentbundler/build.json` is compiler-owned outside them. Archives contain only current target-native roots and exclude compiler and compatibility files.
 - Provenance records output executable intent and excludes time, hostname, absolute paths, Git state, installed tools, environment, network results, native checks, and its own hash.

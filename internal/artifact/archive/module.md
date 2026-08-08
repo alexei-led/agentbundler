@@ -37,6 +37,8 @@ The input plan is already validated and current. Each archive contains one targe
 
 ## Constraints and Invariants
 
+- `distribution.name` is validated as a safe filename basename before the output directory is created: no path separators, no null bytes, not `.` or `..`, not a Windows-reserved device name. Validation runs before `os.MkdirAll` to prevent partial directory creation for invalid inputs.
+- After computing each archive path, containment within the requested output directory is verified via `filepath.Rel`; a name like `../evil` that escapes the output directory is rejected.
 - Archive bytes do not depend on clock, hostname, absolute paths, locale, or filesystem traversal order.
 - Archive paths are relative to the target root and sorted.
 - Existing archives are not replaced when their bytes match the newly generated archive.

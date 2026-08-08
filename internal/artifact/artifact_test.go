@@ -13,6 +13,21 @@ import (
 
 const testSHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+// validGuard returns a WorkspaceLayoutGuard suitable for tests that exercise
+// plan validation, write, compare, or archive behavior without testing the
+// guard itself.
+func validGuard(t *testing.T) WorkspaceLayoutGuard {
+	t.Helper()
+	ws := t.TempDir()
+	source := filepath.Join(ws, "src")
+	output := filepath.Join(ws, "out")
+	guard, err := NewWorkspaceLayoutGuard(ws, source, output)
+	if err != nil {
+		t.Fatalf("NewWorkspaceLayoutGuard() = %v", err)
+	}
+	return guard
+}
+
 func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 	for _, test := range []struct {
 		name string
@@ -59,9 +74,10 @@ func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			guard := validGuard(t)
 			outputRoot := filepath.Join(t.TempDir(), "output")
-			writeDiagnostics := Write(test.plan, outputRoot)
-			compareDiagnostics, drift := Compare(test.plan, outputRoot)
+			writeDiagnostics := Write(guard, test.plan, outputRoot)
+			compareDiagnostics, drift := Compare(guard, test.plan, outputRoot)
 			if drift {
 				t.Fatal("Compare() reported drift for an invalid plan")
 			}
@@ -81,9 +97,10 @@ func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 }
 
 func TestWritePreservesCurrentOutputIdentity(t *testing.T) {
+	guard := validGuard(t)
 	outputRoot := filepath.Join(t.TempDir(), "output")
 	plan := planWithFile("skill.md")
-	if diagnostics := Write(plan, outputRoot); len(diagnostics) != 0 {
+	if diagnostics := Write(guard, plan, outputRoot); len(diagnostics) != 0 {
 		t.Fatalf("first Write() diagnostics = %#v", diagnostics)
 	}
 	path := filepath.Join(outputRoot, "claude", "skill.md")
@@ -92,7 +109,7 @@ func TestWritePreservesCurrentOutputIdentity(t *testing.T) {
 		t.Fatalf("stat before second Write() = %v", err)
 	}
 
-	if diagnostics := Write(plan, outputRoot); len(diagnostics) != 0 {
+	if diagnostics := Write(guard, plan, outputRoot); len(diagnostics) != 0 {
 		t.Fatalf("second Write() diagnostics = %#v", diagnostics)
 	}
 	after, err := os.Stat(path)
@@ -119,7 +136,7 @@ func TestCompareMapsExactDrift(t *testing.T) {
 	writeArtifactFile(t, outputRoot, "claude/changed.txt", "actual")
 	writeArtifactFile(t, outputRoot, "extra.txt", "extra")
 
-	diagnostics, drift := Compare(plan, outputRoot)
+	diagnostics, drift := Compare(validGuard(t), plan, outputRoot)
 	if !drift {
 		t.Fatal("Compare() drift = false, want true")
 	}
@@ -134,7 +151,7 @@ func TestCompareMapsExactDrift(t *testing.T) {
 }
 
 func TestCompareReportsObservationFailureSeparatelyFromDrift(t *testing.T) {
-	diagnostics, drift := Compare(planWithFile("skill.md"), filepath.Join(t.TempDir(), "missing"))
+	diagnostics, drift := Compare(validGuard(t), planWithFile("skill.md"), filepath.Join(t.TempDir(), "missing"))
 	if drift || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticDriftObservation {
 		t.Fatalf("Compare() = (%#v, %t)", diagnostics, drift)
 	}
@@ -147,8 +164,9 @@ func TestWriteAndCompareRejectExecutableIntentOnWindows(t *testing.T) {
 	plan := model.BuildPlan{CompilerFiles: []model.PlannedFile{{Path: "tool", Bytes: []byte("tool"), Executable: true}}}
 	outputRoot := filepath.Join(t.TempDir(), "output")
 
-	writeDiagnostics := Write(plan, outputRoot)
-	compareDiagnostics, drift := Compare(plan, outputRoot)
+	guard := validGuard(t)
+	writeDiagnostics := Write(guard, plan, outputRoot)
+	compareDiagnostics, drift := Compare(guard, plan, outputRoot)
 	if drift {
 		t.Fatal("Compare() reported drift instead of rejecting the plan")
 	}
@@ -219,15 +237,16 @@ func TestVerifyRejectsProgramPaths(t *testing.T) {
 }
 
 func TestArtifactWorkflowWritesComparesThenVerifies(t *testing.T) {
+	guard := validGuard(t)
 	plan, diagnostics := Provenance(planWithFile("skill.md"), validProvenanceInput())
 	if len(diagnostics) != 0 {
 		t.Fatalf("Provenance() diagnostics = %#v", diagnostics)
 	}
 	outputRoot := filepath.Join(t.TempDir(), "output")
-	if diagnostics := Write(plan, outputRoot); len(diagnostics) != 0 {
+	if diagnostics := Write(guard, plan, outputRoot); len(diagnostics) != 0 {
 		t.Fatalf("Write() diagnostics = %#v", diagnostics)
 	}
-	if diagnostics, drift := Compare(plan, outputRoot); len(diagnostics) != 0 || drift {
+	if diagnostics, drift := Compare(guard, plan, outputRoot); len(diagnostics) != 0 || drift {
 		t.Fatalf("Compare() = (%#v, %t)", diagnostics, drift)
 	}
 
@@ -274,5 +293,33 @@ func writeArtifactFile(t *testing.T, root, relativePath, contents string) {
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWriteRejectsInvalidGuard(t *testing.T) {
+	var guard WorkspaceLayoutGuard
+	outputRoot := filepath.Join(t.TempDir(), "output")
+	diagnostics := Write(guard, planWithFile("skill.md"), outputRoot)
+	if len(diagnostics) != 1 || diagnostics[0].Code != diagnosticLayoutGuard || diagnostics[0].Severity != model.SeverityError {
+		t.Fatalf("Write() with invalid guard = %#v", diagnostics)
+	}
+	if _, err := os.Stat(outputRoot); !os.IsNotExist(err) {
+		t.Fatal("Write() mutated the filesystem despite an invalid guard")
+	}
+}
+
+func TestCompareRejectsInvalidGuard(t *testing.T) {
+	var guard WorkspaceLayoutGuard
+	diagnostics, drift := Compare(guard, planWithFile("skill.md"), t.TempDir())
+	if drift || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticLayoutGuard || diagnostics[0].Severity != model.SeverityError {
+		t.Fatalf("Compare() with invalid guard = (%#v, %v)", diagnostics, drift)
+	}
+}
+
+func TestArchiveRejectsInvalidGuard(t *testing.T) {
+	var guard WorkspaceLayoutGuard
+	paths, diagnostics := Archive(guard, t.TempDir(), model.SourceManifest{}, model.BuildPlan{}, t.TempDir())
+	if paths != nil || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticLayoutGuard || diagnostics[0].Severity != model.SeverityError {
+		t.Fatalf("Archive() with invalid guard = (%v, %#v)", paths, diagnostics)
 	}
 }

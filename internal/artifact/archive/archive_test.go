@@ -68,6 +68,72 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	}
 }
 
+func TestValidateArchiveNameRejectsUnsafeBasenames(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		input  string
+	}{
+		{name: "forward slash", input: "foo/bar"},
+		{name: "backslash", input: `foo\bar`},
+		{name: "traversal", input: "../evil"},
+		{name: "null byte", input: "foo\x00bar"},
+		{name: "dot", input: "."},
+		{name: "double dot", input: ".."},
+		{name: "reserved CON", input: "CON"},
+		{name: "reserved NUL", input: "NUL"},
+		{name: "reserved COM1", input: "COM1"},
+		{name: "reserved LPT9", input: "lpt9"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateArchiveName(test.input); err == nil {
+				t.Fatalf("validateArchiveName(%q) accepted unsafe name", test.input)
+			}
+		})
+	}
+}
+
+func TestValidateArchiveNameAcceptsSafeBasenames(t *testing.T) {
+	for _, name := range []string{
+		"my-project", "demo", "cc-thingz", "v1.2.3", "tools_2024", ".hidden",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateArchiveName(name); err != nil {
+				t.Fatalf("validateArchiveName(%q) = %v", name, err)
+			}
+		})
+	}
+}
+
+func TestWriteTargetRootsRejectsDistributionNameWithSeparator(t *testing.T) {
+	workspace := t.TempDir()
+	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "../evil"}}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetClaude}}}
+	output := filepath.Join(workspace, "release")
+
+	_, err := WriteTargetRoots(workspace, manifest, plan, output)
+	if err == nil {
+		t.Fatal("WriteTargetRoots() accepted a path-traversal distribution name")
+	}
+	// Verify no archive files were created outside the output directory.
+	if _, statErr := os.Stat(filepath.Join(workspace, "evil-claude.tar.gz")); !os.IsNotExist(statErr) {
+		t.Fatal("archive escaped the output directory")
+	}
+	// The output directory must not have been created before the name was validated.
+	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
+		t.Fatal("output directory was created before name validation")
+	}
+}
+
+func TestWriteTargetRootsRejectsReservedDistributionName(t *testing.T) {
+	workspace := t.TempDir()
+	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "CON"}}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetClaude}}}
+	_, err := WriteTargetRoots(workspace, manifest, plan, filepath.Join(workspace, "release"))
+	if err == nil {
+		t.Fatal("WriteTargetRoots() accepted a reserved device name")
+	}
+}
+
 func writeFile(t *testing.T, root, path, content string, mode os.FileMode) {
 	t.Helper()
 	full := filepath.Join(root, filepath.FromSlash(path))

@@ -99,13 +99,26 @@ func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Wri
 		if !filepath.IsAbs(output) {
 			output = filepath.Join(manifestDirectory, output)
 		}
-		paths, diagnostics := artifact.Archive(manifestDirectory, manifest, result.Plan, filepath.Clean(output))
-		result.Diagnostics = append(result.Diagnostics, diagnostics...)
-		if len(diagnostics) == 0 {
-			parsed.archives = paths
-			if !parsed.jsonOutput {
-				for _, path := range paths {
-					_, _ = fmt.Fprintf(stdout, "archive: %s\n", path)
+		output = filepath.Clean(output)
+		// Construct a layout guard for the archive operation. This re-validates
+		// that source and output roots remain disjoint between compile and archive,
+		// providing defense-in-depth against TOCTOU manipulation.
+		archSourceRoot := filepath.Join(manifestDirectory, filepath.FromSlash(string(manifest.Root)))
+		archOutputRoot := filepath.Join(manifestDirectory, filepath.FromSlash(string(manifest.Output)))
+		archGuard, archGuardErr := artifact.NewWorkspaceLayoutGuard(manifestDirectory, archSourceRoot, archOutputRoot)
+		if archGuardErr != nil {
+			result.Diagnostics = append(result.Diagnostics, model.Diagnostic{
+				Code: "invalid-workspace-layout", Severity: model.SeverityError, Message: archGuardErr.Error(),
+			})
+		} else {
+			paths, diagnostics := artifact.Archive(archGuard, manifestDirectory, manifest, result.Plan, output)
+			result.Diagnostics = append(result.Diagnostics, diagnostics...)
+			if len(diagnostics) == 0 {
+				parsed.archives = paths
+				if !parsed.jsonOutput {
+					for _, path := range paths {
+						_, _ = fmt.Fprintf(stdout, "archive: %s\n", path)
+					}
 				}
 			}
 		}
