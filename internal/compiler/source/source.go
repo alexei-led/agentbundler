@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/compiler/source/agentplugin"
 	"github.com/alexei-led/agentbundler/internal/compiler/source/bundle"
 	"github.com/alexei-led/agentbundler/internal/compiler/source/claudeplugin"
 	"github.com/alexei-led/agentbundler/internal/compiler/source/skillrepo"
@@ -38,6 +39,8 @@ func Import(manifest model.SourceManifest, workspaceRoot string) (model.SourceIn
 		inventory, diagnostics = claudeplugin.InspectClaudePluginRoot(manifest, workspaceRoot, workspace)
 	case model.SourceKindSkillsRepository:
 		inventory, diagnostics = skillrepo.InspectSkillRepoRoot(manifest, workspaceRoot, workspace)
+	case model.SourceKindAgentPlugin:
+		inventory, diagnostics = agentplugin.InspectAgentPluginRoot(manifest, workspaceRoot, workspace)
 	default:
 		return model.SourceInventory{}, []model.Diagnostic{diagnostic("", fmt.Sprintf("unsupported source kind %q", manifest.Kind))}
 	}

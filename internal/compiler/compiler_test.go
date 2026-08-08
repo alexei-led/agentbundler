@@ -525,3 +525,112 @@ func assertNativeValidatorLog(t *testing.T, path, want string) {
 		t.Fatalf("native validator log = %q, want %q", data, want)
 	}
 }
+
+func TestCapabilityCeilingRejectsUpgradeFromUnsupported(t *testing.T) {
+	t.Parallel()
+	// Build a skills-repository workspace.
+	root := t.TempDir()
+	writeCompilerFixture(t, root, "source/skills/example/SKILL.md", "Example skill.")
+	manifest := model.SourceManifest{
+		Kind:    model.SourceKindSkillsRepository,
+		Root:    "source",
+		Targets: []model.TargetID{model.TargetClaude},
+		Output:  "generated",
+		SkillsRepository: &model.SkillsRepositorySourceConfig{
+			Package: "pkg", Roots: []model.RelativePath{"skills"}, Metadata: model.PackageMetadata{},
+		},
+		// Manifest tries to upgrade an unsupported capability to native.
+		Composition: []model.TargetComposition{{
+			Target: model.TargetClaude,
+			Capabilities: []model.CapabilityRule{
+				{Key: model.CapabilityKeyAgentPluginMCPStdio, State: model.CapabilityStateNative},
+			},
+		}},
+	}
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(root),
+		Manifest:      manifest,
+		Mode:          BuildModeCheck,
+	})
+	hasCeiling := false
+	for _, d := range result.Diagnostics {
+		if d.Code == "capability-ceiling-upgrade" {
+			hasCeiling = true
+		}
+	}
+	if !hasCeiling {
+		t.Fatalf("expected capability-ceiling-upgrade diagnostic, got: %v", result.Diagnostics)
+	}
+}
+
+func TestCapabilityCeilingRejectsUnknownKey(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeCompilerFixture(t, root, "source/skills/example/SKILL.md", "Example skill.")
+	manifest := model.SourceManifest{
+		Kind:    model.SourceKindSkillsRepository,
+		Root:    "source",
+		Targets: []model.TargetID{model.TargetClaude},
+		Output:  "generated",
+		SkillsRepository: &model.SkillsRepositorySourceConfig{
+			Package: "pkg", Roots: []model.RelativePath{"skills"}, Metadata: model.PackageMetadata{},
+		},
+		// Manifest references a key that the adapter does not declare.
+		Composition: []model.TargetComposition{{
+			Target: model.TargetClaude,
+			Capabilities: []model.CapabilityRule{
+				{Key: "unknown.capability.key", State: model.CapabilityStateUnsupported},
+			},
+		}},
+	}
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(root),
+		Manifest:      manifest,
+		Mode:          BuildModeCheck,
+	})
+	hasUnknown := false
+	for _, d := range result.Diagnostics {
+		if d.Code == "unknown-capability-key" {
+			hasUnknown = true
+		}
+	}
+	if !hasUnknown {
+		t.Fatalf("expected unknown-capability-key diagnostic, got: %v", result.Diagnostics)
+	}
+}
+
+func TestCapabilityCeilingRejectsNativeEquivalentSubstitution(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeCompilerFixture(t, root, "source/skills/example/SKILL.md", "Example skill.")
+	manifest := model.SourceManifest{
+		Kind:    model.SourceKindSkillsRepository,
+		Root:    "source",
+		Targets: []model.TargetID{model.TargetClaude},
+		Output:  "generated",
+		SkillsRepository: &model.SkillsRepositorySourceConfig{
+			Package: "pkg", Roots: []model.RelativePath{"skills"}, Metadata: model.PackageMetadata{},
+		},
+		// Manifest tries to substitute native→equivalent for a native capability.
+		Composition: []model.TargetComposition{{
+			Target: model.TargetClaude,
+			Capabilities: []model.CapabilityRule{
+				{Key: "asset.skill", State: model.CapabilityStateEquivalent},
+			},
+		}},
+	}
+	result := Compile(CompileRequest{
+		WorkspaceRoot: filepath.Clean(root),
+		Manifest:      manifest,
+		Mode:          BuildModeCheck,
+	})
+	hasSubstitution := false
+	for _, d := range result.Diagnostics {
+		if d.Code == "capability-ceiling-substitution" {
+			hasSubstitution = true
+		}
+	}
+	if !hasSubstitution {
+		t.Fatalf("expected capability-ceiling-substitution diagnostic, got: %v", result.Diagnostics)
+	}
+}

@@ -2,7 +2,7 @@
 
 **Path**: `internal/compiler/source/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: `internal/compiler`
-**Submodules**: `bundle`, `claudeplugin`, `skillrepo`, `frontmatter`
+**Submodules**: `agentplugin`, `bundle`, `claudeplugin`, `skillrepo`, `frontmatter`
 
 ## Purpose
 
@@ -40,6 +40,9 @@ import(SourceManifest, workspace-root) -> SourceInventory + [Diagnostic]
 
 ## Integrations
 
+- **Counterpart**: `internal/compiler/source/agentplugin`
+  - **Direction**: delegates Agent Plugin 1.0.0 import.
+  - **Shared knowledge**: `InspectAgentPluginRoot(SourceManifest, workspace-root, *os.Root)`.
 - **Counterpart**: `internal/compiler/source/bundle`
   - **Direction**: delegates canonical bundle parsing.
   - **Shared knowledge**: `inspect-bundle(SourceManifest, workspace-root)`.

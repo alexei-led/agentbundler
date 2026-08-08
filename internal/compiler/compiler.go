@@ -105,7 +105,11 @@ func Compile(request CompileRequest) CompilationResult {
 			continue
 		}
 		adapterRevisions[targetID] = adapter.FormatRevision
-		policy := compositionPolicy(request.Manifest, targetID, target.Capabilities(adapter))
+		policy, policyDiagnostics := compositionPolicy(request.Manifest, targetID, target.Capabilities(adapter))
+		result.Diagnostics = append(result.Diagnostics, policyDiagnostics...)
+		if hasErrors(policyDiagnostics) {
+			continue
+		}
 		packages, composeDiagnostics := composition.Compose(inventory, policy)
 		result.Diagnostics = append(result.Diagnostics, composeDiagnostics...)
 		if hasErrors(composeDiagnostics) {
@@ -306,16 +310,82 @@ func targetRenderInput(manifest model.SourceManifest, policy model.TargetComposi
 	return input
 }
 
-func compositionPolicy(manifest model.SourceManifest, targetID model.TargetID, capabilities []model.CapabilityRule) model.TargetComposition {
-	for _, policy := range manifest.Composition {
-		if policy.Target == targetID {
-			if len(policy.Capabilities) == 0 {
-				policy.Capabilities = capabilities
-			}
-			return policy
-		}
+// compositionPolicy resolves the effective TargetComposition for targetID,
+// merging manifest-declared capability rules under the adapter's ceiling.
+// Manifest rules may only retain or narrow adapter states; unknown keys,
+// upgrades (unsupported→anything), and native/equivalent substitutions are
+// rejected and reported as diagnostics.
+func compositionPolicy(manifest model.SourceManifest, targetID model.TargetID, capabilities []model.CapabilityRule) (model.TargetComposition, []model.Diagnostic) {
+	// Build adapter capability index.
+	adapterIndex := make(map[model.CapabilityKey]model.CapabilityState, len(capabilities))
+	for _, r := range capabilities {
+		adapterIndex[r.Key] = r.State
 	}
-	return model.TargetComposition{Target: targetID, Capabilities: capabilities}
+
+	for _, policy := range manifest.Composition {
+		if policy.Target != targetID {
+			continue
+		}
+		if len(policy.Capabilities) == 0 {
+			policy.Capabilities = capabilities
+			return policy, nil
+		}
+		// Validate and merge manifest rules against adapter ceiling.
+		var diagnostics []model.Diagnostic
+		for _, rule := range policy.Capabilities {
+			adapterState, known := adapterIndex[rule.Key]
+			if !known {
+				diagnostics = append(diagnostics, errorDiagnostic(
+					"unknown-capability-key",
+					fmt.Sprintf("capability key %q is not declared by target %q", rule.Key, targetID),
+				))
+				continue
+			}
+			if adapterState == model.CapabilityStateUnsupported && rule.State != model.CapabilityStateUnsupported {
+				diagnostics = append(diagnostics, errorDiagnostic(
+					"capability-ceiling-upgrade",
+					fmt.Sprintf("manifest cannot upgrade capability %q from unsupported for target %q", rule.Key, targetID),
+				))
+				continue
+			}
+			// Reject native/equivalent substitution.
+			if (adapterState == model.CapabilityStateNative && rule.State == model.CapabilityStateEquivalent) ||
+				(adapterState == model.CapabilityStateEquivalent && rule.State == model.CapabilityStateNative) {
+				diagnostics = append(diagnostics, errorDiagnostic(
+					"capability-ceiling-substitution",
+					fmt.Sprintf("manifest cannot substitute capability %q from %q to %q for target %q",
+						rule.Key, adapterState, rule.State, targetID),
+				))
+				continue
+			}
+			// Reject advisory-to-supported upgrades.
+			if adapterState == model.CapabilityStateAdvisory &&
+				(rule.State == model.CapabilityStateNative || rule.State == model.CapabilityStateEquivalent) {
+				diagnostics = append(diagnostics, errorDiagnostic(
+					"capability-ceiling-upgrade",
+					fmt.Sprintf("manifest cannot upgrade capability %q from advisory for target %q", rule.Key, targetID),
+				))
+				continue
+			}
+		}
+		if len(diagnostics) > 0 {
+			return policy, diagnostics
+		}
+		// Fill in adapter defaults for keys not specified by the manifest.
+		manifestIndex := make(map[model.CapabilityKey]bool, len(policy.Capabilities))
+		for _, r := range policy.Capabilities {
+			manifestIndex[r.Key] = true
+		}
+		merged := append([]model.CapabilityRule(nil), policy.Capabilities...)
+		for _, r := range capabilities {
+			if !manifestIndex[r.Key] {
+				merged = append(merged, r)
+			}
+		}
+		policy.Capabilities = merged
+		return policy, nil
+	}
+	return model.TargetComposition{Target: targetID, Capabilities: capabilities}, nil
 }
 
 func nativeChecks(plan model.BuildPlan) []model.NativeCheck {

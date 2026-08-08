@@ -268,6 +268,49 @@ func TestNewRegistryRejectsDuplicateTarget(t *testing.T) {
 	}
 }
 
+func TestResolveNormalizesAgentPluginCapabilitiesToUnsupported(t *testing.T) {
+	t.Parallel()
+
+	agentPluginKeys := []model.CapabilityKey{
+		model.CapabilityKeyAgentPluginSkills,
+		model.CapabilityKeyAgentPluginMCPStdio,
+		model.CapabilityKeyAgentPluginMCPStreamableHTTP,
+		model.CapabilityKeyAgentPluginMCPSSE,
+		model.CapabilityKeyAgentPluginExtensions,
+		model.CapabilityKeyAgentPluginUnknownJSON,
+		model.CapabilityKeyAgentPluginPackageFiles,
+	}
+
+	// All existing targets must have all new portable keys normalized to unsupported.
+	existingTargets := []model.TargetID{
+		model.TargetAntigravity,
+		model.TargetClaude,
+		model.TargetCodex,
+		model.TargetPi,
+		model.TargetCopilot,
+		model.TargetGrok,
+		model.TargetCursor,
+	}
+
+	for _, targetID := range existingTargets {
+		t.Run(string(targetID), func(t *testing.T) {
+			adapter, diagnostics := Resolve(targetID)
+			if len(diagnostics) != 0 {
+				t.Fatalf("Resolve(%q) diagnostics = %v", targetID, diagnostics)
+			}
+			states := make(map[model.CapabilityKey]model.CapabilityState, len(adapter.Capabilities))
+			for _, r := range Capabilities(adapter) {
+				states[r.Key] = r.State
+			}
+			for _, key := range agentPluginKeys {
+				if states[key] != model.CapabilityStateUnsupported {
+					t.Errorf("Capabilities(%q)[%q] = %q, want unsupported", targetID, key, states[key])
+				}
+			}
+		})
+	}
+}
+
 func hasDiagnostic(diagnostics []model.Diagnostic, code string) bool {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Code == code {

@@ -694,3 +694,48 @@ func targetPointer(value model.TargetID) *model.TargetID {
 func assetPointer(value model.AssetID) *model.AssetID {
 	return &value
 }
+
+func TestComposeAgentPluginDataPassthrough(t *testing.T) {
+	// AgentPlugin data on a SourcePackage must be deep-copied to NormalizedPackage
+	// without merging or modification.
+	pluginData := &model.AgentPluginData{
+		Profile:  "agent-plugins/1.0.0-bd383552",
+		Manifest: model.AgentPluginManifest{Name: "test-plugin"},
+		MCPServers: []model.MCPServer{{
+			Name:      "srv",
+			Transport: model.MCPTransportStdio,
+			Stdio:     &model.StdioMCPServer{Command: "node"},
+		}},
+		UnknownManifest: map[string]any{"future-key": "value"},
+	}
+	inventory := model.SourceInventory{
+		Packages: []model.SourcePackage{{
+			Identity:    "test-plugin",
+			AgentPlugin: pluginData,
+		}},
+	}
+	packages, diagnostics := Compose(inventory, model.TargetComposition{Target: model.TargetClaude})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Compose() diagnostics = %v", diagnostics)
+	}
+	if len(packages) != 1 {
+		t.Fatalf("packages = %d", len(packages))
+	}
+	if packages[0].AgentPlugin == nil {
+		t.Fatal("AgentPlugin not carried to NormalizedPackage")
+	}
+	if packages[0].AgentPlugin.Manifest.Name != "test-plugin" {
+		t.Errorf("Manifest.Name = %q", packages[0].AgentPlugin.Manifest.Name)
+	}
+	if len(packages[0].AgentPlugin.MCPServers) != 1 {
+		t.Errorf("MCPServers = %v", packages[0].AgentPlugin.MCPServers)
+	}
+	if packages[0].AgentPlugin.UnknownManifest["future-key"] != "value" {
+		t.Errorf("UnknownManifest = %v", packages[0].AgentPlugin.UnknownManifest)
+	}
+	// Verify it's a deep copy (mutation isolation).
+	pluginData.Manifest.Name = "mutated"
+	if packages[0].AgentPlugin.Manifest.Name == "mutated" {
+		t.Error("AgentPlugin data is not a deep copy; source mutation affected composed package")
+	}
+}

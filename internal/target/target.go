@@ -100,13 +100,47 @@ func newRegistry(adapters ...Adapter) (registry, []model.Diagnostic) {
 	return result, nil
 }
 
+// portableCapabilityCatalog lists all portable capability keys that every
+// registered adapter must declare. Missing keys are normalized to unsupported.
+// The catalog grows only when a new portable capability contract is ratified.
+var portableCapabilityCatalog = []model.CapabilityKey{
+	model.CapabilityKeyAgentPluginSkills,
+	model.CapabilityKeyAgentPluginMCPStdio,
+	model.CapabilityKeyAgentPluginMCPStreamableHTTP,
+	model.CapabilityKeyAgentPluginMCPSSE,
+	model.CapabilityKeyAgentPluginExtensions,
+	model.CapabilityKeyAgentPluginUnknownJSON,
+	model.CapabilityKeyAgentPluginPackageFiles,
+}
+
+// normalizeCapabilities fills in any missing portable capability keys as
+// unsupported, returning a new slice. Existing rules are preserved as-is.
+func normalizeCapabilities(rules []model.CapabilityRule) []model.CapabilityRule {
+	declared := make(map[model.CapabilityKey]bool, len(rules))
+	for _, r := range rules {
+		declared[r.Key] = true
+	}
+	result := append([]model.CapabilityRule(nil), rules...)
+	for _, key := range portableCapabilityCatalog {
+		if !declared[key] {
+			result = append(result, model.CapabilityRule{
+				Key:   key,
+				State: model.CapabilityStateUnsupported,
+			})
+		}
+	}
+	return result
+}
+
 // Resolve returns the built-in adapter for target.
 func Resolve(target model.TargetID) (Adapter, []model.Diagnostic) {
 	adapter, exists := builtInRegistry.adapters[target]
 	if !exists {
 		return Adapter{}, []model.Diagnostic{registryDiagnostic("unknown-target", fmt.Sprintf("target %q is not registered", target))}
 	}
-	return cloneAdapter(adapter), nil
+	cloned := cloneAdapter(adapter)
+	cloned.Capabilities = normalizeCapabilities(cloned.Capabilities)
+	return cloned, nil
 }
 
 // Capabilities returns an adapter's capability rules.

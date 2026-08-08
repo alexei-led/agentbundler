@@ -70,6 +70,24 @@ func TestImportRoutesExplicitSourceKinds(t *testing.T) {
 			packageID: "repository-package",
 			assetID:   "skill/example",
 		},
+		{
+			name: "agent plugin",
+			manifest: model.SourceManifest{
+				Kind:    model.SourceKindAgentPlugin,
+				Root:    "source",
+				Targets: []model.TargetID{model.TargetClaude},
+				Output:  "generated",
+				AgentPlugin: &model.AgentPluginSourceConfig{
+					Plugins: []model.RelativePath{"my-plugin"},
+				},
+			},
+			files: map[string]string{
+				"source/my-plugin/plugin.json":       `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"my-plugin"}`,
+				"source/my-plugin/my-skill/SKILL.md": "Agent plugin skill.",
+			},
+			packageID: "my-plugin",
+			assetID:   "skill/my-skill",
+		},
 	}
 
 	for _, test := range tests {

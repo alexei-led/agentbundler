@@ -33,11 +33,11 @@ var permittedImports = map[string]bool{
 // exact paths. An import matching any of these fails even if it were somehow
 // added to permittedImports.
 var forbiddenPatterns = []string{
-	"os",         // filesystem and process
-	"io/fs",      // filesystem traversal
-	"os/exec",    // process execution
-	"net/http",   // network
-	"syscall",    // raw OS calls
+	"os",          // filesystem and process
+	"io/fs",       // filesystem traversal
+	"os/exec",     // process execution
+	"net/http",    // network
+	"syscall",     // raw OS calls
 	"runtime/cgo", // FFI
 	// internal compiler/target/artifact/cmd packages are caught by the
 	// archfit forbidden_dependency rules; no need to duplicate them here.

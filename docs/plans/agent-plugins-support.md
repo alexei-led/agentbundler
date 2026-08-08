@@ -321,16 +321,16 @@ Manual checks:
 - Confirm link materialization is visible in diagnostics/provenance and never
   silently described as byte-for-byte filesystem round-trip.
 
-- [ ] Implement explicit plugin-root import and duplicate/case-fold identity
+- [x] Implement explicit plugin-root import and duplicate/case-fold identity
       rejection.
-- [ ] Implement bounded root-contained traversal and link materialization.
-- [ ] Import skills, typed MCP, extension namespaces, permitted unknown JSON,
+- [x] Implement bounded root-contained traversal and link materialization.
+- [x] Import skills, typed MCP, extension namespaces, permitted unknown JSON,
       package files, modes, inputs, and provenance.
-- [ ] Propagate package plugin data through composition without merging.
-- [ ] Register source routing, normalize omitted portable capabilities to
+- [x] Propagate package plugin data through composition without merging.
+- [x] Register source routing, normalize omitted portable capabilities to
       unsupported, enforce adapter ceilings, and add existing-target failure
       tests.
-- [ ] Update source/composition module docs and run Task 3 verification commands.
+- [x] Update source/composition module docs and run Task 3 verification commands.
 
 ### Task 4: Implement the standard target and plan-owned package archives
 

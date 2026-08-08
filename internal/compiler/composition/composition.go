@@ -44,10 +44,11 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 			profile = model.TargetProfileProject
 		}
 		pkg := model.NormalizedPackage{
-			Identity: sourcePackage.Identity,
-			Metadata: cloneMap(sourcePackage.Metadata),
-			Target:   target.Target,
-			Profile:  profile,
+			Identity:    sourcePackage.Identity,
+			Metadata:    cloneMap(sourcePackage.Metadata),
+			Target:      target.Target,
+			Profile:     profile,
+			AgentPlugin: model.CloneAgentPluginData(sourcePackage.AgentPlugin),
 		}
 		for _, sourceAsset := range sourcePackage.Assets {
 			if !assetSelectedForTarget(sourceAsset, target.Target) {
