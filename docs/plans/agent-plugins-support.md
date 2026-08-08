@@ -412,14 +412,14 @@ Manual checks:
   validator. Record unavailable-validator gaps instead of substituting a vendor
   validator.
 
-- [ ] Implement the full standard target and exact capability declaration.
-- [ ] Register the target, stable separate package roots, and central `.` archive
+- [x] Implement the full standard target and exact capability declaration.
+- [x] Register the target, stable separate package roots, and central `.` archive
       default for existing renderers.
-- [ ] Replace filesystem archive walking with validated plan-owned archive units
+- [x] Replace filesystem archive walking with validated plan-owned archive units
       and migrate the package CLI caller.
-- [ ] Add minimal/full deterministic acceptance fixtures and semantic
+- [x] Add minimal/full deterministic acceptance fixtures and semantic
       round-trip checks.
-- [ ] Run Task 4 verification commands and record official-validator coverage.
+- [x] Run Task 4 verification commands and record official-validator coverage.
 
 ### Task 5: Final verification, documentation, and architecture handoff
 
