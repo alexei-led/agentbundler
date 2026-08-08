@@ -74,16 +74,18 @@ func Write(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) 
 }
 
 // Archive validates the layout guard and plan, then writes deterministic archives
-// for the target roots. The guard must have been constructed with
-// NewWorkspaceLayoutGuard before source ingestion.
-func Archive(guard WorkspaceLayoutGuard, workspace string, manifest model.SourceManifest, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
+// from the plan's own bytes and ArchiveUnits. No filesystem traversal occurs;
+// all archive content comes from TargetPlan.Files filtered by ArchiveUnits.
+// The guard must have been constructed with NewWorkspaceLayoutGuard before
+// source ingestion.
+func Archive(guard WorkspaceLayoutGuard, distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
 	if err := guard.Revalidate(); err != nil {
 		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
 	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return nil, diagnostics
 	}
-	paths, err := archive.WriteTargetRoots(workspace, manifest, plan, output)
+	paths, err := archive.WriteTargetRoots(distribution, plan, output)
 	if err != nil {
 		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
 	}

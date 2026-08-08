@@ -182,10 +182,10 @@ func importPlugin(
 
 	// Build AgentPluginData.
 	agentPluginData := &model.AgentPluginData{
-		Profile:  agentplugins.ProfileID,
-		Manifest: mapPluginManifest(pluginManifest),
-		MCPServers: mapMCPConfig(mcpConfig),
-		Extensions: extensions,
+		Profile:      agentplugins.ProfileID,
+		Manifest:     mapPluginManifest(pluginManifest),
+		MCPServers:   mapMCPConfig(mcpConfig),
+		Extensions:   extensions,
 		PackageFiles: pkgFiles,
 	}
 	if len(pluginManifest.Unknown) > 0 {

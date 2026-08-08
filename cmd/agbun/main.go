@@ -111,7 +111,7 @@ func run(args []string, workingDirectory string, stdout io.Writer, stderr io.Wri
 				Code: "invalid-workspace-layout", Severity: model.SeverityError, Message: archGuardErr.Error(),
 			})
 		} else {
-			paths, diagnostics := artifact.Archive(archGuard, manifestDirectory, manifest, result.Plan, output)
+			paths, diagnostics := artifact.Archive(archGuard, manifest.Distribution, result.Plan, output)
 			result.Diagnostics = append(result.Diagnostics, diagnostics...)
 			if len(diagnostics) == 0 {
 				parsed.archives = paths

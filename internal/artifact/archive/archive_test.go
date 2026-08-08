@@ -13,22 +13,47 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
-	workspace := t.TempDir()
-	writeFile(t, workspace, "dist/antigravity/plugin.json", "{\"name\":\"demo\"}\n", 0o644)
-	writeFile(t, workspace, "dist/antigravity/skills/demo/SKILL.md", "# Demo\n", 0o644)
-	writeFile(t, workspace, "dist/claude/.claude-plugin/marketplace.json", "{}\n", 0o644)
-	writeFile(t, workspace, "dist/claude/hooks/run.sh", "#!/bin/sh\n", 0o755)
-	writeFile(t, workspace, "dist/claude/.agentbundler/build.json", "private\n", 0o644)
-	writeFile(t, workspace, "dist/pi/package.json", "{}\n", 0o644)
-	writeFile(t, workspace, ".claude-plugin/marketplace.json", "root compatibility\n", 0o644)
-	writeFile(t, workspace, ".agentbundler/compatibility.json", "root ownership\n", 0o644)
-	writeFile(t, workspace, "package.json", "root Pi compatibility\n", 0o644)
-	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "demo"}}
-	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetAntigravity}, {Target: model.TargetClaude}, {Target: model.TargetPi}}}
-	output := filepath.Join(workspace, "release")
+// planForTest builds a minimal BuildPlan with ArchiveUnits and PlannedFile bytes.
+func planForTest() model.BuildPlan {
+	return model.BuildPlan{Targets: []model.TargetPlan{
+		{
+			Target: model.TargetAntigravity,
+			ArchiveUnits: []model.ArchiveUnit{
+				{Root: ".", Stem: "antigravity", Suffix: ".tar.gz"},
+			},
+			Files: []model.PlannedFile{
+				{Path: "plugin.json", Bytes: []byte("{\"name\":\"demo\"}\n")},
+				{Path: "skills/demo/SKILL.md", Bytes: []byte("# Demo\n")},
+			},
+		},
+		{
+			Target: model.TargetClaude,
+			ArchiveUnits: []model.ArchiveUnit{
+				{Root: ".", Stem: "claude", Suffix: ".tar.gz"},
+			},
+			Files: []model.PlannedFile{
+				{Path: ".claude-plugin/marketplace.json", Bytes: []byte("{}\n")},
+				{Path: "hooks/run.sh", Bytes: []byte("#!/bin/sh\n"), Executable: true},
+			},
+		},
+		{
+			Target: model.TargetPi,
+			ArchiveUnits: []model.ArchiveUnit{
+				{Root: ".", Stem: "pi", Suffix: ".tgz"},
+			},
+			Files: []model.PlannedFile{
+				{Path: "package.json", Bytes: []byte("{}\n")},
+			},
+		},
+	}}
+}
 
-	first, err := WriteTargetRoots(workspace, manifest, plan, output)
+func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
+	distribution := model.DistributionMetadata{"name": "demo"}
+	plan := planForTest()
+	output := filepath.Join(t.TempDir(), "release")
+
+	first, err := WriteTargetRoots(distribution, plan, output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +62,8 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := WriteTargetRoots(workspace, manifest, plan, output)
+
+	second, err := WriteTargetRoots(distribution, plan, output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +80,8 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	if !firstInfo.ModTime().Equal(secondInfo.ModTime()) {
 		t.Fatalf("second archive write changed timestamp: before=%v after=%v", firstInfo.ModTime(), secondInfo.ModTime())
 	}
+
+	// Verify archive contents and suffixes.
 	if got, want := tarEntries(t, filepath.Join(output, "demo-antigravity.tar.gz")), []string{"plugin.json", "skills/demo/SKILL.md"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Antigravity entries = %#v, want %#v", got, want)
 	}
@@ -65,6 +93,64 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 	}
 	if got, want := tarEntries(t, filepath.Join(output, "demo-pi.tgz")), []string{"package.json"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Pi entries = %#v, want %#v", got, want)
+	}
+}
+
+func TestWriteTargetRootsArchiveUnitsFilterByRoot(t *testing.T) {
+	// agent-plugins style: two plugins with separate roots.
+	distribution := model.DistributionMetadata{"name": "test"}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target: model.TargetAgentPlugins,
+		ArchiveUnits: []model.ArchiveUnit{
+			{Root: "alpha", Stem: "alpha", Suffix: ".tar.gz"},
+			{Root: "beta", Stem: "beta", Suffix: ".tar.gz"},
+		},
+		Files: []model.PlannedFile{
+			{Path: "alpha/plugin.json", Bytes: []byte("{\"name\":\"alpha\"}\n")},
+			{Path: "alpha/mcp.json", Bytes: []byte("{}\n")},
+			{Path: "beta/plugin.json", Bytes: []byte("{\"name\":\"beta\"}\n")},
+		},
+	}}}
+	output := filepath.Join(t.TempDir(), "release")
+
+	paths, err := WriteTargetRoots(distribution, plan, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("paths = %v, want 2", paths)
+	}
+
+	// alpha archive: plugin.json and mcp.json, with alpha/ prefix stripped.
+	if got, want := tarEntries(t, filepath.Join(output, "test-alpha.tar.gz")), []string{"mcp.json", "plugin.json"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("alpha entries = %#v, want %#v", got, want)
+	}
+	// beta archive: only beta/plugin.json, prefix stripped.
+	if got, want := tarEntries(t, filepath.Join(output, "test-beta.tar.gz")), []string{"plugin.json"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("beta entries = %#v, want %#v", got, want)
+	}
+}
+
+func TestWriteTargetRootsStripsRootPrefixFromArchiveEntries(t *testing.T) {
+	distribution := model.DistributionMetadata{"name": "strip-test"}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target: model.TargetAgentPlugins,
+		ArchiveUnits: []model.ArchiveUnit{
+			{Root: "myplugin", Stem: "myplugin", Suffix: ".tar.gz"},
+		},
+		Files: []model.PlannedFile{
+			{Path: "myplugin/plugin.json", Bytes: []byte("{\"name\":\"myplugin\"}\n")},
+			{Path: "myplugin/skills/my-skill/SKILL.md", Bytes: []byte("# Skill\n")},
+		},
+	}}}
+	output := filepath.Join(t.TempDir(), "release")
+	if _, err := WriteTargetRoots(distribution, plan, output); err != nil {
+		t.Fatal(err)
+	}
+	entries := tarEntries(t, filepath.Join(output, "strip-test-myplugin.tar.gz"))
+	want := []string{"plugin.json", "skills/my-skill/SKILL.md"}
+	if !reflect.DeepEqual(entries, want) {
+		t.Fatalf("entries = %#v, want %#v (prefix should be stripped)", entries, want)
 	}
 }
 
@@ -105,17 +191,16 @@ func TestValidateArchiveNameAcceptsSafeBasenames(t *testing.T) {
 }
 
 func TestWriteTargetRootsRejectsDistributionNameWithSeparator(t *testing.T) {
-	workspace := t.TempDir()
-	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "../evil"}}
-	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetClaude}}}
-	output := filepath.Join(workspace, "release")
+	distribution := model.DistributionMetadata{"name": "../evil"}
+	plan := planForTest()
+	output := filepath.Join(t.TempDir(), "release")
 
-	_, err := WriteTargetRoots(workspace, manifest, plan, output)
+	_, err := WriteTargetRoots(distribution, plan, output)
 	if err == nil {
 		t.Fatal("WriteTargetRoots() accepted a path-traversal distribution name")
 	}
-	// Verify no archive files were created outside the output directory.
-	if _, statErr := os.Stat(filepath.Join(workspace, "evil-claude.tar.gz")); !os.IsNotExist(statErr) {
+	// No archive must have escaped the output directory.
+	if _, statErr := os.Stat(filepath.Join(filepath.Dir(output), "evil-claude.tar.gz")); !os.IsNotExist(statErr) {
 		t.Fatal("archive escaped the output directory")
 	}
 	// The output directory must not have been created before the name was validated.
@@ -125,24 +210,62 @@ func TestWriteTargetRootsRejectsDistributionNameWithSeparator(t *testing.T) {
 }
 
 func TestWriteTargetRootsRejectsReservedDistributionName(t *testing.T) {
-	workspace := t.TempDir()
-	manifest := model.SourceManifest{Output: "dist", Distribution: model.DistributionMetadata{"name": "CON"}}
-	plan := model.BuildPlan{Targets: []model.TargetPlan{{Target: model.TargetClaude}}}
-	_, err := WriteTargetRoots(workspace, manifest, plan, filepath.Join(workspace, "release"))
+	distribution := model.DistributionMetadata{"name": "CON"}
+	plan := planForTest()
+	_, err := WriteTargetRoots(distribution, plan, filepath.Join(t.TempDir(), "release"))
 	if err == nil {
 		t.Fatal("WriteTargetRoots() accepted a reserved device name")
 	}
 }
 
-func writeFile(t *testing.T, root, path, content string, mode os.FileMode) {
-	t.Helper()
-	full := filepath.Join(root, filepath.FromSlash(path))
-	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-		t.Fatal(err)
+func TestWriteTargetRootsRejectsEmptyArchiveUnit(t *testing.T) {
+	// A unit whose root matches no plan files must fail.
+	distribution := model.DistributionMetadata{"name": "demo"}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target: model.TargetAgentPlugins,
+		ArchiveUnits: []model.ArchiveUnit{
+			{Root: "missing-plugin", Stem: "missing-plugin", Suffix: ".tar.gz"},
+		},
+		Files: []model.PlannedFile{
+			{Path: "other-plugin/plugin.json", Bytes: []byte(`{}`)},
+		},
+	}}}
+	output := filepath.Join(t.TempDir(), "release")
+	if _, err := WriteTargetRoots(distribution, plan, output); err == nil {
+		t.Fatal("WriteTargetRoots() accepted unit with no matching files")
 	}
-	if err := os.WriteFile(full, []byte(content), mode); err != nil {
-		t.Fatal(err)
+}
+
+func TestFilterFilesWithDotRootIncludesAll(t *testing.T) {
+	files := []model.PlannedFile{
+		{Path: "a.txt"},
+		{Path: "b/c.txt"},
 	}
+	result := filterFiles(files, ".")
+	if len(result) != len(files) {
+		t.Fatalf("filterFiles(., ...) = %v, want all %d files", result, len(files))
+	}
+}
+
+func TestFilterFilesWithSubdirRootFiltersCorrectly(t *testing.T) {
+	files := []model.PlannedFile{
+		{Path: "alpha/plugin.json"},
+		{Path: "alpha/mcp.json"},
+		{Path: "beta/plugin.json"},
+	}
+	result := filterFiles(files, "alpha")
+	if len(result) != 2 {
+		t.Fatalf("filterFiles(alpha) = %v, want 2 files", result)
+	}
+	for _, f := range result {
+		if !hasPrefix(string(f.Path), "alpha/") {
+			t.Errorf("filtered file %q does not start with alpha/", f.Path)
+		}
+	}
+}
+
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
 func archiveHashes(t *testing.T, paths []string) map[string][sha256.Size]byte {

@@ -327,6 +327,9 @@ func ValidateBuildPlan(plan BuildPlan) []Diagnostic {
 		for _, check := range targetPlan.NativeChecks {
 			diagnostics = append(diagnostics, validateNativeCheck(check)...)
 		}
+		for _, unit := range targetPlan.ArchiveUnits {
+			diagnostics = append(diagnostics, validateArchiveUnit(unit)...)
+		}
 	}
 	for _, file := range plan.CompilerFiles {
 		diagnostics = append(diagnostics, validatePlannedFile(file)...)
@@ -823,6 +826,22 @@ func validateAcknowledgment(acknowledgment Acknowledgment) []Diagnostic {
 	}
 	if strings.TrimSpace(acknowledgment.Reason) == "" || strings.ContainsRune(acknowledgment.Reason, '\x00') {
 		diagnostics = appendInvalid(diagnostics, "acknowledgment reason must not be empty or contain NUL")
+	}
+	return diagnostics
+}
+
+func validateArchiveUnit(unit ArchiveUnit) []Diagnostic {
+	var diagnostics []Diagnostic
+	if unit.Root != "." {
+		if err := validateRelativePath(unit.Root); err != nil {
+			diagnostics = appendInvalid(diagnostics, "archive unit root: "+err.Error())
+		}
+	}
+	if unit.Stem == "" || strings.ContainsAny(unit.Stem, "/\\") || strings.ContainsRune(unit.Stem, '\x00') {
+		diagnostics = appendInvalid(diagnostics, "archive unit stem must be non-empty and contain no path separators or null bytes")
+	}
+	if unit.Suffix != ".tar.gz" && unit.Suffix != ".tgz" {
+		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("archive unit suffix %q must be .tar.gz or .tgz", unit.Suffix))
 	}
 	return diagnostics
 }

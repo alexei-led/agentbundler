@@ -13,6 +13,7 @@ func TestResolveBuiltInAdapters(t *testing.T) {
 	t.Parallel()
 
 	targets := []model.TargetID{
+		model.TargetAgentPlugins,
 		model.TargetAntigravity,
 		model.TargetClaude,
 		model.TargetCodex,
@@ -197,6 +198,9 @@ func TestRenderDispatchesToResolvedAdapter(t *testing.T) {
 	if len(diagnostics) != 0 {
 		t.Fatalf("claude.Render() diagnostics = %#v", diagnostics)
 	}
+	// target.Render applies the central archive-unit default; claude.Render does
+	// not, so we add the expected unit to the direct-render plan for comparison.
+	want.ArchiveUnits = []model.ArchiveUnit{{Root: ".", Stem: "claude", Suffix: ".tar.gz"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Render() plan = %#v, want %#v", got, want)
 	}
@@ -308,6 +312,88 @@ func TestResolveNormalizesAgentPluginCapabilitiesToUnsupported(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRenderSetsDefaultArchiveUnitForExistingTargets(t *testing.T) {
+	// Every existing target should get a central default archive unit when its
+	// renderer returns an empty ArchiveUnits list.
+	t.Parallel()
+	for _, targetID := range []model.TargetID{
+		model.TargetAntigravity, model.TargetClaude, model.TargetCodex,
+		model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor,
+	} {
+		targetID := targetID
+		t.Run(string(targetID), func(t *testing.T) {
+			t.Parallel()
+			adapter, diagnostics := Resolve(targetID)
+			if len(diagnostics) != 0 {
+				t.Fatalf("Resolve(%q) diagnostics = %#v", targetID, diagnostics)
+			}
+			pkg := model.NormalizedPackage{
+				Identity: "demo",
+				Target:   targetID,
+				Metadata: model.PackageMetadata{},
+				Profile:  model.TargetProfilePackage,
+			}
+			plan, diags := Render(adapter, model.TargetRenderInput{
+				Packages:    []model.NormalizedPackage{pkg},
+				PackageMode: model.TargetPackageModeSeparate,
+			})
+			if len(diags) != 0 {
+				t.Fatalf("Render(%q) diagnostics = %#v", targetID, diags)
+			}
+			if len(plan.ArchiveUnits) != 1 {
+				t.Fatalf("Render(%q) ArchiveUnits = %#v, want exactly 1 default unit", targetID, plan.ArchiveUnits)
+			}
+			unit := plan.ArchiveUnits[0]
+			if unit.Root != "." {
+				t.Errorf("Render(%q) ArchiveUnit.Root = %q, want .", targetID, unit.Root)
+			}
+			if unit.Stem != string(targetID) {
+				t.Errorf("Render(%q) ArchiveUnit.Stem = %q, want %q", targetID, unit.Stem, string(targetID))
+			}
+			wantSuffix := ".tar.gz"
+			if targetID == model.TargetPi {
+				wantSuffix = ".tgz"
+			}
+			if unit.Suffix != wantSuffix {
+				t.Errorf("Render(%q) ArchiveUnit.Suffix = %q, want %q", targetID, unit.Suffix, wantSuffix)
+			}
+		})
+	}
+}
+
+func TestAgentPluginsAdapterRegisteredAndCapable(t *testing.T) {
+	t.Parallel()
+	adapter, diagnostics := Resolve(model.TargetAgentPlugins)
+	if len(diagnostics) != 0 {
+		t.Fatalf("Resolve(agent-plugins) diagnostics = %#v", diagnostics)
+	}
+	if adapter.Target != model.TargetAgentPlugins {
+		t.Fatalf("adapter.Target = %q", adapter.Target)
+	}
+	if adapter.FormatRevision < 1 {
+		t.Fatalf("adapter.FormatRevision = %d", adapter.FormatRevision)
+	}
+	// All portable agent-plugin keys must be native.
+	portableKeys := []model.CapabilityKey{
+		model.CapabilityKeyAgentPluginSkills,
+		model.CapabilityKeyAgentPluginMCPStdio,
+		model.CapabilityKeyAgentPluginMCPStreamableHTTP,
+		model.CapabilityKeyAgentPluginMCPSSE,
+		model.CapabilityKeyAgentPluginExtensions,
+		model.CapabilityKeyAgentPluginUnknownJSON,
+		model.CapabilityKeyAgentPluginPackageFiles,
+	}
+	states := make(map[model.CapabilityKey]model.CapabilityState)
+	for _, r := range Capabilities(adapter) {
+		states[r.Key] = r.State
+	}
+	for _, key := range portableKeys {
+		if states[key] != model.CapabilityStateNative {
+			t.Errorf("Capabilities(agent-plugins)[%q] = %q, want native", key, states[key])
+		}
 	}
 }
 

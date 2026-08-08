@@ -325,7 +325,7 @@ func validString(value string) bool {
 
 func validTarget(target model.TargetID) bool {
 	switch target {
-	case model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
+	case model.TargetAgentPlugins, model.TargetAntigravity, model.TargetClaude, model.TargetCodex, model.TargetPi, model.TargetCopilot, model.TargetGrok, model.TargetCursor:
 		return true
 	default:
 		return false
@@ -348,6 +348,7 @@ func cloneBuildPlan(plan model.BuildPlan) model.BuildPlan {
 			Packages:     append([]model.PackageID(nil), target.Packages...),
 			Files:        clonePlannedFiles(target.Files),
 			NativeChecks: cloneNativeChecks(target.NativeChecks),
+			ArchiveUnits: cloneArchiveUnits(target.ArchiveUnits),
 		}
 	}
 	return result
@@ -367,6 +368,13 @@ func clonePlannedFiles(files []model.PlannedFile) []model.PlannedFile {
 		}
 	}
 	return result
+}
+
+func cloneArchiveUnits(units []model.ArchiveUnit) []model.ArchiveUnit {
+	if units == nil {
+		return nil
+	}
+	return append([]model.ArchiveUnit(nil), units...)
 }
 
 func cloneNativeChecks(checks []model.NativeCheck) []model.NativeCheck {

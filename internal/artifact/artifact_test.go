@@ -318,7 +318,7 @@ func TestCompareRejectsInvalidGuard(t *testing.T) {
 
 func TestArchiveRejectsInvalidGuard(t *testing.T) {
 	var guard WorkspaceLayoutGuard
-	paths, diagnostics := Archive(guard, t.TempDir(), model.SourceManifest{}, model.BuildPlan{}, t.TempDir())
+	paths, diagnostics := Archive(guard, model.DistributionMetadata{}, model.BuildPlan{}, t.TempDir())
 	if paths != nil || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticLayoutGuard || diagnostics[0].Severity != model.SeverityError {
 		t.Fatalf("Archive() with invalid guard = (%v, %#v)", paths, diagnostics)
 	}

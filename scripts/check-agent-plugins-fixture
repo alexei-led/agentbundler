@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# check-agent-plugins-fixture — build/check/deterministic gate for agent-plugins fixtures.
+# Run from the repository root.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+fail=0
+
+for fixture in testdata/agent-plugins/minimal testdata/agent-plugins/full; do
+  first=$(mktemp -d)
+  second=$(mktemp -d)
+  cleanup() {
+    find "$first" "$second" -depth -delete 2>/dev/null || true
+  }
+  trap cleanup EXIT
+
+  cp -R "$fixture/." "$first/"
+  cp -R "$fixture/." "$second/"
+
+  go run ./cmd/agbun build --root "$first" >/dev/null
+  go run ./cmd/agbun check --root "$first" >/dev/null
+  go run ./cmd/agbun build --root "$second" >/dev/null
+
+  if ! diff -ru "$first/generated" "$second/generated"; then
+    printf 'FAIL: %s generated output is not deterministic\n' "$fixture" >&2
+    fail=1
+  else
+    printf '%s: build/check/deterministic ok\n' "$fixture"
+  fi
+done
+
+if [[ $fail -ne 0 ]]; then
+  exit 1
+fi
+printf 'agent-plugins fixture: all fixtures are current and deterministic\n'

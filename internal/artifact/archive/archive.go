@@ -1,4 +1,4 @@
-// Package archive writes deterministic target-root release archives.
+// Package archive writes deterministic target-root release archives from plan bytes.
 package archive
 
 import (
@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,12 +17,15 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-// WriteTargetRoots archives each generated target root with its native manifest at archive root.
-func WriteTargetRoots(workspace string, manifest model.SourceManifest, plan model.BuildPlan, output string) ([]string, error) {
+// WriteTargetRoots archives each target's planned files using the target's
+// declared ArchiveUnits. Files are read from PlannedFile.Bytes; no filesystem
+// walk is performed. Each archive is written atomically: a .tmp file is renamed
+// over the destination only if bytes differ from an existing archive.
+func WriteTargetRoots(distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, error) {
 	if output == "" {
 		return nil, fmt.Errorf("archive output directory is required")
 	}
-	name, ok := manifest.Distribution["name"].(string)
+	name, ok := distribution["name"].(string)
 	if !ok || name == "" {
 		return nil, fmt.Errorf("distribution.name is required for release archives")
 	}
@@ -33,29 +35,50 @@ func WriteTargetRoots(workspace string, manifest model.SourceManifest, plan mode
 	if err := os.MkdirAll(output, 0o755); err != nil {
 		return nil, fmt.Errorf("create archive output: %w", err)
 	}
-	paths := make([]string, 0, len(plan.Targets))
-	for _, target := range plan.Targets {
-		extension := ".tar.gz"
-		if target.Target == model.TargetPi {
-			extension = ".tgz"
+
+	var paths []string
+	for _, targetPlan := range plan.Targets {
+		for _, unit := range targetPlan.ArchiveUnits {
+			if err := validateArchiveName(unit.Stem); err != nil {
+				return nil, fmt.Errorf("archive unit for target %q: stem %q: %w", targetPlan.Target, unit.Stem, err)
+			}
+			basename := name + "-" + unit.Stem + unit.Suffix
+			archivePath := filepath.Join(output, basename)
+			// Verify the computed path stays within the requested output directory.
+			rel, err := filepath.Rel(output, archivePath)
+			if err != nil || strings.HasPrefix(rel, "..") {
+				return nil, fmt.Errorf("archive name %q escapes the output directory", basename)
+			}
+			// Collect files for this unit.
+			files := filterFiles(targetPlan.Files, unit.Root)
+			if len(files) == 0 {
+				return nil, fmt.Errorf("target %q archive unit root %q has no files", targetPlan.Target, unit.Root)
+			}
+			if err := writeTarGzipFromPlan(archivePath, unit.Root, files); err != nil {
+				return nil, fmt.Errorf("archive target %q unit %q: %w", targetPlan.Target, unit.Root, err)
+			}
+			paths = append(paths, archivePath)
 		}
-		basename := name + "-" + string(target.Target) + extension
-		archivePath := filepath.Join(output, basename)
-		// Verify the computed path stays within the requested output directory.
-		// filepath.Join normalises separators; a malicious name like "../x" could
-		// escape. Rel detects that by returning a path starting with "..".
-		rel, err := filepath.Rel(output, archivePath)
-		if err != nil || strings.HasPrefix(rel, "..") {
-			return nil, fmt.Errorf("archive name %q escapes the output directory", basename)
-		}
-		root := filepath.Join(workspace, filepath.FromSlash(string(manifest.Output)), string(target.Target))
-		if err := writeTarGzip(archivePath, root); err != nil {
-			return nil, fmt.Errorf("archive target %q: %w", target.Target, err)
-		}
-		paths = append(paths, archivePath)
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+// filterFiles returns the subset of files whose path starts with root.
+// If root is ".", all files are included. Otherwise only files with the
+// root+"/" prefix are included.
+func filterFiles(files []model.PlannedFile, root string) []model.PlannedFile {
+	if root == "." {
+		return append([]model.PlannedFile(nil), files...)
+	}
+	prefix := root + "/"
+	var result []model.PlannedFile
+	for _, f := range files {
+		if strings.HasPrefix(string(f.Path), prefix) {
+			result = append(result, f)
+		}
+	}
+	return result
 }
 
 // validateArchiveName checks that name is a safe filename component for use in
@@ -85,44 +108,29 @@ func validateArchiveName(name string) error {
 	return nil
 }
 
-func writeTarGzip(destination, root string) (err error) {
-	files := make([]string, 0)
-	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			if path != root && strings.HasPrefix(filepath.ToSlash(path[len(root):]), "/.agentbundler") {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("generated output contains symlink %q", path)
-		}
-		if !entry.Type().IsRegular() {
-			return fmt.Errorf("generated output contains non-regular file %q", path)
-		}
-		files = append(files, path)
-		return nil
-	}); err != nil {
-		return err
-	}
-	if len(files) == 0 {
-		return fmt.Errorf("generated target root %q is empty", root)
-	}
-	sort.Strings(files)
+// writeTarGzipFromPlan writes a deterministic tar.gz archive from plan bytes.
+// Files are sorted by path and written with zeroed timestamps. The root prefix
+// is stripped from each file's archive name when root is not ".".
+func writeTarGzipFromPlan(destination, root string, files []model.PlannedFile) (err error) {
+	// Sort for determinism.
+	sortedFiles := append([]model.PlannedFile(nil), files...)
+	sort.Slice(sortedFiles, func(i, j int) bool {
+		return sortedFiles[i].Path < sortedFiles[j].Path
+	})
+
 	temporary := destination + ".tmp"
 	defer func() {
 		if err != nil {
 			_ = os.Remove(temporary)
 		}
 	}()
+
 	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = file.Close() }()
+
 	gzipWriter, err := gzip.NewWriterLevel(file, gzip.BestCompression)
 	if err != nil {
 		return err
@@ -130,62 +138,47 @@ func writeTarGzip(destination, root string) (err error) {
 	gzipWriter.ModTime = time.Unix(0, 0)
 	gzipWriter.OS = 255
 	tarWriter := tar.NewWriter(gzipWriter)
-	for _, path := range files {
-		info, statErr := os.Stat(path)
-		if statErr != nil {
-			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
-			return statErr
-		}
-		relative, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
-			return relErr
-		}
-		name := filepath.ToSlash(relative)
-		if name == "." || strings.HasPrefix(name, "../") {
-			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
-			return fmt.Errorf("archive path escapes root: %q", name)
+
+	for _, pf := range sortedFiles {
+		// Strip the root prefix to get the in-archive path.
+		archiveName := string(pf.Path)
+		if root != "." {
+			archiveName = strings.TrimPrefix(archiveName, root+"/")
 		}
 		mode := int64(0o644)
-		if info.Mode().Perm()&0o111 != 0 {
+		if pf.Executable {
 			mode = 0o755
 		}
-		header := &tar.Header{Name: name, Mode: mode, Size: info.Size(), ModTime: time.Unix(0, 0), Format: tar.FormatUSTAR}
-		if err := tarWriter.WriteHeader(header); err != nil {
-			_ = tarWriter.Close()
-			_ = gzipWriter.Close()
-			return err
+		header := &tar.Header{
+			Name:    archiveName,
+			Mode:    mode,
+			Size:    int64(len(pf.Bytes)),
+			ModTime: time.Unix(0, 0),
+			Format:  tar.FormatUSTAR,
 		}
-		input, openErr := os.Open(path)
-		if openErr != nil {
+		if writeErr := tarWriter.WriteHeader(header); writeErr != nil {
 			_ = tarWriter.Close()
 			_ = gzipWriter.Close()
-			return openErr
+			return writeErr
 		}
-		_, copyErr := io.Copy(tarWriter, input)
-		closeErr := input.Close()
-		if copyErr != nil || closeErr != nil {
+		if _, writeErr := tarWriter.Write(pf.Bytes); writeErr != nil {
 			_ = tarWriter.Close()
 			_ = gzipWriter.Close()
-			if copyErr != nil {
-				return copyErr
-			}
-			return closeErr
+			return writeErr
 		}
 	}
-	if err := tarWriter.Close(); err != nil {
+
+	if closeErr := tarWriter.Close(); closeErr != nil {
 		_ = gzipWriter.Close()
-		return err
+		return closeErr
 	}
-	if err := gzipWriter.Close(); err != nil {
-		return err
+	if closeErr := gzipWriter.Close(); closeErr != nil {
+		return closeErr
 	}
-	if err := file.Close(); err != nil {
-		return err
+	if closeErr := file.Close(); closeErr != nil {
+		return closeErr
 	}
+
 	unchanged, err := sameFileContents(temporary, destination)
 	if err != nil {
 		return err

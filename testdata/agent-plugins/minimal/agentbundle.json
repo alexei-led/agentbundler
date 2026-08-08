@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "agent-plugin",
+  "root": "source",
+  "targets": ["agent-plugins"],
+  "output": "generated",
+  "distribution": {"name": "test-plugins"},
+  "agentPlugin": {
+    "plugins": ["hello"]
+  }
+}

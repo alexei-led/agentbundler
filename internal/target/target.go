@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
+	"github.com/alexei-led/agentbundler/internal/target/agentplugins"
 	"github.com/alexei-led/agentbundler/internal/target/antigravity"
 	"github.com/alexei-led/agentbundler/internal/target/claude"
 	"github.com/alexei-led/agentbundler/internal/target/codex"
@@ -28,6 +29,7 @@ type registry struct {
 }
 
 var builtInRegistry = mustNewRegistry(
+	fromLeaf(agentplugins.New()),
 	fromLeaf(antigravity.New()),
 	fromLeaf(claude.New()),
 	fromLeaf(codex.New()),
@@ -172,7 +174,19 @@ func Render(adapter Adapter, input model.TargetRenderInput) (model.TargetPlan, [
 	if len(diagnostics) != 0 {
 		return emptyPlan(adapter.Target), diagnostics
 	}
-	return adapter.render(input)
+	plan, renderDiagnostics := adapter.render(input)
+	// Centrally default empty archive-unit lists from existing renderers to one
+	// dot archive containing all target files. The Pi target uses .tgz; all
+	// others use .tar.gz. Adapters that set their own units (e.g. agent-plugins)
+	// are not affected.
+	if len(plan.ArchiveUnits) == 0 && len(renderDiagnostics) == 0 {
+		plan.ArchiveUnits = []model.ArchiveUnit{{
+			Root:   ".",
+			Stem:   string(adapter.Target),
+			Suffix: defaultArchiveSuffix(adapter.Target),
+		}}
+	}
+	return plan, renderDiagnostics
 }
 
 func cloneAdapter(adapter Adapter) Adapter {
@@ -187,6 +201,15 @@ func emptyPlan(target model.TargetID) model.TargetPlan {
 		Files:        []model.PlannedFile{},
 		NativeChecks: []model.NativeCheck{},
 	}
+}
+
+// defaultArchiveSuffix returns the standard archive file suffix for a target.
+// Pi uses .tgz for compatibility with npm conventions; all others use .tar.gz.
+func defaultArchiveSuffix(target model.TargetID) string {
+	if target == model.TargetPi {
+		return ".tgz"
+	}
+	return ".tar.gz"
 }
 
 func registryDiagnostic(code, message string) model.Diagnostic {

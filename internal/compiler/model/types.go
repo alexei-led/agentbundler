@@ -557,12 +557,23 @@ type NativeCheck struct {
 	Location         SourceLocation `json:"location"`
 }
 
+// ArchiveUnit describes one planned release archive produced from a target's output.
+// Root is the plan-relative directory prefix; "." means all target files.
+// Stem is combined with the distribution name to form the archive basename.
+// Suffix is the archive file extension (".tar.gz" or ".tgz").
+type ArchiveUnit struct {
+	Root   string `json:"root"`
+	Stem   string `json:"stem"`
+	Suffix string `json:"suffix"`
+}
+
 // TargetPlan describes all generated files and checks for one target.
 type TargetPlan struct {
 	Target       TargetID      `json:"target"`
 	Packages     []PackageID   `json:"packages"`
 	Files        []PlannedFile `json:"files"`
 	NativeChecks []NativeCheck `json:"nativeChecks"`
+	ArchiveUnits []ArchiveUnit `json:"archiveUnits,omitempty"`
 }
 
 // BuildPlan is the complete write and verification transaction.
