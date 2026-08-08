@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "title": "Agent Plugin Manifest",
+  "description": "Schema for plugin.json manifest files in Agent Plugins 1.0.0 packages.",
+  "type": "object",
+  "required": ["$schema", "name"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+      "description": "Schema selector identifying this as an Agent Plugins 1.0.0 manifest."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$",
+      "description": "Plugin name: 1-64 lowercase ASCII letters, digits, hyphens, and periods; begins and ends alphanumeric."
+    },
+    "version": {
+      "type": "string",
+      "description": "Optional plugin release version. Semantic Versioning recommended."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable plugin description."
+    },
+    "author": {
+      "type": "string",
+      "description": "Optional author name or contact."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL for the plugin homepage."
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional URL for the plugin source repository."
+    },
+    "license": {
+      "type": "string",
+      "description": "Optional SPDX license identifier or expression."
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Optional list of search keywords."
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Optional client-specific extension data, keyed by reverse-domain namespace identifiers."
+    }
+  }
+}

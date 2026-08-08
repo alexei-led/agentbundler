@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "title": "Agent Plugin MCP Configuration",
+  "description": "Schema for mcp.json MCP server configuration files in Agent Plugins 1.0.0 packages.",
+  "type": "object",
+  "required": ["$schema", "mcpServers"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+      "description": "Schema selector identifying this as an Agent Plugins 1.0.0 MCP configuration."
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "Named MCP server configurations.",
+      "additionalProperties": {
+        "oneOf": [
+          {"$ref": "#/$defs/stdioServer"},
+          {"$ref": "#/$defs/streamableHttpServer"},
+          {"$ref": "#/$defs/sseServer"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "stdioServer": {
+      "type": "object",
+      "required": ["type", "command"],
+      "properties": {
+        "type": {"type": "string", "const": "stdio"},
+        "command": {
+          "type": "string",
+          "description": "Executable name resolved by platform search, or plugin-relative path starting with ./"
+        },
+        "args": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Command arguments. May contain ${PLUGIN_ROOT} and ${PLUGIN_DATA} placeholders."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Environment variable overrides. Keys must not be PLUGIN_ROOT or PLUGIN_DATA."
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Working directory. Defaults to the plugin root. May be plugin-relative or prefixed with ${PLUGIN_ROOT} or ${PLUGIN_DATA}."
+        }
+      }
+    },
+    "streamableHttpServer": {
+      "type": "object",
+      "required": ["type", "url"],
+      "properties": {
+        "type": {"type": "string", "const": "streamable-http"},
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "HTTP or HTTPS URL for the Streamable HTTP MCP server endpoint."
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Fixed HTTP request headers."
+        }
+      }
+    },
+    "sseServer": {
+      "type": "object",
+      "required": ["type", "url"],
+      "properties": {
+        "type": {"type": "string", "const": "sse"},
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "HTTP or HTTPS URL for the SSE MCP server endpoint."
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {"type": "string"},
+          "description": "Fixed HTTP request headers."
+        }
+      }
+    }
+  }
+}

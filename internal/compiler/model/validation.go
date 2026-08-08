@@ -97,22 +97,28 @@ func ValidateSourceManifest(manifest SourceManifest) []Diagnostic {
 
 	switch manifest.Kind {
 	case SourceKindBundle:
-		if manifest.Bundle == nil || manifest.ClaudePlugin != nil || manifest.SkillsRepository != nil {
+		if manifest.Bundle == nil || manifest.ClaudePlugin != nil || manifest.SkillsRepository != nil || manifest.AgentPlugin != nil {
 			diagnostics = appendInvalid(diagnostics, "bundle manifest must contain only bundle configuration")
 		} else {
 			diagnostics = append(diagnostics, validateBundleSourceConfig(*manifest.Bundle)...)
 		}
 	case SourceKindClaudePlugin:
-		if manifest.Bundle != nil || manifest.ClaudePlugin == nil || manifest.SkillsRepository != nil {
+		if manifest.Bundle != nil || manifest.ClaudePlugin == nil || manifest.SkillsRepository != nil || manifest.AgentPlugin != nil {
 			diagnostics = appendInvalid(diagnostics, "claude-plugin manifest must contain only claudePlugin configuration")
 		} else if err := validateRelativePath(string(manifest.ClaudePlugin.PluginRoot)); err != nil {
 			diagnostics = appendInvalid(diagnostics, "claudePlugin pluginRoot: "+err.Error())
 		}
 	case SourceKindSkillsRepository:
-		if manifest.Bundle != nil || manifest.ClaudePlugin != nil || manifest.SkillsRepository == nil {
+		if manifest.Bundle != nil || manifest.ClaudePlugin != nil || manifest.SkillsRepository == nil || manifest.AgentPlugin != nil {
 			diagnostics = appendInvalid(diagnostics, "skills-repository manifest must contain only skillsRepository configuration")
 		} else {
 			diagnostics = append(diagnostics, validateSkillsRepositorySourceConfig(*manifest.SkillsRepository)...)
+		}
+	case SourceKindAgentPlugin:
+		if manifest.Bundle != nil || manifest.ClaudePlugin != nil || manifest.SkillsRepository != nil || manifest.AgentPlugin == nil {
+			diagnostics = appendInvalid(diagnostics, "agent-plugin manifest must contain only agentPlugin configuration")
+		} else {
+			diagnostics = append(diagnostics, validateAgentPluginSourceConfig(*manifest.AgentPlugin)...)
 		}
 	}
 	return diagnostics
@@ -152,6 +158,8 @@ func validateCompatibilityConfig(manifest SourceManifest, targets map[TargetID]s
 			}
 		case TargetAntigravity:
 			diagnostics = append(diagnostics, compatibilityDiagnostic("unsupported-compatibility-target", "Antigravity has no supported repository-root discovery manifest"))
+		case TargetAgentPlugins:
+			diagnostics = append(diagnostics, compatibilityDiagnostic("unsupported-compatibility-target", "agent-plugins has no supported repository-root discovery manifest"))
 		default:
 			diagnostics = append(diagnostics, compatibilityDiagnostic("invalid-compatibility-target", fmt.Sprintf("repository-root compatibility target %q is invalid", target)))
 		}
@@ -950,13 +958,31 @@ func isLowerHex(value string) bool {
 	return err == nil
 }
 
+func validateAgentPluginSourceConfig(config AgentPluginSourceConfig) []Diagnostic {
+	var diagnostics []Diagnostic
+	if len(config.Plugins) == 0 {
+		diagnostics = appendInvalid(diagnostics, "agentPlugin plugins must not be empty")
+	}
+	pluginPaths := make(map[RelativePath]struct{}, len(config.Plugins))
+	for _, pluginPath := range config.Plugins {
+		if err := validateRelativePath(string(pluginPath)); err != nil {
+			diagnostics = appendInvalid(diagnostics, "agentPlugin plugin path: "+err.Error())
+		}
+		if _, ok := pluginPaths[pluginPath]; ok {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("agentPlugin plugin path %q is duplicated", pluginPath))
+		}
+		pluginPaths[pluginPath] = struct{}{}
+	}
+	return diagnostics
+}
+
 func validSourceKind(kind SourceKind) bool {
-	return kind == SourceKindBundle || kind == SourceKindClaudePlugin || kind == SourceKindSkillsRepository
+	return kind == SourceKindBundle || kind == SourceKindClaudePlugin || kind == SourceKindSkillsRepository || kind == SourceKindAgentPlugin
 }
 
 func validTargetID(target TargetID) bool {
 	switch target {
-	case TargetAntigravity, TargetClaude, TargetCodex, TargetPi, TargetCopilot, TargetGrok, TargetCursor:
+	case TargetAntigravity, TargetClaude, TargetCodex, TargetPi, TargetCopilot, TargetGrok, TargetCursor, TargetAgentPlugins:
 		return true
 	default:
 		return false

@@ -34,6 +34,16 @@ layers:
   - compiler
   - cmd
 modules:
+  agentplugins:
+    owner: alexei-led
+    paths:
+      - internal/agentplugins/**
+    public:
+      - internal/agentplugins
+    layer: model
+    subdomain: core
+    volatility: high
+    deploy_unit: agentbundler
   compiler_model:
     owner: alexei-led
     paths:
@@ -206,6 +216,29 @@ rules:
     type: forbidden_dependency
     from: internal/compatibility/**
     to: internal/artifact/**
+    gate: fail
+  # internal/agentplugins is a pure wire contract module. It must not import
+  # compiler internals, targets, artifact infrastructure, or the CLI. This
+  # boundary is also enforced by the imports_test.go allowlist test.
+  - id: agentplugins_no_compiler
+    type: forbidden_dependency
+    from: internal/agentplugins/**
+    to: internal/compiler/**
+    gate: fail
+  - id: agentplugins_no_target
+    type: forbidden_dependency
+    from: internal/agentplugins/**
+    to: internal/target/**
+    gate: fail
+  - id: agentplugins_no_artifact
+    type: forbidden_dependency
+    from: internal/agentplugins/**
+    to: internal/artifact/**
+    gate: fail
+  - id: agentplugins_no_cmd
+    type: forbidden_dependency
+    from: internal/agentplugins/**
+    to: cmd/**
     gate: fail
 ai:
   provider: anthropic

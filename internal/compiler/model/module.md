@@ -38,8 +38,8 @@ InputFile = { path: RelativePath, sha256: String }
 PackageMetadata = Map<String, JsonValue>
 DistributionMetadata = Map<String, JsonValue>
 
-SourceKind = bundle | claude-plugin | skills-repository
-TargetID = antigravity | claude | codex | pi | copilot | grok | cursor
+SourceKind = bundle | claude-plugin | skills-repository | agent-plugin
+TargetID = antigravity | claude | codex | pi | copilot | grok | cursor | agent-plugins
 AssetKind = skill | agent | hook | command | resource | native-resource
 CapabilityKey = canonical non-empty identifier
 CapabilityState = native | equivalent | advisory | unsupported
@@ -85,15 +85,34 @@ NativeGapAction = replace | exclude | source-only
 NativeGapPolicy = { component: String, action: NativeGapAction, replacement: AssetID? }
 AggregatePackage = { identity: PackageID, metadata: PackageMetadata }
 TargetComposition = { target: TargetID, profile: TargetProfile?, packageMode: TargetPackageMode?, aggregate: AggregatePackage?, skillPreamble: String?, capabilities: [CapabilityRule], nativeGaps: [NativeGapPolicy] }
+MCPTransport = stdio | streamable-http | sse
+StdioMCPServer = { command: String, args: [String]?, env: Map<String,String>?, cwd: String? }
+RemoteMCPServer = { url: String, headers: Map<String,String>? }
+MCPServer = { name: String, transport: MCPTransport, stdio: StdioMCPServer?, remote: RemoteMCPServer?, unknown: Map<String,JSONValue>? }
+PackageFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, sha256: String, origin: [SourceLocation] }
+ClientExtension = { namespace: String, manifest: JSONValue, packageFiles: [PackageFile] }
+AgentPluginManifest = { name: String, version: String?, description: String?, author: String?, homepage: String?, repository: String?, license: String?, keywords: [String]? }
+AgentPluginData = { profile: String, manifest: AgentPluginManifest, mcpServers: [MCPServer]?, extensions: [ClientExtension]?, packageFiles: [PackageFile]?, unknownManifest: Map<String,JSONValue>?, unknownMCP: Map<String,JSONValue>? }
+AgentPluginSourceConfig = { plugins: [RelativePath] }
+
+Portable capability keys for agent-plugin components:
+  agent-plugin.skills
+  agent-plugin.mcp.stdio
+  agent-plugin.mcp.streamable-http
+  agent-plugin.mcp.sse
+  agent-plugin.extensions
+  agent-plugin.unknown-json
+  agent-plugin.package-files
+
 BundleSourceConfig = { packages: [RelativePath] }
 ClaudePluginSourceConfig = { pluginRoot: RelativePath }
 SkillsRepositorySourceConfig = { package: PackageID, roots: [RelativePath], metadata: PackageMetadata }
-SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, distribution: DistributionMetadata?, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig? }
+SourceManifest = { version: Integer, kind: SourceKind, root: RelativePath, targets: [TargetID], output: RelativePath, distribution: DistributionMetadata?, composition: [TargetComposition], bundle: BundleSourceConfig?, claudePlugin: ClaudePluginSourceConfig?, skillsRepository: SkillsRepositorySourceConfig?, agentPlugin: AgentPluginSourceConfig? }
 SourceAsset = { identity: AssetID, kind: AssetKind, targets: [TargetID]?, base: AssetContent, hook: HookDescriptor?, command: CommandDescriptor?, capabilityUses: [CapabilityUse], overlays: [TargetOverlay] }
-SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset] }
+SourcePackage = { identity: PackageID, metadata: PackageMetadata, assets: [SourceAsset], agentPlugin: AgentPluginData? }
 SourceInventory = { packages: [SourcePackage], nativeGaps: [NativeGap], inputs: [InputFile] }
 NormalizedAsset = { identity: AssetID, kind: AssetKind, content: AssetContent, hook: HookDescriptor?, command: CommandDescriptor?, native: NativeResourceOptions?, capabilityUses: [CapabilityUse] }
-NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, profile: TargetProfile?, assets: [NormalizedAsset], acknowledgments: [Acknowledgment] }
+NormalizedPackage = { identity: PackageID, metadata: PackageMetadata, target: TargetID, profile: TargetProfile?, assets: [NormalizedAsset], acknowledgments: [Acknowledgment], agentPlugin: AgentPluginData? }
 TargetRenderInput = { packages: [NormalizedPackage], distribution: DistributionMetadata, packageMode: TargetPackageMode, aggregate: AggregatePackage? }
 
 Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String, hint: String?, asset: AssetID?, field: String?, targets: [TargetID]? }
@@ -148,6 +167,9 @@ The Go Contract Projection in `docs/tech-stack.md` defines exported representati
 - File executable intent survives source import, overlays, composition, rendering, provenance, comparison, and writing. Interpreter-backed payloads need not be executable. Windows keeps the explicit artifact rejection for planned executable intent.
 - `separate` is the source-version-1 compatibility default. `aggregate` is valid only for Pi package profile, must be explicitly declared, and requires explicit aggregate identity and metadata. It is never inferred from package count.
 - Within one target render input, package identities are unique and packages are ordered. Aggregate dependency values may merge only when equal; dependency, asset, hook, or path conflicts fail with all origins.
+- `agent-plugin` manifests must carry `agentPlugin` configuration with a non-empty, duplicate-free `plugins` list. The `agent-plugins` target supports separate package mode only; aggregate mode fails before composition.
+- `AgentPluginData` travels from `SourcePackage` to `NormalizedPackage` to `TargetRenderInput` unchanged. `CloneAgentPluginData` produces a fully detached deep copy; all slices, maps, and byte slices are new allocations.
+- Portable capability keys `agent-plugin.*` are canonical identifiers; target adapters default all absent keys to `unsupported`. Manifest rules may only retain or narrow (not upgrade) adapter capability states.
 - Version-1 hook-free manifests remain valid. New fields are optional unless their feature is selected; target format revisions change when native output changes. Source version changes only if optional strict decoding cannot preserve compatibility.
 - Generated bytes may depend only on source files, explicit manifests, adapter revision, and embedded runtime bytes. They do not depend on network, time, hostname, Git, absolute source paths, installed vendor versions, or locale.
 - This module imports no sibling module.

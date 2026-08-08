@@ -20,19 +20,21 @@ const (
 	SourceKindBundle           SourceKind = "bundle"
 	SourceKindClaudePlugin     SourceKind = "claude-plugin"
 	SourceKindSkillsRepository SourceKind = "skills-repository"
+	SourceKindAgentPlugin      SourceKind = "agent-plugin"
 )
 
 // TargetID identifies a supported output target.
 type TargetID string
 
 const (
-	TargetAntigravity TargetID = "antigravity"
-	TargetClaude      TargetID = "claude"
-	TargetCodex       TargetID = "codex"
-	TargetPi          TargetID = "pi"
-	TargetCopilot     TargetID = "copilot"
-	TargetGrok        TargetID = "grok"
-	TargetCursor      TargetID = "cursor"
+	TargetAntigravity  TargetID = "antigravity"
+	TargetClaude       TargetID = "claude"
+	TargetCodex        TargetID = "codex"
+	TargetPi           TargetID = "pi"
+	TargetCopilot      TargetID = "copilot"
+	TargetGrok         TargetID = "grok"
+	TargetCursor       TargetID = "cursor"
+	TargetAgentPlugins TargetID = "agent-plugins"
 )
 
 // AssetKind classifies normalized assets.
@@ -311,6 +313,106 @@ type TargetComposition struct {
 	NativeGaps    []NativeGapPolicy `json:"nativeGaps"`
 }
 
+// AgentPluginSourceConfig configures an agent-plugin source.
+// Plugins is a non-empty, duplicate-free list of plugin roots relative to
+// SourceManifest.Root. Each root must contain a valid plugin.json.
+type AgentPluginSourceConfig struct {
+	Plugins []RelativePath `json:"plugins"`
+}
+
+// MCPTransport identifies the transport type of an MCP server.
+type MCPTransport string
+
+const (
+	// MCPTransportStdio is the stdio MCP transport.
+	MCPTransportStdio MCPTransport = "stdio"
+	// MCPTransportStreamableHTTP is the Streamable HTTP MCP transport.
+	MCPTransportStreamableHTTP MCPTransport = "streamable-http"
+	// MCPTransportSSE is the SSE (legacy remote) MCP transport.
+	MCPTransportSSE MCPTransport = "sse"
+)
+
+// StdioMCPServer carries the stdio-specific MCP server configuration.
+//
+// Command is one bare executable token or a plugin-relative ./path.
+// Args, Env values, and Cwd may contain single-pass ${PLUGIN_ROOT} and
+// ${PLUGIN_DATA} placeholders. The compiler validates permitted forms but
+// does not expand them. PLUGIN_ROOT and PLUGIN_DATA keys are reserved.
+type StdioMCPServer struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Cwd     string            `json:"cwd,omitempty"`
+}
+
+// RemoteMCPServer carries configuration for streamable-http and sse MCP servers.
+type RemoteMCPServer struct {
+	URL     string            `json:"url"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+// MCPServer is one semantic MCP server configuration entry in a plugin.
+// Exactly one of Stdio or Remote is non-nil, consistent with Transport.
+type MCPServer struct {
+	Name      string           `json:"name"`
+	Transport MCPTransport     `json:"transport"`
+	Stdio     *StdioMCPServer  `json:"stdio,omitempty"`
+	Remote    *RemoteMCPServer `json:"remote,omitempty"`
+	Unknown   map[string]any   `json:"unknown,omitempty"`
+}
+
+// PackageFile is one regular file inventoried from an agent plugin package root.
+type PackageFile struct {
+	Path       RelativePath     `json:"path"`
+	Bytes      []byte           `json:"bytes"`
+	Executable bool             `json:"executable"`
+	SHA256     string           `json:"sha256"`
+	Origin     []SourceLocation `json:"origin"`
+}
+
+// ClientExtension is one client-specific reverse-domain extension namespace.
+type ClientExtension struct {
+	Namespace    string        `json:"namespace"`
+	Manifest     any           `json:"manifest"`
+	PackageFiles []PackageFile `json:"packageFiles"`
+}
+
+// AgentPluginManifest holds the typed portable fields from a plugin.json manifest.
+type AgentPluginManifest struct {
+	Name        string   `json:"name"`
+	Version     string   `json:"version,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Author      string   `json:"author,omitempty"`
+	Homepage    string   `json:"homepage,omitempty"`
+	Repository  string   `json:"repository,omitempty"`
+	License     string   `json:"license,omitempty"`
+	Keywords    []string `json:"keywords,omitempty"`
+}
+
+// AgentPluginData carries all decoded plugin data for one agent plugin package.
+// It travels from SourcePackage through NormalizedPackage to TargetRenderInput
+// unchanged; composition copies it exactly without merging.
+type AgentPluginData struct {
+	// Profile is the compatibility profile ID used to decode this plugin.
+	Profile string `json:"profile"`
+	// Manifest holds the typed portable manifest fields.
+	Manifest AgentPluginManifest `json:"manifest"`
+	// MCPServers holds decoded MCP server configurations in lexical name order.
+	MCPServers []MCPServer `json:"mcpServers,omitempty"`
+	// Extensions holds client-specific extension namespaces with their manifests
+	// and namespaced package files.
+	Extensions []ClientExtension `json:"extensions,omitempty"`
+	// PackageFiles holds regular package files not owned by manifest, MCP, skills,
+	// or extension contracts.
+	PackageFiles []PackageFile `json:"packageFiles,omitempty"`
+	// UnknownManifest holds top-level plugin.json fields beyond the portable spec.
+	// Preserved as semantic JSON values for deterministic round-trip reproduction.
+	UnknownManifest map[string]any `json:"unknownManifest,omitempty"`
+	// UnknownMCP holds top-level mcp.json fields beyond $schema and mcpServers.
+	// Preserved as semantic JSON values for deterministic round-trip reproduction.
+	UnknownMCP map[string]any `json:"unknownMCP,omitempty"`
+}
+
 // BundleSourceConfig configures a bundle source.
 type BundleSourceConfig struct {
 	Packages []RelativePath `json:"packages"`
@@ -327,6 +429,26 @@ type SkillsRepositorySourceConfig struct {
 	Roots    []RelativePath  `json:"roots"`
 	Metadata PackageMetadata `json:"metadata"`
 }
+
+// Portable capability keys for agent-plugin components.
+// Target adapters declare support for each key through their capability catalog.
+// Missing keys are normalized to unsupported; no adapter opts in by default.
+const (
+	// CapabilityKeyAgentPluginSkills identifies Agent Skills component support.
+	CapabilityKeyAgentPluginSkills CapabilityKey = "agent-plugin.skills"
+	// CapabilityKeyAgentPluginMCPStdio identifies stdio MCP server transport support.
+	CapabilityKeyAgentPluginMCPStdio CapabilityKey = "agent-plugin.mcp.stdio"
+	// CapabilityKeyAgentPluginMCPStreamableHTTP identifies Streamable HTTP MCP transport support.
+	CapabilityKeyAgentPluginMCPStreamableHTTP CapabilityKey = "agent-plugin.mcp.streamable-http"
+	// CapabilityKeyAgentPluginMCPSSE identifies SSE MCP server transport support.
+	CapabilityKeyAgentPluginMCPSSE CapabilityKey = "agent-plugin.mcp.sse"
+	// CapabilityKeyAgentPluginExtensions identifies client extension namespace support.
+	CapabilityKeyAgentPluginExtensions CapabilityKey = "agent-plugin.extensions"
+	// CapabilityKeyAgentPluginUnknownJSON identifies permitted-unknown JSON value preservation.
+	CapabilityKeyAgentPluginUnknownJSON CapabilityKey = "agent-plugin.unknown-json"
+	// CapabilityKeyAgentPluginPackageFiles identifies regular package file support.
+	CapabilityKeyAgentPluginPackageFiles CapabilityKey = "agent-plugin.package-files"
+)
 
 // CompatibilityConfig opts generated vendor discovery files into the repository root.
 type CompatibilityConfig struct {
@@ -346,6 +468,7 @@ type SourceManifest struct {
 	Bundle           *BundleSourceConfig           `json:"bundle,omitempty"`
 	ClaudePlugin     *ClaudePluginSourceConfig     `json:"claudePlugin,omitempty"`
 	SkillsRepository *SkillsRepositorySourceConfig `json:"skillsRepository,omitempty"`
+	AgentPlugin      *AgentPluginSourceConfig      `json:"agentPlugin,omitempty"`
 }
 
 // SourceAsset is an uncomposed source asset.
@@ -363,9 +486,10 @@ type SourceAsset struct {
 
 // SourcePackage is an uncomposed source package.
 type SourcePackage struct {
-	Identity PackageID       `json:"identity"`
-	Metadata PackageMetadata `json:"metadata"`
-	Assets   []SourceAsset   `json:"assets"`
+	Identity    PackageID        `json:"identity"`
+	Metadata    PackageMetadata  `json:"metadata"`
+	Assets      []SourceAsset    `json:"assets"`
+	AgentPlugin *AgentPluginData `json:"agentPlugin,omitempty"`
 }
 
 // SourceInventory is the discovered source input.
@@ -394,6 +518,7 @@ type NormalizedPackage struct {
 	Profile         TargetProfile     `json:"profile,omitempty"`
 	Assets          []NormalizedAsset `json:"assets"`
 	Acknowledgments []Acknowledgment  `json:"acknowledgments"`
+	AgentPlugin     *AgentPluginData  `json:"agentPlugin,omitempty"`
 }
 
 // TargetRenderInput contains all target-neutral inputs for one adapter render.

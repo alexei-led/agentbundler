@@ -1069,3 +1069,265 @@ func hasError(diagnostics []Diagnostic) bool {
 	}
 	return false
 }
+
+// --- AgentPlugin model tests ---
+
+func TestValidateSourceManifestAcceptsAgentPlugin(t *testing.T) {
+	t.Parallel()
+	manifest := SourceManifest{
+		Version: 1,
+		Kind:    SourceKindAgentPlugin,
+		Root:    "plugins",
+		Targets: []TargetID{TargetAgentPlugins},
+		Output:  "generated",
+		AgentPlugin: &AgentPluginSourceConfig{
+			Plugins: []RelativePath{"deploy-tools"},
+		},
+	}
+	if diags := ValidateSourceManifest(manifest); len(diags) != 0 {
+		t.Fatalf("valid agent-plugin manifest diagnostics = %v", diags)
+	}
+}
+
+func TestValidateSourceManifestRejectsAgentPluginEmptyPlugins(t *testing.T) {
+	t.Parallel()
+	manifest := SourceManifest{
+		Version:     1,
+		Kind:        SourceKindAgentPlugin,
+		Root:        "plugins",
+		Targets:     []TargetID{TargetAgentPlugins},
+		Output:      "generated",
+		AgentPlugin: &AgentPluginSourceConfig{Plugins: nil},
+	}
+	if diags := ValidateSourceManifest(manifest); !hasError(diags) {
+		t.Fatal("empty plugins: expected error diagnostics")
+	}
+}
+
+func TestValidateSourceManifestRejectsAgentPluginDuplicatePaths(t *testing.T) {
+	t.Parallel()
+	manifest := SourceManifest{
+		Version: 1,
+		Kind:    SourceKindAgentPlugin,
+		Root:    "plugins",
+		Targets: []TargetID{TargetAgentPlugins},
+		Output:  "generated",
+		AgentPlugin: &AgentPluginSourceConfig{
+			Plugins: []RelativePath{"tools", "tools"},
+		},
+	}
+	if diags := ValidateSourceManifest(manifest); !hasError(diags) {
+		t.Fatal("duplicate plugin paths: expected error diagnostics")
+	}
+}
+
+func TestValidateSourceManifestRejectsAgentPluginWithOtherConfigs(t *testing.T) {
+	t.Parallel()
+	manifest := SourceManifest{
+		Version: 1,
+		Kind:    SourceKindAgentPlugin,
+		Root:    "plugins",
+		Targets: []TargetID{TargetAgentPlugins},
+		Output:  "generated",
+		AgentPlugin: &AgentPluginSourceConfig{
+			Plugins: []RelativePath{"tools"},
+		},
+		Bundle: &BundleSourceConfig{Packages: []RelativePath{"pkg"}},
+	}
+	if diags := ValidateSourceManifest(manifest); !hasError(diags) {
+		t.Fatal("agent-plugin with bundle config: expected error diagnostics")
+	}
+}
+
+func TestValidateSourceManifestRejectsAgentPluginMissingConfig(t *testing.T) {
+	t.Parallel()
+	manifest := SourceManifest{
+		Version: 1,
+		Kind:    SourceKindAgentPlugin,
+		Root:    "plugins",
+		Targets: []TargetID{TargetAgentPlugins},
+		Output:  "generated",
+		// AgentPlugin is nil
+	}
+	if diags := ValidateSourceManifest(manifest); !hasError(diags) {
+		t.Fatal("agent-plugin without agentPlugin config: expected error diagnostics")
+	}
+}
+
+func TestAgentPluginsTargetAggregateRejected(t *testing.T) {
+	t.Parallel()
+	composition := TargetComposition{
+		Target:      TargetAgentPlugins,
+		PackageMode: TargetPackageModeAggregate,
+		Aggregate: &AggregatePackage{
+			Identity: "combined",
+			Metadata: map[string]any{},
+		},
+		Profile: TargetProfilePackage,
+	}
+	if diags := ValidateTargetComposition(composition); !hasError(diags) {
+		t.Fatal("agent-plugins aggregate mode: expected error diagnostics")
+	}
+}
+
+func TestCloneAgentPluginDataNilSafe(t *testing.T) {
+	t.Parallel()
+	if clone := CloneAgentPluginData(nil); clone != nil {
+		t.Fatalf("CloneAgentPluginData(nil) = %v; want nil", clone)
+	}
+}
+
+func TestCloneAgentPluginDataIsDetached(t *testing.T) {
+	t.Parallel()
+
+	originLine := 3
+	data := &AgentPluginData{
+		Profile: "agent-plugins/1.0.0-bd383552",
+		Manifest: AgentPluginManifest{
+			Name:     "test-plugin",
+			Keywords: []string{"a", "b"},
+		},
+		MCPServers: []MCPServer{
+			{
+				Name:      "srv",
+				Transport: MCPTransportStdio,
+				Stdio: &StdioMCPServer{
+					Command: "server",
+					Args:    []string{"--port", "3000"},
+					Env:     map[string]string{"LOG": "debug"},
+				},
+			},
+		},
+		PackageFiles: []PackageFile{
+			{
+				Path:   "README.md",
+				Bytes:  []byte("hello"),
+				SHA256: "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+				Origin: []SourceLocation{{Path: "README.md", Line: &originLine}},
+			},
+		},
+		UnknownManifest: map[string]any{"future": "value"},
+	}
+
+	clone := CloneAgentPluginData(data)
+	if clone == nil {
+		t.Fatal("CloneAgentPluginData returned nil")
+	}
+
+	// Verify values equal.
+	if clone.Profile != data.Profile {
+		t.Errorf("Profile = %q; want %q", clone.Profile, data.Profile)
+	}
+	if clone.Manifest.Name != data.Manifest.Name {
+		t.Errorf("Manifest.Name = %q; want %q", clone.Manifest.Name, data.Manifest.Name)
+	}
+
+	// Mutate clone and verify original is unaffected.
+	clone.Manifest.Keywords[0] = "mutated"
+	if data.Manifest.Keywords[0] == "mutated" {
+		t.Error("Manifest.Keywords not detached")
+	}
+
+	clone.MCPServers[0].Stdio.Args[0] = "mutated"
+	if data.MCPServers[0].Stdio.Args[0] == "mutated" {
+		t.Error("MCPServer.Stdio.Args not detached")
+	}
+
+	clone.MCPServers[0].Stdio.Env["LOG"] = "mutated"
+	if data.MCPServers[0].Stdio.Env["LOG"] == "mutated" {
+		t.Error("MCPServer.Stdio.Env not detached")
+	}
+
+	clone.PackageFiles[0].Bytes[0] = 'X'
+	if data.PackageFiles[0].Bytes[0] == 'X' {
+		t.Error("PackageFile.Bytes not detached")
+	}
+
+	clone.UnknownManifest["future"] = "mutated"
+	if data.UnknownManifest["future"] == "mutated" {
+		t.Error("UnknownManifest not detached")
+	}
+}
+
+func TestValidateAgentPluginDataRejectsEmpty(t *testing.T) {
+	t.Parallel()
+	if diags := ValidateAgentPluginData(AgentPluginData{}); !hasError(diags) {
+		t.Fatal("empty AgentPluginData: expected error diagnostics")
+	}
+}
+
+func TestValidateAgentPluginDataAcceptsMinimal(t *testing.T) {
+	t.Parallel()
+	data := AgentPluginData{
+		Profile:  "agent-plugins/1.0.0-bd383552",
+		Manifest: AgentPluginManifest{Name: "test-plugin"},
+	}
+	if diags := ValidateAgentPluginData(data); len(diags) != 0 {
+		t.Fatalf("minimal AgentPluginData diagnostics = %v", diags)
+	}
+}
+
+func TestValidateNormalizedPackageCarriesAgentPluginData(t *testing.T) {
+	t.Parallel()
+	pkg := NormalizedPackage{
+		Identity: "test-plugin",
+		Target:   TargetAgentPlugins,
+		Metadata: map[string]any{},
+		AgentPlugin: &AgentPluginData{
+			Profile:  "agent-plugins/1.0.0-bd383552",
+			Manifest: AgentPluginManifest{Name: "test-plugin"},
+		},
+	}
+	if diags := ValidateNormalizedPackage(pkg); len(diags) != 0 {
+		t.Fatalf("normalized package with AgentPlugin diagnostics = %v", diags)
+	}
+}
+
+func TestDecodeSourceManifestJSONAcceptsAgentPluginKind(t *testing.T) {
+	t.Parallel()
+	const data = `{
+		"version": 1,
+		"kind": "agent-plugin",
+		"root": "plugins",
+		"targets": ["agent-plugins"],
+		"output": "generated",
+		"composition": [],
+		"agentPlugin": {"plugins": ["deploy-tools", "review-tools"]}
+	}`
+	manifest, diags := DecodeSourceManifestJSON([]byte(data))
+	if len(diags) != 0 {
+		t.Fatalf("agent-plugin manifest diagnostics = %v", diags)
+	}
+	if manifest.Kind != SourceKindAgentPlugin {
+		t.Errorf("Kind = %q; want agent-plugin", manifest.Kind)
+	}
+	if manifest.AgentPlugin == nil {
+		t.Fatal("AgentPlugin is nil")
+	}
+	if len(manifest.AgentPlugin.Plugins) != 2 {
+		t.Errorf("Plugins len = %d; want 2", len(manifest.AgentPlugin.Plugins))
+	}
+}
+
+func TestPortableCapabilityKeysAreDefined(t *testing.T) {
+	t.Parallel()
+	keys := []CapabilityKey{
+		CapabilityKeyAgentPluginSkills,
+		CapabilityKeyAgentPluginMCPStdio,
+		CapabilityKeyAgentPluginMCPStreamableHTTP,
+		CapabilityKeyAgentPluginMCPSSE,
+		CapabilityKeyAgentPluginExtensions,
+		CapabilityKeyAgentPluginUnknownJSON,
+		CapabilityKeyAgentPluginPackageFiles,
+	}
+	seen := make(map[CapabilityKey]bool, len(keys))
+	for _, key := range keys {
+		if key == "" {
+			t.Error("capability key must not be empty")
+		}
+		if seen[key] {
+			t.Errorf("capability key %q is duplicated", key)
+		}
+		seen[key] = true
+	}
+}

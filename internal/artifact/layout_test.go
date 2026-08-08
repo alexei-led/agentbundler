@@ -135,8 +135,8 @@ func TestZeroValueGuardIsRejectedByRevalidate(t *testing.T) {
 func TestNewWorkspaceLayoutGuardRequiresAbsolutePaths(t *testing.T) {
 	ws := t.TempDir()
 	for _, test := range []struct {
-		name                      string
-		workspaceRoot, src, out   string
+		name                    string
+		workspaceRoot, src, out string
 	}{
 		{name: "relative workspace", workspaceRoot: "relative", src: filepath.Join(ws, "s"), out: filepath.Join(ws, "o")},
 		{name: "relative source", workspaceRoot: ws, src: "relative/source", out: filepath.Join(ws, "o")},

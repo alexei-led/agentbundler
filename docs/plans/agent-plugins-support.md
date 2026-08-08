@@ -234,12 +234,12 @@ Manual checks:
 - Confirm raw unknown JSON is preserved as a value, not interpreted as compiler
   semantics.
 
-- [ ] Vendor the exact pinned schemas and add profile/digest/offline tests.
-- [ ] Implement pure manifest/MCP decode, validate, and deterministic encode.
-- [ ] Add the package-owned model, deep-clone/validation/sort path, source config,
+- [x] Vendor the exact pinned schemas and add profile/digest/offline tests.
+- [x] Implement pure manifest/MCP decode, validate, and deterministic encode.
+- [x] Add the package-owned model, deep-clone/validation/sort path, source config,
       and portable capability keys.
-- [ ] Add and prove archfit plus stdlib import-allowlist boundaries.
-- [ ] Update module docs and run Task 2 verification commands.
+- [x] Add and prove archfit plus stdlib import-allowlist boundaries.
+- [x] Update module docs and run Task 2 verification commands.
 
 ### Task 3: Implement and register the full Agent Plugin source adapter
 

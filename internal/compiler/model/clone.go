@@ -1,5 +1,126 @@
 package model
 
+// CloneAgentPluginData returns a fully detached deep copy of AgentPluginData.
+// All slices, maps, and byte slices are copied; pointer-typed fields get new
+// allocations. Returns nil when data is nil.
+func CloneAgentPluginData(data *AgentPluginData) *AgentPluginData {
+	if data == nil {
+		return nil
+	}
+	clone := &AgentPluginData{
+		Profile:  data.Profile,
+		Manifest: cloneAgentPluginManifest(data.Manifest),
+	}
+	if data.MCPServers != nil {
+		clone.MCPServers = make([]MCPServer, len(data.MCPServers))
+		for i, srv := range data.MCPServers {
+			clone.MCPServers[i] = cloneMCPServer(srv)
+		}
+	}
+	if data.Extensions != nil {
+		clone.Extensions = make([]ClientExtension, len(data.Extensions))
+		for i, ext := range data.Extensions {
+			clone.Extensions[i] = cloneClientExtension(ext)
+		}
+	}
+	if data.PackageFiles != nil {
+		clone.PackageFiles = make([]PackageFile, len(data.PackageFiles))
+		for i, pf := range data.PackageFiles {
+			clone.PackageFiles[i] = clonePackageFile(pf)
+		}
+	}
+	if data.UnknownManifest != nil {
+		clone.UnknownManifest = CloneJSONMap(data.UnknownManifest)
+	}
+	if data.UnknownMCP != nil {
+		clone.UnknownMCP = CloneJSONMap(data.UnknownMCP)
+	}
+	return clone
+}
+
+// CloneJSONMap returns a shallow copy of a map[string]any. The map itself is
+// new, but the values are shared (JSON scalars are immutable; maps and slices
+// decoded from JSON into any are not mutated by the compiler).
+func CloneJSONMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	clone := make(map[string]any, len(m))
+	for k, v := range m {
+		clone[k] = v
+	}
+	return clone
+}
+
+func cloneAgentPluginManifest(m AgentPluginManifest) AgentPluginManifest {
+	clone := m
+	if m.Keywords != nil {
+		clone.Keywords = append([]string(nil), m.Keywords...)
+	}
+	return clone
+}
+
+func cloneMCPServer(srv MCPServer) MCPServer {
+	clone := MCPServer{
+		Name:      srv.Name,
+		Transport: srv.Transport,
+	}
+	if srv.Stdio != nil {
+		st := *srv.Stdio
+		if srv.Stdio.Args != nil {
+			st.Args = append([]string(nil), srv.Stdio.Args...)
+		}
+		if srv.Stdio.Env != nil {
+			st.Env = make(map[string]string, len(srv.Stdio.Env))
+			for k, v := range srv.Stdio.Env {
+				st.Env[k] = v
+			}
+		}
+		clone.Stdio = &st
+	}
+	if srv.Remote != nil {
+		rt := *srv.Remote
+		if srv.Remote.Headers != nil {
+			rt.Headers = make(map[string]string, len(srv.Remote.Headers))
+			for k, v := range srv.Remote.Headers {
+				rt.Headers[k] = v
+			}
+		}
+		clone.Remote = &rt
+	}
+	if srv.Unknown != nil {
+		clone.Unknown = CloneJSONMap(srv.Unknown)
+	}
+	return clone
+}
+
+func clonePackageFile(pf PackageFile) PackageFile {
+	clone := PackageFile{
+		Path:       pf.Path,
+		Executable: pf.Executable,
+		SHA256:     pf.SHA256,
+	}
+	if pf.Bytes != nil {
+		clone.Bytes = append([]byte(nil), pf.Bytes...)
+	}
+	clone.Origin = CloneSourceLocations(pf.Origin)
+	return clone
+}
+
+func cloneClientExtension(ext ClientExtension) ClientExtension {
+	clone := ClientExtension{
+		Namespace: ext.Namespace,
+		Manifest:  ext.Manifest, // opaque JSON scalar/map/slice; shared
+	}
+	if ext.PackageFiles != nil {
+		clone.PackageFiles = make([]PackageFile, len(ext.PackageFiles))
+		for i, pf := range ext.PackageFiles {
+			clone.PackageFiles[i] = clonePackageFile(pf)
+		}
+	}
+	return clone
+}
+
 // CloneHookDescriptor returns a detached hook descriptor value.
 func CloneHookDescriptor(descriptor HookDescriptor) HookDescriptor {
 	clone := descriptor

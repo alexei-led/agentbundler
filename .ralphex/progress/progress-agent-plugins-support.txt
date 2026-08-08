@@ -22,3 +22,30 @@ Worktree: /Users/alexei/Workspace/agentbundler
   Manual checks:
   - Diagnostics name both conflicting paths (e.g., source %q and output %q are the same directory).
   - Tests use only t.TempDir() isolated roots; no test writes outside its temporary root.
+[2026-08-08T13:03:40.856Z] Task 1 completed after 2 attempt(s).
+[2026-08-09T00:00:00.000Z] Task 2 implementation started: pinned wire module and canonical package representation.
+[2026-08-09T00:30:00.000Z] Task 2 complete. All five checkboxes marked [x].
+  New package: internal/agentplugins/ (profile.go, manifest.go, mcp.go, decode.go, validate.go, encode.go).
+  Embedded schemas: schemas/1.0.0/plugin.schema.json, schemas/1.0.0/mcp.schema.json.
+  Tests: profile_test.go, decode_test.go, imports_test.go.
+  Module: module.md.
+  Model updates: SourceKindAgentPlugin, TargetAgentPlugins, portable capability keys,
+    AgentPluginSourceConfig, MCPTransport/StdioMCPServer/RemoteMCPServer/MCPServer,
+    PackageFile, ClientExtension, AgentPluginManifest, AgentPluginData,
+    AgentPlugin fields in SourceManifest/SourcePackage/NormalizedPackage.
+  CloneAgentPluginData, CloneJSONMap added to clone.go.
+  ValidateAgentPluginData, validateModelMCPServer, validatePackageFiles added to normalized_validation.go.
+  validateAgentPluginSourceConfig added to validation.go.
+  archfit module entry and forbidden dependency rules added to .archfit.yaml.
+  Verification results:
+  - go test ./internal/agentplugins/...: PASS
+  - go test ./internal/compiler/model/...: PASS
+  - go test ./... : PASS (all 33 packages green)
+  - go test -race ./internal/agentplugins/... ./internal/compiler/model/...: PASS
+  - go vet ./...: no issues
+  - gofmt -l: clean (also fixed pre-existing gofmt issues in Task 1 test files)
+  - git diff --check: clean
+  - archfit v1.6.0: 0 blocking findings
+  Schema note: embedded schemas are best-effort reconstruction from spec; verify exact
+    bytes against upstream pinned commit bd383552 before advancing profile.
+  gofmt fixes: internal/artifact/archive/archive_test.go, internal/artifact/layout_test.go (pre-existing Task 1 issues).

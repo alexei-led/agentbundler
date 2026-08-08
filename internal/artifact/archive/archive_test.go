@@ -70,8 +70,8 @@ func TestWriteTargetRootsCreatesDeterministicNativeRootArchives(t *testing.T) {
 
 func TestValidateArchiveNameRejectsUnsafeBasenames(t *testing.T) {
 	for _, test := range []struct {
-		name   string
-		input  string
+		name  string
+		input string
 	}{
 		{name: "forward slash", input: "foo/bar"},
 		{name: "backslash", input: `foo\bar`},
