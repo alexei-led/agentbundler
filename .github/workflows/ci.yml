@@ -73,6 +73,8 @@ jobs:
           bun test
       - name: Check deterministic seven-target fixture
         run: scripts/check-acceptance-fixture
+      - name: Check deterministic Agent Plugins fixture
+        run: scripts/check-agent-plugins-fixture
       - name: Check architecture
         run: scripts/check-architecture
       - name: Lint Go

@@ -9,6 +9,7 @@ deterministic and offline. Installation and publication are external actions.
 
 | Target | Package root | Catalog |
 | --- | --- | --- |
+| Agent Plugins | `plugin.json`, `skills/`, `mcp.json` (when MCP servers are present), `extensions/`, package files | none |
 | Antigravity | `plugin.json`, `skills/`, supported `agents/`, explicit native resources | none |
 | Claude | `.claude-plugin/plugin.json`, `skills/`, `commands/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` |
 | Codex | `.codex-plugin/plugin.json`, `skills/`, `hooks/` | `.agents/plugins/marketplace.json` |
@@ -17,9 +18,9 @@ deterministic and offline. Installation and publication are external actions.
 | Cursor | `.cursor-plugin/plugin.json`, `skills/`, `agents/`, `hooks/` | `.cursor-plugin/marketplace.json` |
 | Grok | Claude-compatible root | `.claude-plugin/marketplace.json` |
 
-Separate mode is flat for one package and package-ID rooted for multiple
-packages. Catalogs require `distribution`. Pi aggregate mode is explicit.
-Antigravity always uses separate package mode and has no catalog.
+The `agent-plugins` target is separate-only and always emits one plugin root per
+package. Package archives use plan-owned archive units, not a filesystem walk.
+Agent Plugins has no catalog.
 
 Pi packages include the generated hook adapter and explicit author native
 extensions. Agents remain in `pi.subagents.agents`; Agent Bundler does not bundle

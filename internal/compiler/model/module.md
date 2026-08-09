@@ -117,8 +117,9 @@ TargetRenderInput = { packages: [NormalizedPackage], distribution: DistributionM
 
 Diagnostic = { code: String, severity: Severity, location: SourceLocation?, message: String, hint: String?, asset: AssetID?, field: String?, targets: [TargetID]? }
 PlannedFile = { path: RelativePath, bytes: ByteSequence, executable: Boolean, origin: [SourceLocation] }
+ArchiveUnit = { root: RelativePath, suffix: String }
 NativeCheck = { program: String, arguments: [String], workingDirectory: RelativePath?, location: SourceLocation }
-TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], nativeChecks: [NativeCheck] }
+TargetPlan = { target: TargetID, packages: [PackageID], files: [PlannedFile], archiveUnits: [ArchiveUnit], nativeChecks: [NativeCheck] }
 BuildPlan = { targets: [TargetPlan], compilerFiles: [PlannedFile] }
 ```
 

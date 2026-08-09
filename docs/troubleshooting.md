@@ -46,6 +46,32 @@ write files.
   roots; missing CLIs, credentials, or model-backed behavior are vendor
   environment limits, not compiler output proof.
 
+## Agent Plugins
+
+- `AGENT_PLUGINS_PROFILE_MISMATCH`: the schema selector in `plugin.json` or
+  `mcp.json` does not match the pinned profile `agent-plugins/1.0.0-bd383552`.
+  Only the pinned spec version is supported.
+- `AGENT_PLUGINS_DUPLICATE_KEY`: JSON input contains a duplicate object key.
+  Remove the duplicate key from the upstream file.
+- `AGENT_PLUGINS_INVALID_NAME`: the plugin name violates the 1–64 lowercase
+  letters/digits/hyphens/periods rule. Fix the name in `plugin.json`.
+- `AGENT_PLUGINS_LINK_EXTERNAL`: a symlink points outside the plugin root.
+  Replace it with a contained regular file or remove it.
+- `AGENT_PLUGINS_LINK_CYCLE`: a symlink cycle was detected. Resolve the cycle.
+- `AGENT_PLUGINS_SPECIAL_FILE`: a device, FIFO, socket, or other special file
+  was found in the plugin root. Remove it or replace with a regular file.
+- `AGENT_PLUGINS_QUOTA_EXCEEDED`: the plugin root exceeds entry, file-size,
+  total-byte, depth, or path-length limits. Reduce the plugin contents.
+- `AGENT_PLUGINS_AGGREGATE`: the `agent-plugins` target does not support
+  aggregate package mode. Use separate mode only.
+- `AGENT_PLUGINS_NO_PLUGINS`: the `agentPlugin.plugins` list is missing or
+  empty. Declare at least one plugin root.
+
+Agent Plugins 1.0.0 is a young standard. The embedded profile pins one specific
+upstream commit. To advance the profile, replace the schema files in
+`internal/agentplugins/schemas/1.0.0/` with the exact upstream bytes, update
+the SHA-256 digests, and follow the D10 compatibility review procedure.
+
 ## Pi
 
 - Generated Pi agents are listed in `pi.subagents.agents`. Install standalone

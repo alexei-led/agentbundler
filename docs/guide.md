@@ -51,6 +51,12 @@ and rejects portable commands and hooks. Explicit native rules, MCP
 configuration, hooks, and scripts can pass through without interpretation.
 Adapters do not install an agent, run a model, or publish a marketplace package.
 
+The `agent-plugin` source kind imports Agent Plugins 1.0.0 packages with full
+semantic preservation: plugin manifests, MCP servers, extension namespaces,
+skills, package files, and permitted unknown JSON. The `agent-plugins` target
+emits conformant standard output with one archive per plugin package. Package
+mode is always separate; aggregate mode is rejected.
+
 Hook event, matcher, decision, timeout, async, and failure semantics differ by
 target. Unsupported cells and undeclared target-native resources fail explicitly
 instead of being silently omitted. Raw Antigravity MCP configuration, hooks,

@@ -7,10 +7,11 @@
 
 > **One source → target-specific coding-agent layouts**
 >
-> Claude Code · Codex · Pi · Copilot · Grok Build · Cursor · Antigravity CLI
+> Claude Code · Codex · Pi · Copilot · Grok Build · Cursor · Antigravity CLI · Agent Plugins
 
 Define coding-agent assets once. Build the target-specific trees each agent
-expects.
+expects. Import and build conformant Agent Plugins 1.0.0 packages with full
+semantic preservation.
 
 ## Why this exists
 
@@ -41,14 +42,18 @@ canonical source + manifest
           ├── Copilot CLI   plugin.json + hooks.json + skills/ + agents/
           ├── Grok Build    Claude-compatible plugin + Grok hook roots
           ├── Cursor        .cursor-plugin/ + hooks/ + skills/ + agents/
-          └── Antigravity   plugin.json + skills/ + agents/ + explicit native resources
+          ├── Antigravity   plugin.json + skills/ + agents/ + explicit native resources
+          └── Agent Plugins plugin.json + skills/ + mcp.json + extensions/ + package files
 ```
 
 ## Current scope
 
 Package profiles produce **skills, agents, portable resources, lifecycle
 command hooks, payload files, and deterministic catalogs** in each vendor's
-native layout. Portable user-invoked commands are a separate asset kind; Claude
+native layout. The standard `agent-plugin` source imports conformant
+Agent Plugins 1.0.0 packages; the `agent-plugins` target emits their
+plugin.json, skills, MCP config, extension trees, and package files
+with full semantic round-trip preservation. Portable user-invoked commands are a separate asset kind; Claude
 emits `commands/<name>.md`, while unverified targets fail explicitly instead of
 dropping the command. Claude, Codex, Copilot CLI, Cursor, Grok, and Antigravity
 CLI use separate plugin roots. Antigravity requires package profile and

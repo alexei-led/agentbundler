@@ -68,10 +68,24 @@ flowchart LR
 - `internal/compatibility`: pure target-plan rewriting plus bounded
   repository-root merge, ownership, write, and drift behavior. It imports only
   the compiler model and never changes target-native package serialization.
+- `internal/agentplugins`: pure pinned wire contract for Agent Plugins 1.0.0.
+  Decodes, validates, and deterministically encodes `plugin.json` and `mcp.json`
+  against profile `agent-plugins/1.0.0-bd383552`. No filesystem, process, or
+  network imports.
+- `internal/compiler/source/agentplugin`: multi-root Agent Plugins importer.
+  Bounded traversal with link materialization, immediate-child skill discovery,
+  and partitioned package-file inventory. Imported links are materialized with
+  source-location provenance; external links, cycles, and special files fail.
+- `internal/target/agentplugins`: standard Agent Plugins renderer. Declares
+  full portable capability support (separate-only). Emits `plugin.json`,
+  `mcp.json`, skills, extension trees, and package files through the pinned
+  wire encoder. One explicit archive unit per plugin package.
 - `internal/target/antigravity`: strict Antigravity CLI plugin serialization,
   supported-agent validation, opaque native-resource copying, and native-check
   declarations. It does not import source, composition, or artifact packages.
 - `internal/artifact`: public artifact facade, validation, and archive boundary.
+  Archives are built from immutable `TargetPlan.Files` and `ArchiveUnits` rather
+  than generated-output walking.
 - `internal/artifact/archive`: deterministic target-root release archives; it excludes compiler and compatibility files and skips unchanged archive replacement.
 - `internal/artifact/write`: staging and complete output replacement; the facade skips it for current output.
 - `internal/artifact/compare`: exact output drift detection.
@@ -86,10 +100,11 @@ flowchart LR
 
 The compiler normalizes and sorts input, assets, hooks, files, packages,
 catalog entries, targets, and output paths. Build output may depend on source
-bytes, explicit manifests, target revisions, and embedded Pi runtime bytes. It
-does not depend on network state, wall clock, hostname, locale, Git state,
-installed vendor versions, or absolute source paths. The provenance file records
-hashes so a later `check` can identify drift.
+bytes, explicit manifests, target revisions, embedded Pi runtime bytes, and
+embedded Agent Plugins schema bytes. It does not depend on network state, wall
+clock, hostname, locale, Git state, installed vendor versions, or absolute
+source paths. The provenance file records hashes so a later `check` can
+identify drift.
 
 `build` owns the complete configured output directory. It compares the
 current plan first, then writes through a staging/journal path and replaces the
@@ -189,10 +204,12 @@ leaves. Catalog generation is local metadata only; installation, publication,
 authentication, and network fetching stay outside the compiler.
 
 After hook or target-contract changes, the scoped human re-review covers
-`internal/compiler/model`, `internal/compiler/source`,
+`internal/agentplugins`, `internal/compiler/model`,
+`internal/compiler/source`, `internal/compiler/source/agentplugin`,
 `internal/compiler/composition`, `internal/target`,
-`internal/target/packageoutput`, `internal/target/antigravity`,
-`internal/target/pi/runtime`, `internal/compiler`, `internal/artifact`, and
+`internal/target/agentplugins`, `internal/target/packageoutput`,
+`internal/target/antigravity`, `internal/target/pi/runtime`,
+`internal/compiler`, `internal/artifact`, and
 `cmd/agbun`. Trace source import through composition, target rendering, artifact
 write/check, and native verification; re-check target-neutral semantics,
 dependency direction, runtime ownership, and capability truthfulness.

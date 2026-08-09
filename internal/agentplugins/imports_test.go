@@ -4,7 +4,6 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -50,40 +49,46 @@ var forbiddenPatterns = []string{
 func TestImportAllowlist(t *testing.T) {
 	t.Parallel()
 
-	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
-		name := fi.Name()
-		// Exclude test files and non-Go files.
-		return strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go")
-	}, parser.ImportsOnly)
+	entries, err := os.ReadDir(".")
 	if err != nil {
-		t.Fatalf("parsing agentplugins source: %v", err)
+		t.Fatalf("reading agentplugins directory: %v", err)
 	}
 
-	if len(pkgs) == 0 {
-		t.Fatal("no Go packages found in current directory")
-	}
+	fset := token.NewFileSet()
+	parsed := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
 
-	for pkgName, pkg := range pkgs {
-		for filename, file := range pkg.Files {
-			base := filepath.Base(filename)
-			for _, imp := range file.Imports {
-				importPath := strings.Trim(imp.Path.Value, `"`)
+		file, err := parser.ParseFile(fset, name, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", name, err)
+		}
+		parsed++
 
-				// Check forbidden patterns first (explicit deny).
-				for _, forbidden := range forbiddenPatterns {
-					if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
-						t.Errorf("[%s] %s: forbidden import %q matches pattern %q",
-							pkgName, base, importPath, forbidden)
-					}
-				}
+		pkgName := file.Name.Name
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
 
-				// Then check allowlist (must be present).
-				if !permittedImports[importPath] {
-					t.Errorf("[%s] %s: import %q is not in the permitted allowlist",
-						pkgName, base, importPath)
+			// Check forbidden patterns first (explicit deny).
+			for _, forbidden := range forbiddenPatterns {
+				if importPath == forbidden || strings.HasPrefix(importPath, forbidden+"/") {
+					t.Errorf("[%s] %s: forbidden import %q matches pattern %q",
+						pkgName, name, importPath, forbidden)
 				}
 			}
+
+			// Then check allowlist (must be present).
+			if !permittedImports[importPath] {
+				t.Errorf("[%s] %s: import %q is not in the permitted allowlist",
+					pkgName, name, importPath)
+			}
 		}
+	}
+
+	if parsed == 0 {
+		t.Fatal("no non-test Go source files found in current directory")
 	}
 }

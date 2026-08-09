@@ -2,7 +2,7 @@
 
 **Path**: `internal/target/` — the module's code is everything in this folder and its transparent subfolders, excluding child module folders
 **Parent**: repository root
-**Submodules**: `antigravity`, `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`, `hookdecision`
+**Submodules**: `agentplugins`, `antigravity`, `claude`, `codex`, `pi`, `copilot`, `grok`, `cursor`, `skills`, `plugin`, `packageoutput`, `marketplace`, `hookdecision`
 
 ## Purpose
 
@@ -10,7 +10,7 @@ This module owns the closed built-in adapter registry and the pure target-render
 
 ## Functional Responsibilities
 
-- Register and resolve seven built-in adapters.
+- Register and resolve eight built-in adapters.
 - Expose adapter format revisions and exact semantic capability rules.
 - Render one explicit target-wide request to one declarative plan.
 - Keep rendering free of filesystem, process, network, clock, Git, locale, and environment access.
@@ -75,6 +75,7 @@ Package profiles render verified native forms:
 - Copilot CLI: root `plugin.json`, skills, `agents/*.agent.md`, root `hooks.json`, payloads.
 - Cursor: `.cursor-plugin/plugin.json`, skills, agents, `hooks/hooks.json`, payloads.
 - Grok: project profile keeps `.grok/skills`; package profile is a separately generated Grok-tested Claude-compatible plugin with Grok command-root behavior.
+- Agent Plugins: root `plugin.json`, skills, `mcp.json`, extension trees, and package files through the pinned wire encoder. Separate-only; aggregate mode is rejected. Declares all seven portable agent-plugin capability keys as native. Package archives use explicit plan-owned archive units.
 
 Target-wide catalogs are deterministic artifacts at the leaf-owned paths pinned in `docs/vendor-package-contracts.md`. The shared `marketplace` leaf strictly validates common distribution/package metadata and orders target-neutral entries; vendor leaves own JSON schemas. Rendering a catalog does not publish, register, authenticate, install, fetch, or update configuration.
 

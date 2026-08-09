@@ -83,9 +83,12 @@ Idempotence is a required quality contract, not an optimization. Given unchanged
 ```text
 root
 ├── cmd/agbun        command parsing and presentation
+├── internal/agentplugins   pinned Agent Plugins 1.0.0 wire contract (pure)
 ├── internal/compiler       source import, composition, orchestration
-│   └── model               immutable normalized contracts
+│   ├── model               immutable normalized contracts
+│   └── source/agentplugin  Agent Plugins multi-root importer
 ├── internal/target         adapter registry and vendor semantics
+│   └── agentplugins        standard Agent Plugins renderer
 ├── internal/artifact       output, drift, provenance, archives, native checks
 ├── internal/compatibility  opt-in repository-root compatibility files
 ├── internal/buildinfo      version metadata
@@ -98,6 +101,7 @@ A command creates a compile request and invokes the compiler. The compiler impor
 
 - Add a target adapter or revise a target format.
 - Add a source importer based on a repeated adoption case.
+- Advance the Agent Plugins pinned profile (requires design review and digest update).
 - Add an asset capability after its portable semantics are specified.
 - Strengthen deterministic and idempotent output, provenance, or native verification.
 

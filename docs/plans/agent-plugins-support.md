@@ -485,12 +485,12 @@ Manual checks:
   or runtime-client conformance.
 - Review final diff for accidental changes outside the approved architecture.
 
-- [ ] Update public, module, CLI, troubleshooting, and architecture docs from
+- [x] Update public, module, CLI, troubleshooting, and architecture docs from
       verified behavior.
-- [ ] Add the Agent Plugins acceptance gate to CI.
-- [ ] Run every whole-plan validation command and record exit status/evidence.
-- [ ] Refresh GitNexus and record affected processes, modules, and residual risk.
-- [ ] Record the scoped `architecture-review` follow-up against C1-C5, D1-D13,
+- [x] Add the Agent Plugins acceptance gate to CI.
+- [x] Run every whole-plan validation command and record exit status/evidence.
+- [x] Refresh GitNexus and record affected processes, modules, and residual risk.
+- [x] Record the scoped `architecture-review` follow-up against C1-C5, D1-D13,
       the new archfit rules, and all acceptance signals.
 
 ## Acceptance criteria
@@ -546,3 +546,56 @@ After implementation, run `architecture-review` over:
 
 Compare findings directly with contracts C1-C5, decisions D1-D13, and the
 acceptance criteria in this plan.
+
+## Execution Evidence (Task 5)
+
+All whole-plan verification commands pass with exit status 0:
+
+| Command | Status |
+| --- | --- |
+| `go test ./...` | PASS (32 packages) |
+| `go test -race ./...` | PASS (32 packages, no races) |
+| `go vet ./...` | PASS |
+| `gofmt -l` + `git diff --check` | PASS (clean) |
+| `golangci-lint run` | PASS (0 issues) |
+| `go test -run '^$' -tags=vendor_smoke ./...` | PASS (compile only) |
+| `scripts/check-acceptance-fixture` | PASS (7 targets deterministic) |
+| `scripts/check-agent-plugins-fixture` | PASS (minimal + full, build/check/deterministic) |
+| archfit v1.6.0 | PASS (0 blocking, score 36/100) |
+
+### GitNexus
+
+- `gitnexus analyze .`: 2,822 nodes, 10,633 edges, 92 clusters, 241 flows
+- `gitnexus detect-changes --scope all`: 15 files, 44 symbols, 0 affected processes, risk low
+- `gitnexus check --cycles`: no cycles
+
+### Documentation updated
+
+- `README.md`: Agent Plugins output path in diagram, feature paragraph, supported targets
+- `docs/configuration.md`: `agent-plugin` source kind with full contract and limits
+- `docs/guide.md`: Agent Plugins mention under current capabilities
+- `docs/quickstart.md`: cross-reference to Agent Plugin configuration
+- `docs/targets-and-cli.md`: `agent-plugins` target row, separate-only behavior
+- `docs/architecture.md`: agentplugins, source/agentplugin, target/agentplugins modules; plan-owned archive
+- `docs/vendor-package-contracts.md`: Agent Plugins row; vendor plugin.json disclaimer
+- `docs/troubleshooting.md`: Agent Plugins diagnostics, profile mismatch, link/containment errors
+- `module.md`: agentplugins in internal design tree; profile advance in change vectors
+- `internal/artifact/archive/module.md`: plan-owned archive units
+- `internal/compiler/model/module.md`: ArchiveUnit type in public contract
+- `internal/target/module.md`: agentplugins submodule, eight adapters, agent-plugins renderer
+
+### CI
+
+- `.github/workflows/ci.yml`: added `scripts/check-agent-plugins-fixture` as a quality job step
+
+### Architecture-review follow-up scope
+
+Run `architecture-review` over:
+- C1: `internal/agentplugins/**` purity (stdlib-only imports, no filesystem/process/network)
+- C2: `SourcePackage -> NormalizedPackage -> TargetRenderInput -> BuildPlan` data chain
+- C3: model/composition-to-target through `internal/target/agentplugins`
+- C4: `WorkspaceLayoutGuard` (Gate 0), plan-owned archive units, basename validation
+- C5: agent-plugin adapter capability ceilings (all 7 keys declared native, no upgrade path)
+- D1-D13: especially D6 no-execution/no-network, D7 contained-link materialization, D9 unknown JSON preservation, D10 pinned profile, D12 archive units, D13 capability ceilings
+- New archfit rules: `internal/agentplugins` forbidden-to-compiler/target/artifact/cmd boundaries
+- All acceptance signals: fixtures, race tests, archfit v1.6.0 0 blocking, GitNexus no unexplained flows

@@ -1,7 +1,9 @@
 # Quick start
 
 This tutorial builds one skill for all currently supported targets. It uses the
-simplest source kind, `skills-repository`.
+simplest source kind, `skills-repository`. For Agent Plugins 1.0.0 sources, use
+`kind: "agent-plugin"` with a matching `agentPlugin.plugins` list; see
+[configuration](configuration.md#agent-plugin).
 
 > **Before you build:** `build` replaces the configured `output` directory.
 > Use a dedicated directory such as `generated/`.

@@ -7,6 +7,7 @@ does not install, publish, authenticate, or modify vendor state.
 
 | Target | Package root | Catalog | Native validator |
 | --- | --- | --- | --- |
+| Agent Plugins | `plugin.json`, `skills/`, `mcp.json` (when present), `extensions/`, package files | none | none |
 | Antigravity | `plugin.json`, `skills/`, optional `agents/` and native resources | none | `agy plugin validate <root>` |
 | Claude | `.claude-plugin/plugin.json`, `skills/`, `commands/`, `agents/`, `hooks/` | `.claude-plugin/marketplace.json` | `claude plugin validate --strict <root>` |
 | Codex | `.codex-plugin/plugin.json`, `skills/`, `hooks/` | `.agents/plugins/marketplace.json` | none |
@@ -14,6 +15,11 @@ does not install, publish, authenticate, or modify vendor state.
 | Copilot | `plugin.json`, `skills/`, `agents/`, `hooks.json` | `.github/plugin/marketplace.json` | none |
 | Cursor | `.cursor-plugin/plugin.json`, `skills/`, `agents/`, `hooks/` | `.cursor-plugin/marketplace.json` | none |
 | Grok | Claude-compatible plugin root | `.claude-plugin/marketplace.json` | `grok plugin validate <root>` |
+
+The Agent Plugins target emits the portable `agent-plugins.org` standard format.
+Vendor `plugin.json` manifests (Claude, Codex, Copilot, Cursor) are
+vendor-specific layouts that happen to share the same filename. They are not
+interchangeable with Agent Plugins output.
 
 ## Boundaries
 

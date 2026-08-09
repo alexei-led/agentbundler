@@ -25,7 +25,7 @@ empty components, or NUL bytes.
 Common fields:
 
 - `version`: `1`; omission remains accepted.
-- `kind`: `skills-repository`, `bundle`, or `claude-plugin`.
+- `kind`: `skills-repository`, `bundle`, `claude-plugin`, or `agent-plugin`.
 - `root`: source root relative to the manifest.
 - `targets`: one or more of `antigravity`, `claude`, `codex`, `pi`, `copilot`,
   `grok`, or `cursor`.
@@ -36,6 +36,7 @@ Common fields:
 - `compatibility`: optional root discovery configuration; see
   [repository-root compatibility](repository-root-compatibility.md).
 - Exactly one source block matching `kind`.
+- Agent Plugin sources require `targets: ["agent-plugins"]`.
 
 ## Source kinds
 
@@ -107,6 +108,40 @@ target's command support-file contract is verified. Claude emits
 `.claude/commands/<name>.md` for project profiles. Codex, Pi, Copilot, Cursor,
 Grok, and Antigravity currently reject `asset.command` with an explicit
 capability diagnostic and produce no command artifact.
+
+### Agent Plugin
+
+Import one or more Agent Plugins 1.0.0 packages. Each declared plugin root
+carries a `plugin.json` manifest, optional `mcp.json` servers, extension
+namespaces, portable skills, and regular package files. The importer preserves
+full semantic content: manifest fields, MCP transports, extension key-value
+pairs, permitted unknown JSON, and links materialized as source locations.
+
+```json
+{
+  "version": 1,
+  "kind": "agent-plugin",
+  "root": "source",
+  "targets": ["agent-plugins"],
+  "output": "generated",
+  "agentPlugin": {
+    "plugins": ["my-plugin"]
+  }
+}
+```
+
+`agentPlugin.plugins` lists one or more plugin-root directories relative to
+`root`. Each directory must contain `plugin.json` and may contain `mcp.json`,
+skills, extensions, and regular package files. The `agent-plugins` target is
+the only supported target for this source kind.
+
+Duplicate or case-fold-clashing plugin paths and plugin names are rejected.
+External symlinks, cycles, and special files fail before traversal. Contained
+symlinks are resolved and their bytes are materialized; the symlink path is
+recorded as the source location for provenance.
+
+Importer limits: 10,000 entries, 64 MiB per file, 256 MiB total, depth 64,
+and 1,024 UTF-8 bytes per relative path.
 
 ### Claude plugin
 
