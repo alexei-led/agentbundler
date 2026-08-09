@@ -182,6 +182,43 @@ func TestComposeCanonicalizesPackageAndAssetOrder(t *testing.T) {
 	}
 }
 
+func TestComposeRejectsUnsupportedPackageCapabilityUse(t *testing.T) {
+	location := model.SourceLocation{Path: "source/plugin/mcp.json"}
+	inventory := model.SourceInventory{Packages: []model.SourcePackage{{
+		Identity: "plugin",
+		CapabilityUses: []model.CapabilityUse{{
+			Key:      model.CapabilityKeyAgentPluginMCPStdio,
+			Location: location,
+		}},
+	}}}
+
+	packages, diagnostics := Compose(inventory, model.TargetComposition{
+		Target: model.TargetClaude,
+		Capabilities: []model.CapabilityRule{{
+			Key:   model.CapabilityKeyAgentPluginMCPStdio,
+			State: model.CapabilityStateUnsupported,
+		}},
+	})
+	if packages != nil || len(diagnostics) != 1 || !strings.Contains(diagnostics[0].Message, "package \"plugin\" uses unsupported capability") {
+		t.Fatalf("Compose unsupported package capability = (%#v, %#v)", packages, diagnostics)
+	}
+
+	packages, diagnostics = Compose(inventory, model.TargetComposition{
+		Target: model.TargetAgentPlugins,
+		Capabilities: []model.CapabilityRule{{
+			Key:   model.CapabilityKeyAgentPluginMCPStdio,
+			State: model.CapabilityStateNative,
+		}},
+	})
+	if len(diagnostics) != 0 || len(packages) != 1 || !reflect.DeepEqual(packages[0].CapabilityUses, inventory.Packages[0].CapabilityUses) {
+		t.Fatalf("Compose native package capability = (%#v, %#v)", packages, diagnostics)
+	}
+	inventory.Packages[0].CapabilityUses[0].Location.Path = "mutated"
+	if packages[0].CapabilityUses[0].Location.Path != location.Path {
+		t.Fatal("normalized package capability use aliases source")
+	}
+}
+
 func TestComposeRequiresExactAdvisoryAcknowledgment(t *testing.T) {
 	inventory := model.SourceInventory{Packages: []model.SourcePackage{{
 		Identity: "bundle",

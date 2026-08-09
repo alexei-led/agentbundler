@@ -48,7 +48,7 @@ Exit status is zero on success, one on source/capability/render/write/archive fa
 - `check` never writes. `check --native` can run only checks already declared in the compiled plan after no drift.
 - No command publishes, installs, submits, authenticates, fetches packages, or changes vendor configuration.
 - Human output goes to stderr; JSON mode emits one versioned stdout object.
-- The `package` command constructs a `WorkspaceLayoutGuard` before calling `artifact.Archive`; invalid source/output layout is rejected before archive mutation (defense-in-depth on top of the compile-time guard).
+- The `package` command constructs a `WorkspaceLayoutGuard` before calling `artifact.Archive`; invalid source/output layout or an archive destination overlapping source/generated output is rejected before archive mutation (defense-in-depth on top of the compile-time guard).
 
 ## Test Specification
 

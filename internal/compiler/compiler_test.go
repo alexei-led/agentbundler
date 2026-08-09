@@ -563,6 +563,31 @@ func TestCapabilityCeilingRejectsUpgradeFromUnsupported(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsAgentPluginMCPForVendorTarget(t *testing.T) {
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/plugin/plugin.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"plugin"}`)
+	writeCompilerFixture(t, workspace, "source/plugin/mcp.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":{"srv":{"type":"stdio","command":"node"}}}`)
+	manifest := model.SourceManifest{
+		Version:     1,
+		Kind:        model.SourceKindAgentPlugin,
+		Root:        "source",
+		Targets:     []model.TargetID{model.TargetClaude},
+		Output:      "generated",
+		AgentPlugin: &model.AgentPluginSourceConfig{Plugins: []model.RelativePath{"plugin"}},
+	}
+
+	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(result.Diagnostics) == 0 || !strings.Contains(result.Diagnostics[0].Message, "uses unsupported capability \"agent-plugin.mcp.stdio\"") {
+		t.Fatalf("Compile() diagnostics = %#v; want unsupported MCP capability", result.Diagnostics)
+	}
+	if len(result.Plan.Targets) != 0 {
+		t.Fatalf("Compile() rendered vendor target despite unsupported MCP: %#v", result.Plan.Targets)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "generated")); !os.IsNotExist(err) {
+		t.Fatalf("Compile() mutated output: %v", err)
+	}
+}
+
 func TestCapabilityCeilingRejectsUnknownKey(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

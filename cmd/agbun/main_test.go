@@ -99,6 +99,24 @@ func TestTargetsHelpListsAntigravityInLexicalOrder(t *testing.T) {
 	}
 }
 
+func TestHelpListsAgentPluginsTarget(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"help", "targets"}, t.TempDir(), &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("targets help status=%d stderr=%q", status, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "\n  agent-plugins  Agent Plugins 1.0.0") {
+		t.Fatalf("targets help omits agent-plugins: %q", stdout.String())
+	}
+	for name, help := range map[string]string{"build": buildHelp(), "check": checkHelp()} {
+		if !strings.Contains(help, "agent-plugins") {
+			t.Errorf("%s help omits agent-plugins: %q", name, help)
+		}
+	}
+	if help := packageHelp(); !strings.Contains(help, "<plugin-name>.tar.gz") || !strings.Contains(help, "agent-plugins") {
+		t.Fatalf("package help omits agent-plugins archive naming: %q", help)
+	}
+}
+
 func TestRunCommandHelpDoesNotNeedManifest(t *testing.T) {
 	for _, command := range []string{"build", "check", "package"} {
 		t.Run(command, func(t *testing.T) {
@@ -451,6 +469,29 @@ func TestRunPackageRejectsDistributionNameWithPathSeparator(t *testing.T) {
 	// No archive must have escaped the output directory.
 	if _, err := os.Stat(filepath.Join(root, "evil-claude.tar.gz")); !os.IsNotExist(err) {
 		t.Fatal("archive escaped the output directory")
+	}
+}
+
+func TestRunPackageRejectsArchiveOutputInsideSource(t *testing.T) {
+	root := t.TempDir()
+	manifest := `{"version":1,"kind":"skills-repository","root":"source","targets":["claude"],"output":"generated","distribution":{"name":"demo"},"skillsRepository":{"package":"demo","roots":["skills"],"metadata":{}}}`
+	writeCLIFile(t, root, "agentbundle.json", manifest)
+	writeCLIFile(t, root, "source/skills/demo/SKILL.md", "# Demo\n")
+
+	var stdout, stderr bytes.Buffer
+	if status := run([]string{"build"}, root, &stdout, &stderr, compiler.Compile); status != 0 {
+		t.Fatalf("build status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := run([]string{"package", "--out", "source"}, root, &stdout, &stderr, compiler.Compile); status == 0 {
+		t.Fatalf("package accepted source archive output: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String()+stderr.String(), "invalid-workspace-layout") {
+		t.Fatalf("package diagnostics = stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "source", "demo-claude.tar.gz")); !os.IsNotExist(err) {
+		t.Fatalf("package mutated source: %v", err)
 	}
 }
 

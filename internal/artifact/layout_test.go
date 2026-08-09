@@ -125,6 +125,57 @@ func TestRevalidateDetectsPostConstructionSymlinkAlias(t *testing.T) {
 	}
 }
 
+func TestRevalidateDetectsSourceAliasSwap(t *testing.T) {
+	ws := t.TempDir()
+	realSource := filepath.Join(ws, "real-source")
+	sourceAlias := filepath.Join(ws, "source")
+	output := filepath.Join(ws, "output")
+	for _, directory := range []string{realSource, output} {
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(realSource, sourceAlias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	guard, err := NewWorkspaceLayoutGuard(ws, sourceAlias, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(sourceAlias); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(output, sourceAlias); err != nil {
+		t.Fatal(err)
+	}
+	if err := guard.Revalidate(); err == nil {
+		t.Fatal("Revalidate() accepted a swapped source alias")
+	}
+}
+
+func TestRevalidateArchiveDestinationRejectsWorkspaceOverlap(t *testing.T) {
+	ws := t.TempDir()
+	source := filepath.Join(ws, "source")
+	output := filepath.Join(ws, "generated")
+	for _, directory := range []string{source, output} {
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	guard, err := NewWorkspaceLayoutGuard(ws, source, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, destination := range []string{source, filepath.Join(source, "release"), output, filepath.Join(output, "release"), ws} {
+		if err := guard.RevalidateArchiveDestination(destination); err == nil {
+			t.Errorf("RevalidateArchiveDestination(%q) accepted an overlapping path", destination)
+		}
+	}
+	if destination := filepath.Join(ws, "release"); guard.RevalidateArchiveDestination(destination) != nil {
+		t.Fatalf("RevalidateArchiveDestination(%q) rejected a disjoint path", destination)
+	}
+}
+
 func TestZeroValueGuardIsRejectedByRevalidate(t *testing.T) {
 	var guard WorkspaceLayoutGuard
 	if err := guard.Revalidate(); err == nil {

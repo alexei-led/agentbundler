@@ -88,6 +88,12 @@ func Compile(request CompileRequest) CompilationResult {
 		return result
 	}
 
+	// Re-resolve the original aliases immediately before traversal so a source
+	// symlink swap after Gate 0 cannot redirect import into generated output.
+	if err := layoutGuard.Revalidate(); err != nil {
+		result.Diagnostics = append(result.Diagnostics, errorDiagnostic("invalid-workspace-layout", err.Error()))
+		return result
+	}
 	inventory, diagnostics := source.Import(request.Manifest, request.WorkspaceRoot)
 	result.Diagnostics = append(result.Diagnostics, diagnostics...)
 	if hasErrors(result.Diagnostics) {

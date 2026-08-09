@@ -79,7 +79,7 @@ func Write(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) 
 // The guard must have been constructed with NewWorkspaceLayoutGuard before
 // source ingestion.
 func Archive(guard WorkspaceLayoutGuard, distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
-	if err := guard.Revalidate(); err != nil {
+	if err := guard.RevalidateArchiveDestination(output); err != nil {
 		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
 	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {

@@ -6,6 +6,7 @@ package agentplugin
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"os"
 	"sort"
 	"unicode/utf8"
@@ -38,7 +39,7 @@ type traversedFile struct {
 type traversalState struct {
 	pluginRoot *os.Root
 	entryCount int
-	totalBytes int
+	totalBytes int64
 	files      []traversedFile
 	diags      []model.Diagnostic
 }
@@ -160,9 +161,39 @@ func (s *traversalState) processSymlink(childPath string, depth int, visited []o
 }
 
 // processFile reads and records a regular file (or regular file via symlink).
-// mode is the file's mode (from Lstat for regular files, Stat for symlinks).
+// The opened descriptor's stat is authoritative for size, type, and mode.
 func (s *traversalState) processFile(relPath string, mode os.FileMode) {
-	content, err := s.pluginRoot.ReadFile(relPath)
+	file, err := s.pluginRoot.Open(relPath)
+	if err != nil {
+		s.err(relPath, "open file: "+err.Error())
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	info, err := file.Stat()
+	if err != nil {
+		s.err(relPath, "stat file: "+err.Error())
+		return
+	}
+	if !info.Mode().IsRegular() {
+		s.err(relPath, "file changed to a non-regular file during traversal")
+		return
+	}
+	mode = info.Mode()
+	if info.Size() > maxFileSizeB {
+		s.err(relPath, "file exceeds 64 MiB size limit")
+		return
+	}
+	remaining := int64(maxTotalBytes) - s.totalBytes
+	if info.Size() > remaining {
+		s.err(relPath, "total file bytes exceed 256 MiB limit")
+		return
+	}
+	readLimit := int64(maxFileSizeB)
+	if remaining < readLimit {
+		readLimit = remaining
+	}
+	content, err := io.ReadAll(io.LimitReader(file, readLimit+1))
 	if err != nil {
 		s.err(relPath, "read file: "+err.Error())
 		return
@@ -171,11 +202,11 @@ func (s *traversalState) processFile(relPath string, mode os.FileMode) {
 		s.err(relPath, "file exceeds 64 MiB size limit")
 		return
 	}
-	s.totalBytes += len(content)
-	if s.totalBytes > maxTotalBytes {
+	if int64(len(content)) > remaining {
 		s.err(relPath, "total file bytes exceed 256 MiB limit")
 		return
 	}
+	s.totalBytes += int64(len(content))
 	sum := sha256.Sum256(content)
 	s.files = append(s.files, traversedFile{
 		relPath:    relPath,

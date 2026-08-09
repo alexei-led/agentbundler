@@ -25,7 +25,10 @@ adapter registered in Task 4.
   external references. Directory symlink cycles are detected with `os.SameFile`.
 - Reject external symlinks, special files (devices, FIFOs, sockets), and cycles.
 - Discover immediate-child Agent Skills (`<name>/SKILL.md`) using the
-  `frontmatter` contract and record support files in `Base.Files`.
+  `frontmatter` contract and record support files in `Base.Files`; malformed
+  skill identities or frontmatter reject the plugin with a skill-scoped diagnostic.
+- Derive package capability uses for each MCP transport, extensions, permitted
+  unknown JSON, and ordinary package files.
 - Partition traversal files into: manifest, MCP, skill assets + support files,
   extension package files (`extensions/<namespace>/`), and `PackageFiles`.
 - Reject duplicate plugin paths (case-folded) and duplicate plugin names.
@@ -48,6 +51,10 @@ round-trip from the target filesystem.
 | Max total bytes   | 256 MiB    |
 | Max depth         | 64         |
 | Max path length   | 1,024 UTF-8 bytes |
+
+Regular files are statted through an open descriptor before allocation, then
+read through a `limit + 1` bound. Per-file and remaining total limits are
+checked again against the retained bytes.
 
 ## Public Contract
 

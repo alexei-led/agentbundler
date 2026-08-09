@@ -15,9 +15,11 @@ import (
 // Callers must not compare, copy, or embed guard values across construction
 // boundaries; always construct through NewWorkspaceLayoutGuard.
 type WorkspaceLayoutGuard struct {
-	source string // canonical source root (resolved at construction)
-	output string // canonical output root (resolved at construction; may not yet exist)
-	valid  bool   // false for the zero value
+	sourcePath      string // original source alias used by source import
+	outputPath      string // original output alias used by artifact operations
+	sourceCanonical string // canonical source root at construction
+	outputCanonical string // canonical output root at construction; may not yet exist
+	valid           bool   // false for the zero value
 }
 
 // NewWorkspaceLayoutGuard constructs and validates the layout guard.
@@ -46,22 +48,57 @@ func NewWorkspaceLayoutGuard(workspaceRoot, sourceRoot, outputRoot string) (Work
 	}
 
 	return WorkspaceLayoutGuard{
-		source: canonSource,
-		output: canonOutput,
-		valid:  true,
+		sourcePath:      sourceRoot,
+		outputPath:      outputRoot,
+		sourceCanonical: canonSource,
+		outputCanonical: canonOutput,
+		valid:           true,
 	}, nil
 }
 
-// Revalidate re-checks that the physical source and output roots remain
-// disjoint. Call before each mutating artifact operation to catch
-// post-construction symlink or junction changes (TOCTOU protection).
+// Revalidate re-resolves the original source and output aliases, verifies that
+// neither canonical root changed, and confirms that they remain disjoint.
 func (g WorkspaceLayoutGuard) Revalidate() error {
-	if !g.valid {
-		return fmt.Errorf("workspace layout guard was not constructed with NewWorkspaceLayoutGuard")
+	_, _, err := g.revalidateRoots()
+	return err
+}
+
+// RevalidateArchiveDestination verifies the guarded roots and rejects an
+// archive directory that overlaps either source or generated output.
+func (g WorkspaceLayoutGuard) RevalidateArchiveDestination(destination string) error {
+	canonSource, canonOutput, err := g.revalidateRoots()
+	if err != nil {
+		return err
 	}
-	canonSource := canonPathOrTextual(g.source)
-	canonOutput := canonPathOrTextual(g.output)
-	return checkDisjoint(canonSource, canonOutput)
+	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
+		return fmt.Errorf("archive destination must be an absolute cleaned path")
+	}
+	canonDestination := canonPathOrTextual(destination)
+	if err := checkDisjoint(canonSource, canonDestination); err != nil {
+		return fmt.Errorf("archive destination overlaps source root: %w", err)
+	}
+	if err := checkDisjoint(canonOutput, canonDestination); err != nil {
+		return fmt.Errorf("archive destination overlaps output root: %w", err)
+	}
+	return nil
+}
+
+func (g WorkspaceLayoutGuard) revalidateRoots() (string, string, error) {
+	if !g.valid {
+		return "", "", fmt.Errorf("workspace layout guard was not constructed with NewWorkspaceLayoutGuard")
+	}
+	canonSource := canonPathOrTextual(g.sourcePath)
+	canonOutput := canonPathOrTextual(g.outputPath)
+	if canonSource != g.sourceCanonical {
+		return "", "", fmt.Errorf("source root %q changed after workspace layout validation", g.sourcePath)
+	}
+	if canonOutput != g.outputCanonical {
+		return "", "", fmt.Errorf("output root %q changed after workspace layout validation", g.outputPath)
+	}
+	if err := checkDisjoint(canonSource, canonOutput); err != nil {
+		return "", "", err
+	}
+	return canonSource, canonOutput, nil
 }
 
 // checkDisjoint returns an error if source and output are equal or one is a

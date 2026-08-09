@@ -44,11 +44,26 @@ func Compose(inventory model.SourceInventory, target model.TargetComposition) ([
 			profile = model.TargetProfileProject
 		}
 		pkg := model.NormalizedPackage{
-			Identity:    sourcePackage.Identity,
-			Metadata:    cloneMap(sourcePackage.Metadata),
-			Target:      target.Target,
-			Profile:     profile,
-			AgentPlugin: model.CloneAgentPluginData(sourcePackage.AgentPlugin),
+			Identity:       sourcePackage.Identity,
+			Metadata:       cloneMap(sourcePackage.Metadata),
+			Target:         target.Target,
+			Profile:        profile,
+			CapabilityUses: cloneCapabilityUses(sourcePackage.CapabilityUses),
+			AgentPlugin:    model.CloneAgentPluginData(sourcePackage.AgentPlugin),
+		}
+		for _, use := range sourcePackage.CapabilityUses {
+			rule, ok := rules[use.Key]
+			switch {
+			case !ok:
+				diagnostics = append(diagnostics, diagnostic(diagnosticMissingCapabilityRule, &use.Location,
+					"package %q uses capability %q without a target rule", sourcePackage.Identity, use.Key))
+			case rule.State == model.CapabilityStateUnsupported:
+				diagnostics = append(diagnostics, diagnostic(diagnosticMissingCapabilityRule, &use.Location,
+					"package %q uses unsupported capability %q for target %q", sourcePackage.Identity, use.Key, target.Target))
+			case rule.State == model.CapabilityStateAdvisory:
+				diagnostics = append(diagnostics, diagnostic(diagnosticMissingAcknowledgment, &use.Location,
+					"package %q uses advisory capability %q without an acknowledgment", sourcePackage.Identity, use.Key))
+			}
 		}
 		for _, sourceAsset := range sourcePackage.Assets {
 			if !assetSelectedForTarget(sourceAsset, target.Target) {
@@ -516,6 +531,7 @@ func canonicalizePackages(packages []model.NormalizedPackage) {
 	for index := range packages {
 		pkg := &packages[index]
 		sort.Slice(pkg.Assets, func(i, j int) bool { return pkg.Assets[i].Identity < pkg.Assets[j].Identity })
+		sort.Slice(pkg.CapabilityUses, func(i, j int) bool { return pkg.CapabilityUses[i].Key < pkg.CapabilityUses[j].Key })
 		sort.Slice(pkg.Acknowledgments, func(i, j int) bool {
 			left, right := pkg.Acknowledgments[i], pkg.Acknowledgments[j]
 			if left.Asset != right.Asset {

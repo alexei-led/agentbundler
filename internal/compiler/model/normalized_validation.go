@@ -20,6 +20,7 @@ func ValidateNormalizedPackage(pkg NormalizedPackage) []Diagnostic {
 	if err := validateJSONValue(pkg.Metadata); err != nil {
 		diagnostics = appendInvalid(diagnostics, "normalized package metadata: "+err.Error())
 	}
+	diagnostics = append(diagnostics, validateCapabilityUses(fmt.Sprintf("normalized package %q", pkg.Identity), pkg.CapabilityUses)...)
 	assets := make(map[AssetID]struct{}, len(pkg.Assets))
 	for _, asset := range pkg.Assets {
 		diagnostics = append(diagnostics, validateNormalizedAsset(asset)...)

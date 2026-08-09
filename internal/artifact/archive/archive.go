@@ -32,53 +32,102 @@ func WriteTargetRoots(distribution model.DistributionMetadata, plan model.BuildP
 	if err := validateArchiveName(name); err != nil {
 		return nil, err
 	}
+	writes, err := prepareArchiveWrites(name, plan, output)
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(output, 0o755); err != nil {
 		return nil, fmt.Errorf("create archive output: %w", err)
 	}
 
-	var paths []string
+	paths := make([]string, 0, len(writes))
+	for _, write := range writes {
+		if err := writeTarGzipFromPlan(write.path, write.unit.Root, write.files); err != nil {
+			return nil, fmt.Errorf("archive target %q unit %q: %w", write.target, write.unit.Root, err)
+		}
+		paths = append(paths, write.path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+type archiveWrite struct {
+	target model.TargetID
+	unit   model.ArchiveUnit
+	path   string
+	files  []model.PlannedFile
+}
+
+func prepareArchiveWrites(name string, plan model.BuildPlan, output string) ([]archiveWrite, error) {
+	destinations := make(map[string]struct{})
+	var writes []archiveWrite
 	for _, targetPlan := range plan.Targets {
+		if len(targetPlan.Files) != 0 && len(targetPlan.ArchiveUnits) == 0 {
+			return nil, fmt.Errorf("target %q has files but no archive units", targetPlan.Target)
+		}
+		coverage := make([]int, len(targetPlan.Files))
 		for _, unit := range targetPlan.ArchiveUnits {
+			if unit.Root != "." {
+				if _, err := model.NewRelativePath(unit.Root); err != nil {
+					return nil, fmt.Errorf("archive unit for target %q: root %q: %w", targetPlan.Target, unit.Root, err)
+				}
+			}
 			if err := validateArchiveName(unit.Stem); err != nil {
 				return nil, fmt.Errorf("archive unit for target %q: stem %q: %w", targetPlan.Target, unit.Stem, err)
 			}
+			if unit.Suffix != ".tar.gz" && unit.Suffix != ".tgz" {
+				return nil, fmt.Errorf("archive unit for target %q has invalid suffix %q", targetPlan.Target, unit.Suffix)
+			}
 			basename := name + "-" + unit.Stem + unit.Suffix
 			archivePath := filepath.Join(output, basename)
-			// Verify the computed path stays within the requested output directory.
 			rel, err := filepath.Rel(output, archivePath)
-			if err != nil || strings.HasPrefix(rel, "..") {
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 				return nil, fmt.Errorf("archive name %q escapes the output directory", basename)
 			}
-			// Collect files for this unit.
+			archivePathKey := strings.ToLower(archivePath)
+			if _, exists := destinations[archivePathKey]; exists {
+				return nil, fmt.Errorf("archive destination %q is duplicated", archivePath)
+			}
+			destinations[archivePathKey] = struct{}{}
+
 			files := filterFiles(targetPlan.Files, unit.Root)
 			if len(files) == 0 {
 				return nil, fmt.Errorf("target %q archive unit root %q has no files", targetPlan.Target, unit.Root)
 			}
-			if err := writeTarGzipFromPlan(archivePath, unit.Root, files); err != nil {
-				return nil, fmt.Errorf("archive target %q unit %q: %w", targetPlan.Target, unit.Root, err)
+			for index, file := range targetPlan.Files {
+				if archiveUnitContains(unit.Root, string(file.Path)) {
+					coverage[index]++
+				}
 			}
-			paths = append(paths, archivePath)
+			writes = append(writes, archiveWrite{target: targetPlan.Target, unit: unit, path: archivePath, files: files})
+		}
+		for index, count := range coverage {
+			switch {
+			case count == 0:
+				return nil, fmt.Errorf("target %q planned file %q is not covered by an archive unit", targetPlan.Target, targetPlan.Files[index].Path)
+			case count > 1:
+				return nil, fmt.Errorf("target %q planned file %q is covered by multiple archive units", targetPlan.Target, targetPlan.Files[index].Path)
+			}
 		}
 	}
-	sort.Strings(paths)
-	return paths, nil
+	return writes, nil
 }
 
 // filterFiles returns the subset of files whose path starts with root.
 // If root is ".", all files are included. Otherwise only files with the
 // root+"/" prefix are included.
 func filterFiles(files []model.PlannedFile, root string) []model.PlannedFile {
-	if root == "." {
-		return append([]model.PlannedFile(nil), files...)
-	}
-	prefix := root + "/"
 	var result []model.PlannedFile
-	for _, f := range files {
-		if strings.HasPrefix(string(f.Path), prefix) {
-			result = append(result, f)
+	for _, file := range files {
+		if archiveUnitContains(root, string(file.Path)) {
+			result = append(result, file)
 		}
 	}
 	return result
+}
+
+func archiveUnitContains(root, filePath string) bool {
+	return root == "." || strings.HasPrefix(filePath, root+"/")
 }
 
 // validateArchiveName checks that name is a safe filename component for use in

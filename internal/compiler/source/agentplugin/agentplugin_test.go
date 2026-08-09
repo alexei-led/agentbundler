@@ -177,6 +177,51 @@ func TestAgentPluginAllMCPTransports(t *testing.T) {
 	}
 }
 
+func TestAgentPluginDerivesPackageCapabilityUses(t *testing.T) {
+	tmp := t.TempDir()
+	write(t, tmp, "source/plugin/plugin.json", `{
+		"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+		"name":"plugin",
+		"extensions":{"com.example.client":{"theme":"dark"}},
+		"future-field":"preserved"
+	}`)
+	write(t, tmp, "source/plugin/mcp.json", `{
+		"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+		"mcpServers":{
+			"stdio":{"type":"stdio","command":"node"},
+			"http":{"type":"streamable-http","url":"https://example.com/mcp"},
+			"sse":{"type":"sse","url":"https://example.com/sse"}
+		}
+	}`)
+	write(t, tmp, "source/plugin/README.md", "package file")
+
+	manifest := minimalManifest("source", "plugin")
+	inventory, diags := InspectAgentPluginRoot(manifest, tmp, openWorkspace(t, tmp))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	got := make(map[model.CapabilityKey]bool)
+	for _, use := range inventory.Packages[0].CapabilityUses {
+		got[use.Key] = true
+		if !strings.HasPrefix(string(use.Location.Path), "source/plugin/") {
+			t.Errorf("capability %q location = %q", use.Key, use.Location.Path)
+		}
+	}
+	want := []model.CapabilityKey{
+		model.CapabilityKeyAgentPluginMCPStdio,
+		model.CapabilityKeyAgentPluginMCPStreamableHTTP,
+		model.CapabilityKeyAgentPluginMCPSSE,
+		model.CapabilityKeyAgentPluginExtensions,
+		model.CapabilityKeyAgentPluginUnknownJSON,
+		model.CapabilityKeyAgentPluginPackageFiles,
+	}
+	for _, key := range want {
+		if !got[key] {
+			t.Errorf("package capability uses = %v; missing %q", got, key)
+		}
+	}
+}
+
 func TestAgentPluginWithExtensions(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", `{
@@ -348,6 +393,36 @@ func TestAgentPluginSkillFilesExcludedFromPackageFiles(t *testing.T) {
 	}
 }
 
+func TestAgentPluginRejectsMalformedImmediateChildSkill(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		skillDir string
+		content  string
+		want     string
+	}{
+		{name: "invalid identity", skillDir: " bad", content: "# Skill\n", want: "invalid identity"},
+		{name: "invalid frontmatter", skillDir: "broken", content: "---\nname: one\nname: two\n---\nBody\n", want: "SKILL.md"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
+			write(t, tmp, "source/plugin/"+test.skillDir+"/SKILL.md", test.content)
+
+			inventory, diags := InspectAgentPluginRoot(minimalManifest("source", "plugin"), tmp, openWorkspace(t, tmp))
+			if !hasDiag(diags, test.want) {
+				t.Fatalf("diagnostics = %v; want %q", diags, test.want)
+			}
+			if len(inventory.Packages) != 0 {
+				t.Fatalf("malformed skill produced packages: %#v", inventory.Packages)
+			}
+			wantPath := model.RelativePath("source/plugin/" + test.skillDir + "/SKILL.md")
+			if diags[0].Location == nil || diags[0].Location.Path != wantPath {
+				t.Fatalf("diagnostic location = %#v; want %q", diags[0].Location, wantPath)
+			}
+		})
+	}
+}
+
 func TestAgentPluginInputsTracked(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
@@ -463,6 +538,28 @@ func TestAgentPluginSpecialFileRejected(t *testing.T) {
 	_, diags := InspectAgentPluginRoot(manifest, tmp, ws)
 	if !hasErrors(diags) {
 		t.Error("expected error for special file, got none")
+	}
+}
+
+func TestAgentPluginRejectsOversizedFileBeforeReading(t *testing.T) {
+	tmp := t.TempDir()
+	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
+	oversized := filepath.Join(tmp, "source", "plugin", "oversized.bin")
+	file, err := os.Create(oversized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxFileSizeB + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := InspectAgentPluginRoot(minimalManifest("source", "plugin"), tmp, openWorkspace(t, tmp))
+	if !hasDiag(diags, "file exceeds 64 MiB size limit") {
+		t.Fatalf("diagnostics = %v; want file size limit error", diags)
 	}
 }
 

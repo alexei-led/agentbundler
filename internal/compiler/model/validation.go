@@ -190,6 +190,7 @@ func ValidateSourceInventory(inventory SourceInventory) []Diagnostic {
 		if err := validateJSONValue(pkg.Metadata); err != nil {
 			diagnostics = appendInvalid(diagnostics, "source package metadata: "+err.Error())
 		}
+		diagnostics = append(diagnostics, validateCapabilityUses(fmt.Sprintf("source package %q", pkg.Identity), pkg.CapabilityUses)...)
 		assets := make(map[AssetID]struct{}, len(pkg.Assets))
 		for _, asset := range pkg.Assets {
 			diagnostics = append(diagnostics, validateSourceAsset(asset)...)
@@ -302,6 +303,7 @@ func ValidateBuildPlan(plan BuildPlan) []Diagnostic {
 	var diagnostics []Diagnostic
 	targets := make(map[TargetID]struct{}, len(plan.Targets))
 	destinations := make(map[string]struct{})
+	archiveDestinations := make(map[string]struct{})
 	for _, targetPlan := range plan.Targets {
 		if !validTargetID(targetPlan.Target) {
 			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("target plan target %q is invalid", targetPlan.Target))
@@ -329,7 +331,14 @@ func ValidateBuildPlan(plan BuildPlan) []Diagnostic {
 		}
 		for _, unit := range targetPlan.ArchiveUnits {
 			diagnostics = append(diagnostics, validateArchiveUnit(unit)...)
+			archiveDestination := unit.Stem + unit.Suffix
+			archiveDestinationKey := strings.ToLower(archiveDestination)
+			if _, exists := archiveDestinations[archiveDestinationKey]; exists {
+				diagnostics = appendInvalid(diagnostics, fmt.Sprintf("archive destination %q is duplicated", archiveDestination))
+			}
+			archiveDestinations[archiveDestinationKey] = struct{}{}
 		}
+		diagnostics = append(diagnostics, validateArchiveCoverage(targetPlan)...)
 	}
 	for _, file := range plan.CompilerFiles {
 		diagnostics = append(diagnostics, validatePlannedFile(file)...)
@@ -437,7 +446,7 @@ func validateSourceAsset(asset SourceAsset) []Diagnostic {
 			targets[target] = struct{}{}
 		}
 	}
-	diagnostics = append(diagnostics, validateCapabilityUses(asset.Identity, asset.CapabilityUses)...)
+	diagnostics = append(diagnostics, validateCapabilityUses(fmt.Sprintf("asset %q", asset.Identity), asset.CapabilityUses)...)
 	overlays := make(map[TargetID]struct{}, len(asset.Overlays))
 	for _, overlay := range asset.Overlays {
 		if !validTargetID(overlay.Target) {
@@ -503,11 +512,11 @@ func validateNormalizedAsset(asset NormalizedAsset) []Diagnostic {
 	diagnostics = append(diagnostics, validateHookAsset(asset.Identity, asset.Kind, asset.Hook, asset.Content, asset.CapabilityUses)...)
 	diagnostics = append(diagnostics, validateCommandAsset(asset.Identity, asset.Kind, asset.Command, asset.Content, asset.CapabilityUses)...)
 	diagnostics = append(diagnostics, validateNativeResourceOptions(asset.Identity, asset.Kind, asset.Native)...)
-	diagnostics = append(diagnostics, validateCapabilityUses(asset.Identity, asset.CapabilityUses)...)
+	diagnostics = append(diagnostics, validateCapabilityUses(fmt.Sprintf("asset %q", asset.Identity), asset.CapabilityUses)...)
 	return diagnostics
 }
 
-func validateCapabilityUses(identity AssetID, uses []CapabilityUse) []Diagnostic {
+func validateCapabilityUses(scope string, uses []CapabilityUse) []Diagnostic {
 	var diagnostics []Diagnostic
 	seen := make(map[CapabilityKey]struct{}, len(uses))
 	for _, capability := range uses {
@@ -515,7 +524,7 @@ func validateCapabilityUses(identity AssetID, uses []CapabilityUse) []Diagnostic
 			diagnostics = appendInvalid(diagnostics, "capability use: "+err.Error())
 		}
 		if _, ok := seen[capability.Key]; ok {
-			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("asset %q capability use %q is duplicated", identity, capability.Key))
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("%s capability use %q is duplicated", scope, capability.Key))
 		}
 		seen[capability.Key] = struct{}{}
 		diagnostics = append(diagnostics, validateSourceLocation(capability.Location)...)
@@ -844,6 +853,39 @@ func validateArchiveUnit(unit ArchiveUnit) []Diagnostic {
 		diagnostics = appendInvalid(diagnostics, fmt.Sprintf("archive unit suffix %q must be .tar.gz or .tgz", unit.Suffix))
 	}
 	return diagnostics
+}
+
+func validateArchiveCoverage(plan TargetPlan) []Diagnostic {
+	if len(plan.ArchiveUnits) == 0 {
+		return nil
+	}
+	coverage := make([]int, len(plan.Files))
+	var diagnostics []Diagnostic
+	for _, unit := range plan.ArchiveUnits {
+		matched := 0
+		for index, file := range plan.Files {
+			if archiveUnitContains(unit.Root, string(file.Path)) {
+				coverage[index]++
+				matched++
+			}
+		}
+		if matched == 0 {
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("target %q archive unit root %q has no files", plan.Target, unit.Root))
+		}
+	}
+	for index, count := range coverage {
+		switch {
+		case count == 0:
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("target %q planned file %q is not covered by an archive unit", plan.Target, plan.Files[index].Path))
+		case count > 1:
+			diagnostics = appendInvalid(diagnostics, fmt.Sprintf("target %q planned file %q is covered by multiple archive units", plan.Target, plan.Files[index].Path))
+		}
+	}
+	return diagnostics
+}
+
+func archiveUnitContains(root, filePath string) bool {
+	return root == "." || strings.HasPrefix(filePath, root+"/")
 }
 
 func validatePlannedFile(file PlannedFile) []Diagnostic {

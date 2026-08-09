@@ -1,6 +1,7 @@
 package agentplugin
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -11,10 +12,9 @@ import (
 // discoverSkills finds Agent Skills at the immediate children of the plugin
 // root. A skill is a directory at depth 1 that contains a SKILL.md file.
 // The skill name is the directory name; the identity is skill/<name>.
-// It returns discovered skill assets and the set of plugin-relative file paths
-// consumed by skills (SKILL.md plus support files), so callers can exclude them
-// from AgentPluginData.PackageFiles.
-func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.SourceAsset, map[string]bool) {
+// It returns discovered skill assets, the plugin-relative paths they consume,
+// and diagnostics for malformed immediate-child skills.
+func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.SourceAsset, map[string]bool, []model.Diagnostic) {
 	// Collect per-skill: SKILL.md bytes and support files.
 	type skillEntry struct {
 		skillMD traversedFile
@@ -53,6 +53,7 @@ func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.Sour
 	// Build the used-paths set and skill assets.
 	used := make(map[string]bool)
 	var assets []model.SourceAsset
+	var diagnostics []model.Diagnostic
 
 	sortedNames := make([]string, 0, len(skills))
 	for name := range skills {
@@ -69,14 +70,16 @@ func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.Sour
 
 		identity, err := model.NewAssetID("skill/" + name)
 		if err != nil {
-			// Invalid skill name; skip silently (will appear in PackageFiles).
+			diagnostics = append(diagnostics, diag(entry.skillMD.relPath,
+				fmt.Sprintf("skill %q has invalid identity: %v", name, err)))
 			continue
 		}
 
 		// Parse SKILL.md frontmatter and body.
 		fm, body, err := frontmatter.Parse(entry.skillMD.bytes)
 		if err != nil {
-			// Unparseable SKILL.md; skip silently.
+			diagnostics = append(diagnostics, diag(entry.skillMD.relPath,
+				fmt.Sprintf("skill %q SKILL.md: %v", name, err)))
 			continue
 		}
 
@@ -118,7 +121,10 @@ func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.Sour
 		})
 	}
 
-	return assets, used
+	for index := range diagnostics {
+		diagnostics[index].Location.Path = workspaceOrigin(workspacePrefix, string(diagnostics[index].Location.Path))
+	}
+	return assets, used, diagnostics
 }
 
 // workspaceOrigin builds a workspace-relative path from the plugin's workspace

@@ -236,6 +236,40 @@ func TestWriteTargetRootsRejectsEmptyArchiveUnit(t *testing.T) {
 	}
 }
 
+func TestWriteTargetRootsRejectsInvalidArchivePartitionsBeforeMutation(t *testing.T) {
+	files := []model.PlannedFile{{Path: "foo/a", Bytes: []byte("a")}, {Path: "bar/b", Bytes: []byte("b")}}
+	for _, test := range []struct {
+		name  string
+		units []model.ArchiveUnit
+	}{
+		{
+			name:  "uncovered",
+			units: []model.ArchiveUnit{{Root: "foo", Stem: "foo", Suffix: ".tar.gz"}},
+		},
+		{
+			name:  "overlap",
+			units: []model.ArchiveUnit{{Root: ".", Stem: "all", Suffix: ".tar.gz"}, {Root: "foo", Stem: "foo", Suffix: ".tar.gz"}},
+		},
+		{
+			name:  "duplicate destination",
+			units: []model.ArchiveUnit{{Root: "foo", Stem: "same", Suffix: ".tar.gz"}, {Root: "bar", Stem: "same", Suffix: ".tar.gz"}},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			output := filepath.Join(t.TempDir(), "release")
+			plan := model.BuildPlan{Targets: []model.TargetPlan{{
+				Target: model.TargetAgentPlugins, Files: files, ArchiveUnits: test.units,
+			}}}
+			if _, err := WriteTargetRoots(model.DistributionMetadata{"name": "demo"}, plan, output); err == nil {
+				t.Fatal("WriteTargetRoots() accepted invalid archive partition")
+			}
+			if _, err := os.Stat(output); !os.IsNotExist(err) {
+				t.Fatalf("archive output was mutated before complete validation: %v", err)
+			}
+		})
+	}
+}
+
 func TestFilterFilesWithDotRootIncludesAll(t *testing.T) {
 	files := []model.PlannedFile{
 		{Path: "a.txt"},

@@ -36,7 +36,7 @@ compose(SourceInventory, TargetComposition) -> [NormalizedPackage] + [Diagnostic
 
 Composition applies target selection, overlay merge, skill preamble, file additions/deletions, semantic capability resolution, and native-gap policy, then sorts packages, assets, files, hooks, and acknowledgments. Target-native capability recognition is explicit per target: Pi requires declared extension entries, while Antigravity requires a native-resource tree without Pi declarations. Recognition is never inferred from a file or directory name. Composition produces no target files and no distribution catalog.
 
-Agent Plugin data (`AgentPluginData`) carried on a `SourcePackage` is deep-copied to the corresponding `NormalizedPackage` without merging, filtering, or reordering. Composition is not the authority on plugin semantics; it preserves the value exactly as imported.
+Agent Plugin data (`AgentPluginData`) carried on a `SourcePackage` is deep-copied to the corresponding `NormalizedPackage` without merging, filtering, or reordering. Package-level capability uses are copied separately and checked before rendering, so unsupported MCP transports, extensions, unknown JSON, and package files cannot be dropped by vendor targets. Composition is not the authority on plugin semantics; it preserves the value exactly as imported.
 
 A hook descriptor is immutable through ordinary composition. The selected target overlay may change payload `FileContent` and acknowledgments but cannot inject a vendor schema or silently change event, matcher, handler form, timeout, async, failure policy, or order. Any future descriptor patch must be a separately modeled portable operation.
 
@@ -70,7 +70,7 @@ Composition clones values before modification. File patches replace both bytes a
 - Semantic hook capabilities are checked individually; `asset.hook` alone never authorizes event, matcher, decision, async, shell, or closed-failure behavior.
 - Native resources pass without a gap policy only through an explicit target branch. A path-derived gap that names another target excludes its asset from composition. There is no generic native-resource fallback.
 - This module imports no source, target, artifact, filesystem, process, network, or environment behavior.
-- `AgentPluginData` passes through composition as a deep copy; composition does not inspect, filter, or merge plugin data.
+- `AgentPluginData` passes through composition as a deep copy; composition does not inspect, filter, or merge plugin data. Its separately derived package capability uses must be supported by the target.
 
 ## Test Specification
 

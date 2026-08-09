@@ -486,10 +486,11 @@ type SourceAsset struct {
 
 // SourcePackage is an uncomposed source package.
 type SourcePackage struct {
-	Identity    PackageID        `json:"identity"`
-	Metadata    PackageMetadata  `json:"metadata"`
-	Assets      []SourceAsset    `json:"assets"`
-	AgentPlugin *AgentPluginData `json:"agentPlugin,omitempty"`
+	Identity       PackageID        `json:"identity"`
+	Metadata       PackageMetadata  `json:"metadata"`
+	Assets         []SourceAsset    `json:"assets"`
+	CapabilityUses []CapabilityUse  `json:"capabilityUses,omitempty"`
+	AgentPlugin    *AgentPluginData `json:"agentPlugin,omitempty"`
 }
 
 // SourceInventory is the discovered source input.
@@ -517,6 +518,7 @@ type NormalizedPackage struct {
 	Target          TargetID          `json:"target"`
 	Profile         TargetProfile     `json:"profile,omitempty"`
 	Assets          []NormalizedAsset `json:"assets"`
+	CapabilityUses  []CapabilityUse   `json:"capabilityUses,omitempty"`
 	Acknowledgments []Acknowledgment  `json:"acknowledgments"`
 	AgentPlugin     *AgentPluginData  `json:"agentPlugin,omitempty"`
 }

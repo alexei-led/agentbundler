@@ -1,59 +1,65 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "title": "Agent Plugin Manifest",
-  "description": "Schema for plugin.json manifest files in Agent Plugins 1.0.0 packages.",
+  "title": "Agent Plugins Manifest",
+  "description": "Machine-readable schema for plugin.json in Agent Plugins 1.0.0. The Agent Plugins specification defines additional semantic and operational requirements.",
   "type": "object",
-  "required": ["$schema", "name"],
   "properties": {
     "$schema": {
-      "type": "string",
       "const": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-      "description": "Schema selector identifying this as an Agent Plugins 1.0.0 manifest."
+      "description": "Canonical identifier of the plugin manifest schema for the Agent Plugins version targeted by this document."
     },
     "name": {
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "pattern": "^[a-z0-9]([a-z0-9.\\-]*[a-z0-9])?$",
-      "description": "Plugin name: 1-64 lowercase ASCII letters, digits, hyphens, and periods; begins and ends alphanumeric."
+      "pattern": "^(?!.*(?:--|\\.\\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+      "description": "Human-readable plugin name."
     },
     "version": {
-      "type": "string",
-      "description": "Optional plugin release version. Semantic Versioning recommended."
+      "type": "string"
     },
     "description": {
-      "type": "string",
-      "description": "Optional human-readable plugin description."
+      "type": "string"
     },
     "author": {
-      "type": "string",
-      "description": "Optional author name or contact."
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "homepage": {
-      "type": "string",
-      "format": "uri",
-      "description": "Optional URL for the plugin homepage."
+      "type": "string"
     },
     "repository": {
-      "type": "string",
-      "format": "uri",
-      "description": "Optional URL for the plugin source repository."
+      "type": "string"
     },
     "license": {
-      "type": "string",
-      "description": "Optional SPDX license identifier or expression."
+      "type": "string"
     },
     "keywords": {
       "type": "array",
       "items": {
         "type": "string"
-      },
-      "description": "Optional list of search keywords."
+      }
     },
     "extensions": {
       "type": "object",
-      "description": "Optional client-specific extension data, keyed by reverse-domain namespace identifiers."
+      "description": "Client-specific manifest data keyed by reverse-domain extension namespace. Agent Plugins assigns no semantics to namespace object contents.",
+      "additionalProperties": {
+        "type": "object"
+      }
     }
-  }
+  },
+  "required": ["$schema", "name"],
+  "additionalProperties": false
 }

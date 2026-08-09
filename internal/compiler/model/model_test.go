@@ -644,6 +644,49 @@ func TestTargetRenderInputSerializationIsDeterministicAfterOrdering(t *testing.T
 	}
 }
 
+func TestValidateBuildPlanEnforcesArchiveUnitPartition(t *testing.T) {
+	baseFiles := []PlannedFile{{Path: "foo/a"}, {Path: "bar/b"}}
+	for _, test := range []struct {
+		name  string
+		units []ArchiveUnit
+		want  string
+	}{
+		{
+			name:  "complete non-overlapping partition",
+			units: []ArchiveUnit{{Root: "foo", Stem: "foo", Suffix: ".tar.gz"}, {Root: "bar", Stem: "bar", Suffix: ".tar.gz"}},
+		},
+		{
+			name:  "uncovered file",
+			units: []ArchiveUnit{{Root: "foo", Stem: "foo", Suffix: ".tar.gz"}},
+			want:  "is not covered by an archive unit",
+		},
+		{
+			name:  "overlapping roots",
+			units: []ArchiveUnit{{Root: ".", Stem: "all", Suffix: ".tar.gz"}, {Root: "foo", Stem: "foo", Suffix: ".tar.gz"}},
+			want:  "is covered by multiple archive units",
+		},
+		{
+			name:  "duplicate destination",
+			units: []ArchiveUnit{{Root: "foo", Stem: "same", Suffix: ".tar.gz"}, {Root: "bar", Stem: "same", Suffix: ".tar.gz"}},
+			want:  "archive destination \"same.tar.gz\" is duplicated",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			plan := BuildPlan{Targets: []TargetPlan{{Target: TargetAgentPlugins, Files: baseFiles, ArchiveUnits: test.units}}}
+			diagnostics := ValidateBuildPlan(plan)
+			if test.want == "" {
+				if len(diagnostics) != 0 {
+					t.Fatalf("ValidateBuildPlan() diagnostics = %#v", diagnostics)
+				}
+				return
+			}
+			if !diagnosticsContainText(diagnostics, test.want) {
+				t.Fatalf("ValidateBuildPlan() diagnostics = %#v; want %q", diagnostics, test.want)
+			}
+		})
+	}
+}
+
 func TestValidateBuildPlanRejectsNativeCheckOutsideTargetRoot(t *testing.T) {
 	t.Parallel()
 

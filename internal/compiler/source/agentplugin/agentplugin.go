@@ -144,7 +144,10 @@ func importPlugin(
 	wsPrefix := wsRelPluginRoot
 
 	// Discover immediate-child skills.
-	skillAssets, skillPaths := discoverSkills(files, wsPrefix)
+	skillAssets, skillPaths, skillDiags := discoverSkills(files, wsPrefix)
+	if hasErrors(skillDiags) {
+		return model.SourcePackage{}, nil, scopeDiags(skillDiags, string(pluginPath))
+	}
 
 	// Build extension entries.
 	extensions, extensionPaths := buildExtensions(pluginManifest.Extensions, files, wsPrefix)
@@ -199,9 +202,10 @@ func importPlugin(
 	packageID := model.PackageID(pluginManifest.Name)
 
 	pkg := model.SourcePackage{
-		Identity:    packageID,
-		Assets:      skillAssets,
-		AgentPlugin: agentPluginData,
+		Identity:       packageID,
+		Assets:         skillAssets,
+		CapabilityUses: agentPluginCapabilityUses(agentPluginData, wsPrefix),
+		AgentPlugin:    agentPluginData,
 	}
 
 	// Collect all traversed files as provenance inputs.
@@ -215,6 +219,53 @@ func importPlugin(
 	}
 
 	return pkg, inputs, traversalDiags
+}
+
+// agentPluginCapabilityUses derives package component capability uses.
+func agentPluginCapabilityUses(data *model.AgentPluginData, workspacePrefix string) []model.CapabilityUse {
+	locations := make(map[model.CapabilityKey]model.SourceLocation)
+	pluginJSON := model.SourceLocation{Path: workspaceOrigin(workspacePrefix, "plugin.json")}
+	mcpJSON := model.SourceLocation{Path: workspaceOrigin(workspacePrefix, "mcp.json")}
+
+	for _, server := range data.MCPServers {
+		var key model.CapabilityKey
+		switch server.Transport {
+		case model.MCPTransportStdio:
+			key = model.CapabilityKeyAgentPluginMCPStdio
+		case model.MCPTransportStreamableHTTP:
+			key = model.CapabilityKeyAgentPluginMCPStreamableHTTP
+		case model.MCPTransportSSE:
+			key = model.CapabilityKeyAgentPluginMCPSSE
+		}
+		if key != "" {
+			locations[key] = mcpJSON
+		}
+		if len(server.Unknown) != 0 {
+			locations[model.CapabilityKeyAgentPluginUnknownJSON] = mcpJSON
+		}
+	}
+	if len(data.Extensions) != 0 {
+		locations[model.CapabilityKeyAgentPluginExtensions] = pluginJSON
+	}
+	if len(data.UnknownManifest) != 0 {
+		locations[model.CapabilityKeyAgentPluginUnknownJSON] = pluginJSON
+	} else if len(data.UnknownMCP) != 0 {
+		locations[model.CapabilityKeyAgentPluginUnknownJSON] = mcpJSON
+	}
+	if len(data.PackageFiles) != 0 {
+		location := model.SourceLocation{Path: workspaceOrigin(workspacePrefix, string(data.PackageFiles[0].Path))}
+		if len(data.PackageFiles[0].Origin) != 0 {
+			location = data.PackageFiles[0].Origin[0]
+		}
+		locations[model.CapabilityKeyAgentPluginPackageFiles] = location
+	}
+
+	uses := make([]model.CapabilityUse, 0, len(locations))
+	for key, location := range locations {
+		uses = append(uses, model.CapabilityUse{Key: key, Location: location})
+	}
+	sort.Slice(uses, func(i, j int) bool { return uses[i].Key < uses[j].Key })
+	return uses
 }
 
 // mapPluginManifest maps a decoded wire manifest to the model type.

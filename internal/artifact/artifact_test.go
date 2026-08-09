@@ -316,6 +316,31 @@ func TestCompareRejectsInvalidGuard(t *testing.T) {
 	}
 }
 
+func TestArchiveRejectsDestinationInsideSourceBeforeMutation(t *testing.T) {
+	workspace := t.TempDir()
+	source := filepath.Join(workspace, "source")
+	output := filepath.Join(workspace, "generated")
+	if err := os.Mkdir(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	guard, err := NewWorkspaceLayoutGuard(workspace, source, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target:       model.TargetClaude,
+		Files:        []model.PlannedFile{{Path: "skill.md", Bytes: []byte("skill")}},
+		ArchiveUnits: []model.ArchiveUnit{{Root: ".", Stem: "claude", Suffix: ".tar.gz"}},
+	}}}
+	paths, diagnostics := Archive(guard, model.DistributionMetadata{"name": "demo"}, plan, source)
+	if paths != nil || len(diagnostics) != 1 || diagnostics[0].Code != diagnosticLayoutGuard {
+		t.Fatalf("Archive() = (%v, %#v); want layout rejection", paths, diagnostics)
+	}
+	if _, err := os.Stat(filepath.Join(source, "demo-claude.tar.gz")); !os.IsNotExist(err) {
+		t.Fatalf("Archive() mutated source: %v", err)
+	}
+}
+
 func TestArchiveRejectsInvalidGuard(t *testing.T) {
 	var guard WorkspaceLayoutGuard
 	paths, diagnostics := Archive(guard, model.DistributionMetadata{}, model.BuildPlan{}, t.TempDir())

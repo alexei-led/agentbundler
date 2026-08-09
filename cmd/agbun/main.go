@@ -398,13 +398,14 @@ Print the Agent Bundler version. This command does not require agentbundle.json.
 
 func targetsHelp() string {
 	return `Target IDs:
-  antigravity  Antigravity CLI
-  claude       Claude Code
-  codex        Codex
-  copilot      GitHub Copilot
-  cursor       Cursor
-  grok         Grok Build
-  pi           Pi
+  agent-plugins  Agent Plugins 1.0.0
+  antigravity    Antigravity CLI
+  claude         Claude Code
+  codex          Codex
+  copilot        GitHub Copilot
+  cursor         Cursor
+  grok           Grok Build
+  pi             Pi
 
 Use target IDs in agentbundle.json and with --target. A target must be declared
 by the manifest before build or check can select it.
@@ -429,7 +430,7 @@ Options:
   -h, --help       Show this help.
 
 Targets:
-  antigravity, claude, codex, copilot, cursor, grok, pi
+  agent-plugins, antigravity, claude, codex, copilot, cursor, grok, pi
 
 Examples:
   agbun build
@@ -455,6 +456,7 @@ Options:
   -h, --help       Show this help.
 
 Archive names:
+  <distribution.name>-<plugin-name>.tar.gz  (agent-plugins; one per plugin)
   <distribution.name>-antigravity.tar.gz
   <distribution.name>-claude.tar.gz
   <distribution.name>-codex.tar.gz
@@ -483,7 +485,7 @@ Options:
   -h, --help       Show this help.
 
 Targets:
-  antigravity, claude, codex, copilot, cursor, grok, pi
+  agent-plugins, antigravity, claude, codex, copilot, cursor, grok, pi
 
 Exit statuses:
   0  Output is current.

@@ -48,31 +48,40 @@ func TestSchemaURLs(t *testing.T) {
 func TestEmbeddedSchemaDigests(t *testing.T) {
 	t.Parallel()
 
-	t.Run("plugin-schema", func(t *testing.T) {
-		t.Parallel()
-		schema := agentplugins.PluginSchemaBytes()
-		if len(schema) == 0 {
-			t.Fatal("embedded plugin schema is empty")
-		}
-		sum := sha256.Sum256(schema)
-		got := hex.EncodeToString(sum[:])
-		if got != agentplugins.PluginSchemaSHA256 {
-			t.Fatalf("plugin schema SHA-256 = %s\nwant %s\nEmbedded schema bytes do not match PluginSchemaSHA256 constant.\nUpdate the constant or replace the schema file.", got, agentplugins.PluginSchemaSHA256)
-		}
-	})
-
-	t.Run("mcp-schema", func(t *testing.T) {
-		t.Parallel()
-		schema := agentplugins.MCPSchemaBytes()
-		if len(schema) == 0 {
-			t.Fatal("embedded MCP schema is empty")
-		}
-		sum := sha256.Sum256(schema)
-		got := hex.EncodeToString(sum[:])
-		if got != agentplugins.MCPSchemaSHA256 {
-			t.Fatalf("MCP schema SHA-256 = %s\nwant %s\nEmbedded schema bytes do not match MCPSchemaSHA256 constant.\nUpdate the constant or replace the schema file.", got, agentplugins.MCPSchemaSHA256)
-		}
-	})
+	for _, test := range []struct {
+		name     string
+		schema   []byte
+		declared string
+		approved string
+	}{
+		{
+			name:     "plugin-schema",
+			schema:   agentplugins.PluginSchemaBytes(),
+			declared: agentplugins.PluginSchemaSHA256,
+			approved: "0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883",
+		},
+		{
+			name:     "mcp-schema",
+			schema:   agentplugins.MCPSchemaBytes(),
+			declared: agentplugins.MCPSchemaSHA256,
+			approved: "6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb",
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if test.declared != test.approved {
+				t.Fatalf("declared schema SHA-256 = %s; want approved profile digest %s", test.declared, test.approved)
+			}
+			if len(test.schema) == 0 {
+				t.Fatal("embedded schema is empty")
+			}
+			sum := sha256.Sum256(test.schema)
+			if got := hex.EncodeToString(sum[:]); got != test.approved {
+				t.Fatalf("embedded schema SHA-256 = %s; want approved profile digest %s", got, test.approved)
+			}
+		})
+	}
 }
 
 // TestSchemaSelectorFunctions verifies the IsPluginSchemaURL and IsMCPSchemaURL helpers.
