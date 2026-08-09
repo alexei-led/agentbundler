@@ -1239,8 +1239,13 @@ func TestCloneAgentPluginDataIsDetached(t *testing.T) {
 					Args:    []string{"--port", "3000"},
 					Env:     map[string]string{"LOG": "debug"},
 				},
+				Unknown: map[string]any{"nested": []any{map[string]any{"value": "source"}}},
 			},
 		},
+		Extensions: []ClientExtension{{
+			Namespace: "com.example.extension",
+			Manifest:  map[string]any{"options": []any{map[string]any{"mode": "source"}}},
+		}},
 		PackageFiles: []PackageFile{
 			{
 				Path:   "README.md",
@@ -1249,7 +1254,8 @@ func TestCloneAgentPluginDataIsDetached(t *testing.T) {
 				Origin: []SourceLocation{{Path: "README.md", Line: &originLine}},
 			},
 		},
-		UnknownManifest: map[string]any{"future": "value"},
+		UnknownManifest: map[string]any{"future": map[string]any{"items": []any{map[string]any{"value": "source"}}}},
+		UnknownMCP:      map[string]any{"future": []any{map[string]any{"value": "source"}}},
 	}
 
 	clone := CloneAgentPluginData(data)
@@ -1286,9 +1292,24 @@ func TestCloneAgentPluginDataIsDetached(t *testing.T) {
 		t.Error("PackageFile.Bytes not detached")
 	}
 
-	clone.UnknownManifest["future"] = "mutated"
-	if data.UnknownManifest["future"] == "mutated" {
-		t.Error("UnknownManifest not detached")
+	clone.MCPServers[0].Unknown["nested"].([]any)[0].(map[string]any)["value"] = "mutated"
+	if data.MCPServers[0].Unknown["nested"].([]any)[0].(map[string]any)["value"] == "mutated" {
+		t.Error("MCPServer.Unknown nested value not detached")
+	}
+
+	clone.Extensions[0].Manifest.(map[string]any)["options"].([]any)[0].(map[string]any)["mode"] = "mutated"
+	if data.Extensions[0].Manifest.(map[string]any)["options"].([]any)[0].(map[string]any)["mode"] == "mutated" {
+		t.Error("ClientExtension.Manifest nested value not detached")
+	}
+
+	clone.UnknownManifest["future"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"] = "mutated"
+	if data.UnknownManifest["future"].(map[string]any)["items"].([]any)[0].(map[string]any)["value"] == "mutated" {
+		t.Error("UnknownManifest nested value not detached")
+	}
+
+	clone.UnknownMCP["future"].([]any)[0].(map[string]any)["value"] = "mutated"
+	if data.UnknownMCP["future"].([]any)[0].(map[string]any)["value"] == "mutated" {
+		t.Error("UnknownMCP nested value not detached")
 	}
 }
 

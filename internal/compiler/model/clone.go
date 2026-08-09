@@ -38,18 +38,34 @@ func CloneAgentPluginData(data *AgentPluginData) *AgentPluginData {
 	return clone
 }
 
-// CloneJSONMap returns a shallow copy of a map[string]any. The map itself is
-// new, but the values are shared (JSON scalars are immutable; maps and slices
-// decoded from JSON into any are not mutated by the compiler).
+// CloneJSONMap returns a detached copy of a map containing JSON values.
 func CloneJSONMap(m map[string]any) map[string]any {
 	if m == nil {
 		return nil
 	}
 	clone := make(map[string]any, len(m))
 	for k, v := range m {
-		clone[k] = v
+		clone[k] = cloneJSONValue(v)
 	}
 	return clone
+}
+
+func cloneJSONValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return CloneJSONMap(typed)
+	case []any:
+		if typed == nil {
+			return []any(nil)
+		}
+		clone := make([]any, len(typed))
+		for i, item := range typed {
+			clone[i] = cloneJSONValue(item)
+		}
+		return clone
+	default:
+		return value
+	}
 }
 
 func cloneAgentPluginManifest(m AgentPluginManifest) AgentPluginManifest {
@@ -110,7 +126,7 @@ func clonePackageFile(pf PackageFile) PackageFile {
 func cloneClientExtension(ext ClientExtension) ClientExtension {
 	clone := ClientExtension{
 		Namespace: ext.Namespace,
-		Manifest:  ext.Manifest, // opaque JSON scalar/map/slice; shared
+		Manifest:  cloneJSONValue(ext.Manifest),
 	}
 	if ext.PackageFiles != nil {
 		clone.PackageFiles = make([]PackageFile, len(ext.PackageFiles))

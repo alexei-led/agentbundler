@@ -16,11 +16,11 @@ This module is the sole owner of the Agent Plugins 1.0.0 wire contract. It decod
 | Upstream commit | `bd383552095128f6effe895b9257cfd580a6d179` |
 | Spec SHA-256 | `97a658b7dca3ce1b4c2266b95da300fa51d9dc4ade59d73168e5f9104272da18` |
 | Plugin schema URL | `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json` |
-| Plugin schema SHA-256 | `1798728e6926de4e891a83dca65e2634d718bd0f5d2bf2d50f01b181192f12d5` |
+| Plugin schema SHA-256 | `0a4aad95ce337878ad38802ebf0daa3fde76abe3f65400c86bcbb1ec0b3ab883` |
 | MCP schema URL | `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json` |
-| MCP schema SHA-256 | `525518d1f09665e07ab798d8ef594f5c2df5da07fe34ee58bd94579bc47f0c99` |
+| MCP schema SHA-256 | `6539175bfcdf43085855183e86da40ea94b166547a72b47ae9a0a390516d3acb` |
 
-**Schema note:** The embedded schemas are a best-effort reconstruction from the public specification at the pinned commit. To advance the pinned profile, replace both `schemas/1.0.0/plugin.schema.json` and `schemas/1.0.0/mcp.schema.json` with the exact bytes from the upstream repository commit, update the SHA-256 constants in `profile.go`, and follow the D10 compatibility review procedure.
+**Schema note:** The embedded schemas are the exact bytes from the upstream repository at the pinned commit. To advance the pinned profile, replace both `schemas/1.0.0/plugin.schema.json` and `schemas/1.0.0/mcp.schema.json` with the exact bytes from the new upstream repository commit, update the SHA-256 constants in `profile.go`, and follow the D10 compatibility review procedure.
 
 ## Functional Responsibilities
 
