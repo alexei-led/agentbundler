@@ -563,31 +563,83 @@ func TestAgentPluginRejectsOversizedFileBeforeReading(t *testing.T) {
 	}
 }
 
-func TestAgentPluginQuotaExceededEntries(t *testing.T) {
-	// The entry limit is large (10,000) so we test the quota
-	// rejection behavior by patching the limit temporarily.
-	// Instead, test by manipulating maxEntries is not feasible without
-	// exported state, so we test the behavior at the boundary with a
-	// real traversal of 2 files against limit 1.
-	//
-	// We use a table-driven test against a minimal importer with reduced
-	// limits for quota behavior. Since limits are package-level constants,
-	// we test the diagnostic message instead.
+func TestAgentPluginPackageFilesWithinLimits(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
 	write(t, tmp, "source/plugin/a.txt", "a")
 	write(t, tmp, "source/plugin/b.txt", "b")
-	// With default limits this succeeds; quota tests validate the error path.
+
 	manifest := minimalManifest("source", "plugin")
 	ws := openWorkspace(t, tmp)
 	inventory, diags := InspectAgentPluginRoot(manifest, tmp, ws)
 	if len(diags) != 0 {
 		t.Fatalf("unexpected diagnostics: %v", diags)
 	}
-	// Both files should appear in PackageFiles.
 	files := inventory.Packages[0].AgentPlugin.PackageFiles
 	if len(files) != 2 {
 		t.Errorf("PackageFiles = %d, want 2 (a.txt, b.txt)", len(files))
+	}
+}
+
+func TestAgentPluginTraversalDepthLimit(t *testing.T) {
+	tmp := t.TempDir()
+	pluginRoot := filepath.Join(tmp, "plugin")
+	if err := os.MkdirAll(pluginRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	limits := defaultTraversalLimits()
+	limits.maxDepth = 2
+	path := pluginRoot
+	for i := 0; i < limits.maxDepth+1; i++ {
+		path = filepath.Join(path, "nested")
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	_, diags := traversePluginRootWithLimits(openWorkspace(t, pluginRoot), limits)
+	if !hasDiag(diags, "traversal depth limit exceeded") {
+		t.Fatalf("diagnostics = %v; want traversal depth limit error", diags)
+	}
+}
+
+func TestAgentPluginTraversalPathByteLimit(t *testing.T) {
+	tmp := t.TempDir()
+	limits := defaultTraversalLimits()
+	limits.maxPathBytes = 8
+	path := filepath.Join(tmp, strings.Repeat("p", limits.maxPathBytes+1))
+	if err := os.WriteFile(path, []byte("content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, diags := traversePluginRootWithLimits(openWorkspace(t, tmp), limits)
+	if !hasDiag(diags, "path exceeds byte limit") {
+		t.Fatalf("diagnostics = %v; want path byte limit error", diags)
+	}
+}
+
+func TestAgentPluginTraversalEntryLimit(t *testing.T) {
+	tmp := t.TempDir()
+	write(t, tmp, "a", "a")
+	write(t, tmp, "b", "b")
+	limits := defaultTraversalLimits()
+	limits.maxEntries = 1
+
+	_, diags := traversePluginRootWithLimits(openWorkspace(t, tmp), limits)
+	if !hasDiag(diags, "traversal entry limit exceeded") {
+		t.Fatalf("diagnostics = %v; want traversal entry limit error", diags)
+	}
+}
+
+func TestAgentPluginTraversalTotalBytesLimit(t *testing.T) {
+	tmp := t.TempDir()
+	write(t, tmp, "file", "ab")
+	limits := defaultTraversalLimits()
+	limits.maxTotalBytes = 1
+
+	_, diags := traversePluginRootWithLimits(openWorkspace(t, tmp), limits)
+	if !hasDiag(diags, "total file bytes exceed 256 MiB limit") {
+		t.Fatalf("diagnostics = %v; want total byte limit error", diags)
 	}
 }
 

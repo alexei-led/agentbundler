@@ -23,6 +23,27 @@ const (
 	maxPathBytes  = 1024 // UTF-8 bytes per relative path
 )
 
+// traversalLimits bounds one plugin root traversal. The production limits are
+// supplied by defaultTraversalLimits; tests use the helper with smaller limits
+// to exercise each failure path without creating large fixtures.
+type traversalLimits struct {
+	maxEntries    int
+	maxFileSizeB  int64
+	maxTotalBytes int64
+	maxDepth      int
+	maxPathBytes  int
+}
+
+func defaultTraversalLimits() traversalLimits {
+	return traversalLimits{
+		maxEntries:    maxEntries,
+		maxFileSizeB:  maxFileSizeB,
+		maxTotalBytes: maxTotalBytes,
+		maxDepth:      maxDepth,
+		maxPathBytes:  maxPathBytes,
+	}
+}
+
 // traversedFile is one regular file found during bounded plugin root traversal.
 type traversedFile struct {
 	// relPath is slash-separated, relative to the plugin root.
@@ -38,6 +59,7 @@ type traversedFile struct {
 // traversalState holds mutable counters during one plugin root walk.
 type traversalState struct {
 	pluginRoot *os.Root
+	limits     traversalLimits
 	entryCount int
 	totalBytes int64
 	files      []traversedFile
@@ -50,7 +72,11 @@ type traversalState struct {
 // lexical relPath order. On any quota or boundary violation, diagnostics
 // contain an error and the returned files may be partial.
 func traversePluginRoot(pluginRoot *os.Root) ([]traversedFile, []model.Diagnostic) {
-	s := &traversalState{pluginRoot: pluginRoot}
+	return traversePluginRootWithLimits(pluginRoot, defaultTraversalLimits())
+}
+
+func traversePluginRootWithLimits(pluginRoot *os.Root, limits traversalLimits) ([]traversedFile, []model.Diagnostic) {
+	s := &traversalState{pluginRoot: pluginRoot, limits: limits}
 	s.walk(".", 0, nil)
 	return s.files, s.diags
 }
@@ -59,7 +85,7 @@ func traversePluginRoot(pluginRoot *os.Root) ([]traversedFile, []model.Diagnosti
 // passing visited as the set of directories on the current ancestor stack.
 // visited is passed by value so each child branch has its own copy.
 func (s *traversalState) walk(dirPath string, depth int, visited []os.FileInfo) {
-	if depth > maxDepth {
+	if depth > s.limits.maxDepth {
 		s.err(dirPath, "traversal depth limit exceeded")
 		return
 	}
@@ -100,13 +126,13 @@ func (s *traversalState) walk(dirPath string, depth int, visited []os.FileInfo) 
 			return
 		}
 		s.entryCount++
-		if s.entryCount > maxEntries {
+		if s.entryCount > s.limits.maxEntries {
 			s.err(dirPath, "traversal entry limit exceeded")
 			return
 		}
 
 		childPath := childRelPath(dirPath, entry.Name())
-		if len([]byte(childPath)) > maxPathBytes || !utf8.ValidString(childPath) {
+		if len([]byte(childPath)) > s.limits.maxPathBytes || !utf8.ValidString(childPath) {
 			s.err(childPath, "path exceeds byte limit or contains invalid UTF-8")
 			continue
 		}
@@ -180,16 +206,16 @@ func (s *traversalState) processFile(relPath string, mode os.FileMode) {
 		return
 	}
 	mode = info.Mode()
-	if info.Size() > maxFileSizeB {
+	if info.Size() > s.limits.maxFileSizeB {
 		s.err(relPath, "file exceeds 64 MiB size limit")
 		return
 	}
-	remaining := int64(maxTotalBytes) - s.totalBytes
+	remaining := s.limits.maxTotalBytes - s.totalBytes
 	if info.Size() > remaining {
 		s.err(relPath, "total file bytes exceed 256 MiB limit")
 		return
 	}
-	readLimit := int64(maxFileSizeB)
+	readLimit := s.limits.maxFileSizeB
 	if remaining < readLimit {
 		readLimit = remaining
 	}
@@ -198,7 +224,7 @@ func (s *traversalState) processFile(relPath string, mode os.FileMode) {
 		s.err(relPath, "read file: "+err.Error())
 		return
 	}
-	if len(content) > maxFileSizeB {
+	if int64(len(content)) > s.limits.maxFileSizeB {
 		s.err(relPath, "file exceeds 64 MiB size limit")
 		return
 	}
