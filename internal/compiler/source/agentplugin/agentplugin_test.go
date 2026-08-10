@@ -587,17 +587,16 @@ func TestAgentPluginTraversalDepthLimit(t *testing.T) {
 	if err := os.MkdirAll(pluginRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	limits := defaultTraversalLimits()
-	limits.maxDepth = 2
+
 	path := pluginRoot
-	for i := 0; i < limits.maxDepth+1; i++ {
+	for i := 0; i < maxDepth+1; i++ {
 		path = filepath.Join(path, "nested")
 		if err := os.Mkdir(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	_, diags := traversePluginRootWithLimits(openWorkspace(t, pluginRoot), limits)
+	_, diags := traversePluginRoot(openWorkspace(t, pluginRoot))
 	if !hasDiag(diags, "traversal depth limit exceeded") {
 		t.Fatalf("diagnostics = %v; want traversal depth limit error", diags)
 	}
@@ -605,14 +604,27 @@ func TestAgentPluginTraversalDepthLimit(t *testing.T) {
 
 func TestAgentPluginTraversalPathByteLimit(t *testing.T) {
 	tmp := t.TempDir()
-	limits := defaultTraversalLimits()
-	limits.maxPathBytes = 8
-	path := filepath.Join(tmp, strings.Repeat("p", limits.maxPathBytes+1))
-	if err := os.WriteFile(path, []byte("content"), 0o644); err != nil {
-		t.Fatal(err)
+	root := openWorkspace(t, tmp)
+	current := root
+	relPathBytes := 0
+	for relPathBytes <= maxPathBytes {
+		const segment = "pppppppppppppppppppppppppppppppppppppppp"
+		if relPathBytes > 0 {
+			relPathBytes++ // slash between relative path components
+		}
+		relPathBytes += len(segment)
+		if err := current.Mkdir(segment, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		child, err := current.OpenRoot(segment)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = child.Close() })
+		current = child
 	}
 
-	_, diags := traversePluginRootWithLimits(openWorkspace(t, tmp), limits)
+	_, diags := traversePluginRoot(root)
 	if !hasDiag(diags, "path exceeds byte limit") {
 		t.Fatalf("diagnostics = %v; want path byte limit error", diags)
 	}
