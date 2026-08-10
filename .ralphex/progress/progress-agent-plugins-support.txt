@@ -58,3 +58,62 @@ Worktree: /Users/alexei/Workspace/agentbundler
 [2026-08-08T14:37:04.912Z] Task 4 completed after 1 attempt(s).
 [2026-08-08T14:37:30.958Z] Run failed at implementation: Worker rpc-spawn-53eacb75-0860-4393-abce-139cc5f0b1a5 hit a model/provider failure before task 5 completed; its task retry budget was not consumed: Error: Run 'main' failed: Codex error: [StringParam] [input[2].call_id] [string_above_max_length] Invalid 'input[2].call_id': string too long. Expected a string with maximum length 64, but got a string with length 116 instead.
 [2026-08-09T05:03:01.651Z] Manual recovery reset Task 5 and retried the failed implementation stage with model anthropic-personal/claude-opus-4-8.
+[2026-08-09T05:13:01.290Z] Task 5 completed after 2 attempt(s).
+[2026-08-09T05:13:01.325Z] All plan checkboxes are complete.
+[2026-08-09T05:13:03.291Z] Run failed at comprehensive_review: Review operation ended as failed. Error: Run 'main' failed: Ambiguous agent name 'reviewer': reviewer, cc-thingz.reviewer
+[2026-08-09T05:17:01.194Z] Manual recovery reset the failed comprehensive_review review attempt.
+[2026-08-09T05:22:52.709Z] Review attempt 1 produced no usable output; retrying: Subagent result output was unavailable.
+[2026-08-09T05:30:47.149Z] Review attempt 2 produced no usable output; retrying: Subagent result output was unavailable.
+[2026-08-09T06:04:21.787Z] Applied fixes for comprehensive_review iteration 3.
+[2026-08-09T06:11:33.520Z] Review attempt 4 produced no usable output; retrying: Subagent result output was unavailable.
+[2026-08-09T06:15:55.997Z] comprehensive_review reached its iteration cap with unresolved findings.
+FINDING: MAJOR | Agent Plugin skills fail conversion to existing targets
+Evidence: `internal/compiler/source/agentplugin/skills.go:117-120` uses `agent-plugin.skills`; Claude declares only `asset.skill` at `internal/target/claude/codec.go:19-25`; missing portable keys default to unsupported at `internal/target/target.go:105-131`. A plugin with `my-skill/SKILL.md` targeting Claude is rejected before rendering.
+Fix: Map this capability to existing skill support or declare it for compatible targets, with a compile regression test.
+
+FINDING: MAJOR | Standard target emits skills at the wrong path
+Evidence: `internal/target/agentplugins/agentplugins.go:163-165` emits `<skill>/SKILL.md`, while the documented contract requires `skills/<skill>/SKILL.md` at `docs/agent-plugins-architecture.md:340-342`. The generated fixture confirms the missing `skills/` prefix.
+Fix: Prefix rendered skill paths with `skills/` and update fixtures/tests.
+
+FINDING: MAJOR | `author` does not match the pinned schema
+Evidence: `internal/agentplugins/schemas/1.0.0/plugin.schema.json:25-38` defines `author` as an object, but `internal/agentplugins/decode.go:77-82`, `manifest.go:22-23`, and `encode.go:56-58` treat it as a string. A valid `{ "author": { "name": "..." } }` manifest is rejected and cannot round-trip.
+Fix: Model, decode, validate, and encode the schema’s author object.
+
+FINDING: MAJOR | Invalid MCP `cwd` values are accepted
+Evidence: The schema requires the `cwd` prefix pattern at `internal/agentplugins/schemas/1.0.0/mcp.schema.json:65-68`, but validation only rejects NUL bytes at `internal/agentplugins/validate.go:135-138`. `cwd: "/tmp"` therefore decodes successfully.
+Fix: Enforce `./`, `${PLUGIN_ROOT}`, or `${PLUGIN_DATA}` prefixes and add invalid-`cwd` tests.
+
+FINDING: MINOR | Agent Plugin cloning is not deep
+Evidence: `internal/compiler/model/clone.go:41-52` shallow-copies JSON values, and `cloneClientExtension` shares `Manifest` at `internal/compiler/model/clone.go:110-114`, contradicting the deep-copy contract at `docs/agent-plugins-architecture.md:195-197`. Mutating a nested unknown field after composition mutates the source package.
+Fix: Recursively clone JSON maps/slices and extension manifests.
+
+FINDING: MINOR | Wire-module documentation has incorrect profile digests
+Evidence: `internal/agentplugins/module.md:19-23` lists plugin/MCP digests `179872...` and `525518...`, while `internal/agentplugins/profile.go:32-38` and the profile tests use `0a4aad...` and `653917...`. The module also calls the schemas a “best-effort reconstruction” despite the pinned exact-profile contract.
+Fix: Update the module documentation to match the verified constants and remove the reconstruction claim.
+[2026-08-09T06:15:55.998Z] comprehensive_review reached its iteration cap.
+[2026-08-09T06:21:52.611Z] Run failed at smells_review: Review result output was unavailable after 1 attempt(s): Subagent result output was unavailable.
+[2026-08-09T06:48:11.068Z] Manual recovery reset the failed smells_review review attempt.
+[2026-08-09T06:52:47.456Z] Run failed at smells_review: Review result output was unavailable after 1 attempt(s): Subagent result output was unavailable.
+[2026-08-09T18:27:36.269Z] Manual recovery reset the failed smells_review review attempt.
+[2026-08-09T18:37:55.395Z] Applied fixes for smells_review iteration 1.
+[2026-08-09T18:37:55.396Z] smells_review fixes applied.
+[2026-08-09T18:43:28.943Z] Run failed at fusion_review: Fix operation ended as failed. Error: Run 'main' failed: Detached for intercom coordination: worker. Reply to the supervisor request first, then wait with subagent_wait({ id: "cd25a28b" }). Use subagent({ action: "status", id: "cd25a28b" }) to recover the result; do not resume or launch a replacement while it remains detached.
+[2026-08-10T05:34:59.263Z] Manual recovery retried the failed fusion_review fix operation.
+[2026-08-10T05:39:26.760Z] Applied fixes for fusion_review iteration 1.
+[2026-08-10T05:48:25.296Z] Applied fixes for fusion_review iteration 2.
+[2026-08-10T05:53:25.569Z] Run failed at fusion_review: Reviewer output did not contain NO_FINDINGS or a structured FINDING.
+[2026-08-10T05:57:15.159Z] Manual recovery reset the failed fusion_review review attempt.
+[2026-08-10T06:07:20.703Z] Run failed at fusion_review: Review operation ended as failed.
+[2026-08-10T12:24:59.003Z] Manual recovery reset the failed fusion_review review attempt.
+[2026-08-10T12:37:58.103Z] Applied fixes for fusion_review iteration 3.
+[2026-08-10T12:55:34.533Z] Applied fixes for fusion_review iteration 4.
+[2026-08-10T13:16:15.667Z] Applied fixes for fusion_review iteration 5.
+[2026-08-10T13:35:45.733Z] Applied fixes for fusion_review iteration 6.
+[2026-08-10T13:53:34.638Z] Applied fixes for fusion_review iteration 7.
+[2026-08-10T13:56:31.963Z] fusion_review found no issues.
+[2026-08-10T13:56:31.964Z] fusion_review passed.
+[2026-08-10T14:37:08.367Z] Run failed at critical_review: Fix operation ended as failed. Error: Run 'main' failed: Subagent timed out after 1800000ms.
+[2026-08-10T15:36:48.468Z] Manual recovery retried the failed critical_review fix operation.
+[2026-08-10T15:46:12.152Z] Applied fixes for critical_review iteration 1.
+[2026-08-10T15:46:12.153Z] critical_review fixes applied.
+[2026-08-10T15:48:52.900Z] Final verification passed: gofmt and diff checks, go test, race, vet, vendor smoke compile, golangci-lint, Pi runtime typecheck/tests, both acceptance fixtures, pinned archfit v1.6.0 with 0 blocking findings, and GitNexus cycle check. GitNexus was refreshed at 2,986 nodes, 11,381 edges, 256 flows; branch comparison is critical by expected feature breadth, while the final metadata-only worktree diff is low risk with 0 affected processes.
