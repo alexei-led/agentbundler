@@ -42,7 +42,7 @@ func InspectAgentPluginRoot(manifest model.SourceManifest, workspaceRoot string,
 	var (
 		packages    []model.SourcePackage
 		allInputs   []model.InputFile
-		seenNames   = make(map[string]bool)
+		seenNames   = make(map[string]pluginNameOrigin)
 		diagnostics []model.Diagnostic
 	)
 
@@ -54,14 +54,17 @@ func InspectAgentPluginRoot(manifest model.SourceManifest, workspaceRoot string,
 		if hasErrors(pluginDiags) {
 			continue
 		}
-		// Reject duplicate package IDs (plugin names).
+		// Reject duplicate package IDs after case folding. Package identities are
+		// compared case-insensitively by downstream output and archive contracts.
 		name := string(pkg.Identity)
-		if seenNames[name] {
-			diagnostics = append(diagnostics, diag(string(pluginPath),
-				fmt.Sprintf("plugin name %q is already used by another declared plugin", name)))
+		foldedName := strings.ToLower(name)
+		if previous, ok := seenNames[foldedName]; ok {
+			diagnostics = append(diagnostics, diag(string(pluginPath), fmt.Sprintf(
+				"plugin names %q (from %q) and %q (from %q) collide after case folding",
+				name, pluginPath, previous.name, previous.path)))
 			continue
 		}
-		seenNames[name] = true
+		seenNames[foldedName] = pluginNameOrigin{name: name, path: pluginPath}
 		packages = append(packages, pkg)
 		allInputs = append(allInputs, inputs...)
 	}
@@ -86,6 +89,11 @@ func InspectAgentPluginRoot(manifest model.SourceManifest, workspaceRoot string,
 		return model.SourceInventory{}, append(diagnostics, valDiags...)
 	}
 	return inventory, diagnostics
+}
+
+type pluginNameOrigin struct {
+	name string
+	path model.RelativePath
 }
 
 // importPlugin imports one plugin from the workspace and returns its package,

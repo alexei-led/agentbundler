@@ -4,7 +4,9 @@ package archive
 import (
 	"archive/tar"
 	"compress/gzip"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
@@ -22,33 +25,106 @@ import (
 // walk is performed. Each archive is written atomically: a .tmp file is renamed
 // over the destination only if bytes differ from an existing archive.
 func WriteTargetRoots(distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, error) {
-	if output == "" {
-		return nil, fmt.Errorf("archive output directory is required")
-	}
-	name, ok := distribution["name"].(string)
-	if !ok || name == "" {
-		return nil, fmt.Errorf("distribution.name is required for release archives")
-	}
-	if err := validateArchiveName(name); err != nil {
+	name, err := distributionName(distribution)
+	if err != nil {
 		return nil, err
 	}
 	writes, err := prepareArchiveWrites(name, plan, output)
 	if err != nil {
 		return nil, err
 	}
+	root, err := OpenDestination(output)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	return writePreparedArchives(name, writes, output, root)
+}
+
+// OpenDestination creates and pins an archive destination directory. The
+// returned root keeps later operations on the directory descriptor-relative,
+// even if the destination pathname is replaced.
+func OpenDestination(output string) (*os.Root, error) {
+	if output == "" {
+		return nil, fmt.Errorf("archive output directory is required")
+	}
 	if err := os.MkdirAll(output, 0o755); err != nil {
 		return nil, fmt.Errorf("create archive output: %w", err)
 	}
+	pathInfo, err := os.Lstat(output)
+	if err != nil {
+		return nil, fmt.Errorf("lstat archive output: %w", err)
+	}
+	if pathInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("archive output directory must not be a symbolic link")
+	}
+	root, err := os.OpenRoot(output)
+	if err != nil {
+		return nil, fmt.Errorf("open archive output: %w", err)
+	}
+	if err := verifyDestinationIdentity(root, output); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	return root, nil
+}
 
+// WriteTargetRootsInRoot writes archives below the already pinned destination.
+// output is retained only for returned display paths and identity checks.
+func WriteTargetRootsInRoot(distribution model.DistributionMetadata, plan model.BuildPlan, output string, destinationRoot *os.Root) ([]string, error) {
+	if output == "" {
+		return nil, fmt.Errorf("archive output directory is required")
+	}
+	if destinationRoot == nil {
+		return nil, fmt.Errorf("archive destination root is required")
+	}
+	name, err := distributionName(distribution)
+	if err != nil {
+		return nil, err
+	}
+	writes, err := prepareArchiveWrites(name, plan, output)
+	if err != nil {
+		return nil, err
+	}
+	return writePreparedArchives(name, writes, output, destinationRoot)
+}
+
+func distributionName(distribution model.DistributionMetadata) (string, error) {
+	name, ok := distribution["name"].(string)
+	if !ok || name == "" {
+		return "", fmt.Errorf("distribution.name is required for release archives")
+	}
+	if err := validateArchiveName(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func writePreparedArchives(name string, writes []archiveWrite, output string, destinationRoot *os.Root) ([]string, error) {
 	paths := make([]string, 0, len(writes))
 	for _, write := range writes {
-		if err := writeTarGzipFromPlan(write.path, write.unit.Root, write.files); err != nil {
+		if err := writeTarGzipFromPlan(destinationRoot, output, filepath.Base(write.path), write.unit.Root, write.files); err != nil {
 			return nil, fmt.Errorf("archive target %q unit %q: %w", write.target, write.unit.Root, err)
 		}
 		paths = append(paths, write.path)
 	}
 	sort.Strings(paths)
 	return paths, nil
+}
+
+func verifyDestinationIdentity(root *os.Root, output string) error {
+	pathInfo, err := os.Stat(output)
+	if err != nil {
+		return fmt.Errorf("stat archive output: %w", err)
+	}
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return fmt.Errorf("stat pinned archive output: %w", err)
+	}
+	if !os.SameFile(pathInfo, rootInfo) {
+		return fmt.Errorf("archive output directory changed while it was being opened")
+	}
+	return nil
 }
 
 type archiveWrite struct {
@@ -130,28 +206,40 @@ func archiveUnitContains(root, filePath string) bool {
 	return root == "." || strings.HasPrefix(filePath, root+"/")
 }
 
-// validateArchiveName checks that name is a safe filename component for use in
-// archive paths. It must be non-empty, contain no path separators or null
-// bytes, and not use platform-reserved device names.
+// validateArchiveName checks that name is a safe cross-platform basename.
+// Windows-invalid characters, controls, trailing dots/spaces, and reserved
+// device names are rejected even when running on Unix.
 func validateArchiveName(name string) error {
-	if strings.ContainsAny(name, "/\\") {
-		return fmt.Errorf("distribution name %q contains a path separator", name)
+	if name == "" {
+		return fmt.Errorf("archive name must not be empty")
 	}
-	if strings.ContainsRune(name, '\x00') {
-		return fmt.Errorf("distribution name %q contains a null byte", name)
+	if strings.ContainsAny(name, "/\\") {
+		return fmt.Errorf("archive name %q contains a path separator", name)
+	}
+	if strings.ContainsAny(name, `:*?"<>|`) {
+		return fmt.Errorf("archive name %q contains a Windows-invalid character", name)
+	}
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("archive name %q contains a control character", name)
+		}
+	}
+	if strings.HasSuffix(name, ".") || strings.HasSuffix(name, " ") {
+		return fmt.Errorf("archive name %q has a trailing dot or space", name)
 	}
 	if name == "." || name == ".." {
-		return fmt.Errorf("distribution name %q is a reserved path component", name)
+		return fmt.Errorf("archive name %q is a reserved path component", name)
 	}
 	// Reject Windows reserved device names for cross-platform portability.
-	upper := strings.ToUpper(strings.SplitN(name, ".", 2)[0])
+	deviceBase := strings.SplitN(name, ".", 2)[0]
+	upper := strings.ToUpper(strings.TrimRight(deviceBase, " ."))
 	switch upper {
 	case "CON", "PRN", "AUX", "NUL", "CLOCK$":
-		return fmt.Errorf("distribution name %q uses a reserved device name", name)
+		return fmt.Errorf("archive name %q uses a reserved device name", name)
 	}
 	if len(upper) == 4 && (strings.HasPrefix(upper, "COM") || strings.HasPrefix(upper, "LPT")) {
 		if upper[3] >= '1' && upper[3] <= '9' {
-			return fmt.Errorf("distribution name %q uses a reserved device name", name)
+			return fmt.Errorf("archive name %q uses a reserved device name", name)
 		}
 	}
 	return nil
@@ -160,30 +248,31 @@ func validateArchiveName(name string) error {
 // writeTarGzipFromPlan writes a deterministic tar.gz archive from plan bytes.
 // Files are sorted by path and written with zeroed timestamps. The root prefix
 // is stripped from each file's archive name when root is not ".".
-func writeTarGzipFromPlan(destination, root string, files []model.PlannedFile) (err error) {
+func writeTarGzipFromPlan(destinationRoot *os.Root, output, destination, root string, files []model.PlannedFile) (err error) {
+	if err := verifyDestinationIdentity(destinationRoot, output); err != nil {
+		return err
+	}
 	// Sort for determinism.
 	sortedFiles := append([]model.PlannedFile(nil), files...)
 	sort.Slice(sortedFiles, func(i, j int) bool {
 		return sortedFiles[i].Path < sortedFiles[j].Path
 	})
 
-	// Create a unique temporary file in the destination directory. A fixed
-	// temporary path could follow a pre-existing symlink or be shared by
-	// concurrent archive writers.
-	file, err := os.CreateTemp(filepath.Dir(destination), "."+filepath.Base(destination)+".tmp-*")
+	// Create a unique temporary file relative to the pinned destination. O_EXCL
+	// prevents a pre-existing symlink from being followed.
+	temporary, err := temporaryName(destination)
 	if err != nil {
 		return err
 	}
-	temporary := file.Name()
-	defer func() {
-		if err != nil {
-			_ = os.Remove(temporary)
-		}
-	}()
-	if err := file.Chmod(0o644); err != nil {
-		_ = file.Close()
+	file, err := destinationRoot.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			_ = destinationRoot.Remove(temporary)
+		}
+	}()
 	defer func() { _ = file.Close() }()
 
 	gzipWriter, err := gzip.NewWriterLevel(file, gzip.BestCompression)
@@ -234,22 +323,36 @@ func writeTarGzipFromPlan(destination, root string, files []model.PlannedFile) (
 		return closeErr
 	}
 
-	unchanged, err := sameFileContents(temporary, destination)
+	// Check the pathname identity before committing, while all writes still use
+	// the pinned root. A swapped pathname therefore fails closed rather than
+	// redirecting the archive to another directory.
+	if err := verifyDestinationIdentity(destinationRoot, output); err != nil {
+		return err
+	}
+	unchanged, err := sameFileContents(destinationRoot, temporary, destination)
 	if err != nil {
 		return err
 	}
 	if unchanged {
-		return os.Remove(temporary)
+		return destinationRoot.Remove(temporary)
 	}
-	return os.Rename(temporary, destination)
+	return destinationRoot.Rename(temporary, destination)
 }
 
-func sameFileContents(left, right string) (bool, error) {
-	leftInfo, err := os.Stat(left)
+func temporaryName(destination string) (string, error) {
+	var random [16]byte
+	if _, err := cryptorand.Read(random[:]); err != nil {
+		return "", fmt.Errorf("generate temporary archive name: %w", err)
+	}
+	return "." + destination + ".tmp-" + hex.EncodeToString(random[:]), nil
+}
+
+func sameFileContents(root *os.Root, left, right string) (bool, error) {
+	leftInfo, err := root.Stat(left)
 	if err != nil {
 		return false, err
 	}
-	rightInfo, err := os.Lstat(right)
+	rightInfo, err := root.Lstat(right)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -262,12 +365,12 @@ func sameFileContents(left, right string) (bool, error) {
 	if leftInfo.Size() != rightInfo.Size() {
 		return false, nil
 	}
-	leftFile, err := os.Open(left)
+	leftFile, err := root.Open(left)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = leftFile.Close() }()
-	rightFile, err := os.Open(right)
+	rightFile, err := root.Open(right)
 	if err != nil {
 		return false, err
 	}

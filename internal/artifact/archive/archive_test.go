@@ -96,6 +96,40 @@ func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
 	}
 }
 
+func TestWriteTargetRootsPinnedDestinationRejectsPathSwap(t *testing.T) {
+	outputParent := t.TempDir()
+	output := filepath.Join(outputParent, "release")
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(output, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := OpenDestination(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	moved := filepath.Join(outputParent, "moved")
+	if err := os.Rename(output, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, output); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := WriteTargetRootsInRoot(model.DistributionMetadata{"name": "demo"}, planForTest(), output, root); err == nil {
+		t.Fatal("WriteTargetRootsInRoot accepted a swapped destination path")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("swapped destination received archive files: %v", entries)
+	}
+}
+
 func TestWriteTargetRootsDoesNotFollowPredictableTemporarySymlink(t *testing.T) {
 	output := filepath.Join(t.TempDir(), "release")
 	destination := filepath.Join(output, "demo-antigravity.tar.gz")
@@ -192,9 +226,21 @@ func TestValidateArchiveNameRejectsUnsafeBasenames(t *testing.T) {
 		{name: "backslash", input: `foo\bar`},
 		{name: "traversal", input: "../evil"},
 		{name: "null byte", input: "foo\x00bar"},
+		{name: "colon", input: "foo:bar"},
+		{name: "asterisk", input: "foo*bar"},
+		{name: "question mark", input: "foo?bar"},
+		{name: "quote", input: `foo"bar`},
+		{name: "less than", input: "foo<bar"},
+		{name: "greater than", input: "foo>bar"},
+		{name: "pipe", input: "foo|bar"},
+		{name: "control", input: "foo\x1fbar"},
+		{name: "trailing dot", input: "foo."},
+		{name: "trailing space", input: "foo "},
+		{name: "empty", input: ""},
 		{name: "dot", input: "."},
 		{name: "double dot", input: ".."},
 		{name: "reserved CON", input: "CON"},
+		{name: "reserved CON with space", input: "CON .txt"},
 		{name: "reserved NUL", input: "NUL"},
 		{name: "reserved COM1", input: "COM1"},
 		{name: "reserved LPT9", input: "lpt9"},

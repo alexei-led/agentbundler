@@ -381,6 +381,28 @@ func TestAgentPluginDuplicateName(t *testing.T) {
 	}
 }
 
+func TestAgentPluginDuplicateNameCaseFoldReportsBothPaths(t *testing.T) {
+	tmp := t.TempDir()
+	write(t, tmp, "source/upper/plugin.json", validPluginJSON("same"))
+	write(t, tmp, "source/lower/plugin.json", validPluginJSON("same"))
+
+	manifest := minimalManifest("source", "upper", "lower")
+	_, diags := InspectAgentPluginRoot(manifest, tmp, openWorkspace(t, tmp))
+	if !hasDiag(diags, "case folding") {
+		t.Fatalf("expected case-fold collision diagnostic, got: %v", diags)
+	}
+	message := ""
+	for _, diagnostic := range diags {
+		if strings.Contains(diagnostic.Message, "case folding") {
+			message = diagnostic.Message
+			break
+		}
+	}
+	if !strings.Contains(message, "upper") || !strings.Contains(message, "lower") {
+		t.Fatalf("diagnostic %q does not name both plugin paths", message)
+	}
+}
+
 func TestAgentPluginMissingPluginJSON(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tmp, "source", "plugin"), 0o755); err != nil {

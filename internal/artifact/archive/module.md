@@ -23,7 +23,9 @@ This module archives current target-native output roots for the public `package`
 ## Public Contract
 
 ```text
-WriteTargetRoots(workspace-root, SourceManifest, BuildPlan, archive-output) -> [ArchivePath] + error
+WriteTargetRoots(DistributionMetadata, BuildPlan, archive-output) -> [ArchivePath] + error
+OpenDestination(archive-output) -> pinned directory root + error
+WriteTargetRootsInRoot(DistributionMetadata, BuildPlan, archive-output, pinned root) -> [ArchivePath] + error
 ```
 
 The input plan is already validated and current. Each archive contains one target's native output root at archive root. Compiler provenance, repository-root compatibility files, symlinks, and non-regular files are excluded or rejected.
@@ -38,12 +40,13 @@ The input plan is already validated and current. Each archive contains one targe
 
 ## Constraints and Invariants
 
-- `distribution.name` is validated as a safe filename basename before the output directory is created: no path separators, no null bytes, not `.` or `..`, not a Windows-reserved device name. Validation runs before `os.MkdirAll` to prevent partial directory creation for invalid inputs.
+- `distribution.name` and archive stems are validated as cross-platform basenames before the output directory is created: no path separators, Windows-invalid characters, controls, NUL bytes, dot components, trailing dots/spaces, or Windows-reserved device names. Validation runs before `os.MkdirAll` to prevent partial directory creation for invalid inputs.
 - After computing each archive path, containment within the requested output directory is verified via `filepath.Rel`; a name like `../evil` that escapes the output directory is rejected.
 - Archive roots form a complete, non-overlapping partition of target files. Empty units, uncovered files, overlapping roots, and duplicate archive destinations fail before `os.MkdirAll` or archive writes.
 - Archive bytes do not depend on clock, hostname, absolute paths, locale, or filesystem traversal order.
 - Archive paths are relative to the target root and sorted.
 - Existing archives are not replaced when their bytes match the newly generated archive.
+- Archive destinations are pinned with `os.Root`; temporary creation, comparison, and replacement are descriptor-relative. Directory identity is checked before each archive commit so pathname swaps fail closed.
 - The module does not import the compiler, target adapters, compatibility, process, network, or vendor configuration behavior.
 
 ## Test Specification

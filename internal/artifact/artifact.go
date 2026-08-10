@@ -86,7 +86,18 @@ func Archive(guard WorkspaceLayoutGuard, distribution model.DistributionMetadata
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return nil, diagnostics
 	}
-	paths, err := archive.WriteTargetRoots(distribution, plan, output)
+	// Pin the destination before revalidating its pathname. Archive writes then
+	// use descriptor-relative operations, so a later pathname swap cannot
+	// redirect them outside the validated directory.
+	destinationRoot, err := archive.OpenDestination(output)
+	if err != nil {
+		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
+	}
+	defer func() { _ = destinationRoot.Close() }()
+	if err := guard.RevalidateArchiveDestination(output); err != nil {
+		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
+	}
+	paths, err := archive.WriteTargetRootsInRoot(distribution, plan, output, destinationRoot)
 	if err != nil {
 		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
 	}

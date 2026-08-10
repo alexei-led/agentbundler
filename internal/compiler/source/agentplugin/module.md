@@ -31,7 +31,7 @@ adapter registered in Task 4.
   unknown JSON, and ordinary package files.
 - Partition traversal files into: manifest, MCP, skill assets + support files,
   extension package files (`extensions/<namespace>/`), and `PackageFiles`.
-- Reject duplicate plugin paths (case-folded) and duplicate plugin names.
+- Reject duplicate plugin paths and duplicate or case-fold-equivalent plugin names; diagnostics include both declaring plugin roots.
 - Record all traversed files as `InputFile` entries with workspace-relative
   paths for provenance.
 

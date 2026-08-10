@@ -37,7 +37,7 @@ WorkspaceLayoutGuard.RevalidateArchiveDestination(archive-output) -> error
 write(WorkspaceLayoutGuard, BuildPlan, output-root) -> [Diagnostic]
 compare(WorkspaceLayoutGuard, BuildPlan, output-root) -> [Diagnostic] + Boolean
 provenance(BuildPlan, ProvenanceInput) -> BuildPlan + [Diagnostic]
-archive(WorkspaceLayoutGuard, workspace-root, SourceManifest, BuildPlan, archive-output) -> [ArchivePath] + [Diagnostic]
+archive(WorkspaceLayoutGuard, DistributionMetadata, BuildPlan, archive-output) -> [ArchivePath] + [Diagnostic]
 verify([NativeCheck], output-root) -> NativeVerificationResult
 ```
 
@@ -49,6 +49,8 @@ with diagnostic code `invalid-workspace-layout`. The guard retains both original
 and their construction-time canonical roots. `Revalidate` rejects alias changes and
 re-checks physical disjointness at TOCTOU-sensitive boundaries. Archive revalidation
 also rejects a destination equal to, inside, or containing source or generated output.
+Archive destinations are pinned with a no-follow, descriptor-relative `os.Root`
+operation; identity is checked again before temporary creation and final replacement.
 
 `PlannedFile.executable` is semantic data, not an inferred extension or shebang property. On POSIX it means at least one execute bit; false means none. On Windows any true value is rejected before a child artifact operation with `ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED`. Interpreter-backed scripts remain buildable on Windows when their explicit intent is false.
 
