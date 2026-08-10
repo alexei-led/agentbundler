@@ -122,8 +122,8 @@ func DecodePluginManifest(data []byte) (PluginManifest, []Diagnostic) {
 		} else {
 			manifest.Extensions = make(map[string]any, len(rawExts))
 			for ns, extVal := range rawExts {
-				var decoded any
-				if err := json.Unmarshal(extVal, &decoded); err != nil {
+				decoded, err := decodeOpaqueJSON(extVal)
+				if err != nil {
 					diagnostics = append(diagnostics, diag("invalid-field", "extensions."+ns, "extension value must be valid JSON"))
 					continue
 				}
@@ -137,8 +137,8 @@ func DecodePluginManifest(data []byte) (PluginManifest, []Diagnostic) {
 	if len(raw) > 0 {
 		manifest.Unknown = make(map[string]any, len(raw))
 		for key, val := range raw {
-			var decoded any
-			if err := json.Unmarshal(val, &decoded); err != nil {
+			decoded, err := decodeOpaqueJSON(val)
+			if err != nil {
 				diagnostics = append(diagnostics, diag("invalid-field", key, "field value must be valid JSON"))
 				continue
 			}
@@ -200,8 +200,8 @@ func DecodeMCPConfig(data []byte) (MCPConfig, []Diagnostic) {
 	if len(raw) > 0 {
 		config.Unknown = make(map[string]any, len(raw))
 		for key, val := range raw {
-			var decoded any
-			if err := json.Unmarshal(val, &decoded); err != nil {
+			decoded, err := decodeOpaqueJSON(val)
+			if err != nil {
 				diagnostics = append(diagnostics, diag("invalid-field", key, "field value must be valid JSON"))
 				continue
 			}
@@ -256,8 +256,8 @@ func decodeServerEntry(name string, data json.RawMessage) (MCPServer, []Diagnost
 	if len(raw) > 0 {
 		server.Unknown = make(map[string]any, len(raw))
 		for key, val := range raw {
-			var decoded any
-			if err := json.Unmarshal(val, &decoded); err != nil {
+			decoded, err := decodeOpaqueJSON(val)
+			if err != nil {
 				diagnostics = append(diagnostics, diag("invalid-field", prefix+"."+key, "field value must be valid JSON"))
 				continue
 			}
@@ -335,6 +335,33 @@ func decodeRemoteTransport(prefix string, raw map[string]json.RawMessage) (Remot
 	}
 
 	return t, diagnostics
+}
+
+// decodeOpaqueJSON decodes a permitted unknown value without converting JSON
+// numbers through float64. json.Number is preserved by json.Marshal, including
+// integers outside float64's exact range.
+func decodeOpaqueJSON(data []byte) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func ensureJSONEOF(decoder *json.Decoder) error {
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("invalid JSON: multiple top-level values")
+		}
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
 }
 
 // decodeLenientJSONObject decodes a JSON object into a map of raw values.

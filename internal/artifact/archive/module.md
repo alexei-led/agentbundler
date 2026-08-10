@@ -23,9 +23,11 @@ This module archives current target-native output roots for the public `package`
 ## Public Contract
 
 ```text
-WriteTargetRoots(DistributionMetadata, BuildPlan, archive-output) -> [ArchivePath] + error
 OpenDestination(archive-output) -> pinned directory root + error
 WriteTargetRootsInRoot(DistributionMetadata, BuildPlan, archive-output, pinned root) -> [ArchivePath] + error
+
+The unguarded convenience wrapper is private to this package and is not part of
+the production archive API.
 ```
 
 The input plan is already validated and current. Each archive contains one target's native output root at archive root. Compiler provenance, repository-root compatibility files, symlinks, and non-regular files are excluded or rejected.

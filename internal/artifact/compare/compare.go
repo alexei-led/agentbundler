@@ -3,6 +3,7 @@ package compare
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path"
 	"path/filepath"
@@ -37,6 +38,17 @@ type expectedFile struct {
 
 // DetectDrift compares plan with the generated output under outputRoot without modifying it.
 func DetectDrift(plan model.BuildPlan, outputRoot string) ([]Drift, error) {
+	return detectDriftInternal(plan, outputRoot, nil)
+}
+
+// DetectDriftInRoot compares output relative to a pinned parent directory.
+// All reads are descriptor-relative, so a pathname swap cannot redirect the
+// observation into another tree.
+func DetectDriftInRoot(plan model.BuildPlan, outputName string, parent *os.Root) ([]Drift, error) {
+	return detectDriftInternal(plan, outputName, parent)
+}
+
+func detectDriftInternal(plan model.BuildPlan, outputRoot string, parent *os.Root) ([]Drift, error) {
 	expected := expectedFiles(plan)
 	if runtime.GOOS == "windows" {
 		for _, destination := range sortedExecutableDestinations(expected) {
@@ -44,7 +56,13 @@ func DetectDrift(plan model.BuildPlan, outputRoot string) ([]Drift, error) {
 		}
 	}
 
-	actual, err := outputEntries(outputRoot)
+	var actual map[string]os.FileInfo
+	var err error
+	if parent == nil {
+		actual, err = outputEntries(outputRoot)
+	} else {
+		actual, err = outputEntriesInRoot(parent, outputRoot)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +90,12 @@ func DetectDrift(plan model.BuildPlan, outputRoot string) ([]Drift, error) {
 			continue
 		}
 
-		contents, err := os.ReadFile(filepath.Join(outputRoot, filepath.FromSlash(destination)))
+		var contents []byte
+		if parent == nil {
+			contents, err = os.ReadFile(filepath.Join(outputRoot, filepath.FromSlash(destination)))
+		} else {
+			contents, err = parent.ReadFile(filepath.Join(outputRoot, filepath.FromSlash(destination)))
+		}
 		if err != nil || !bytes.Equal(contents, planned.bytes) || hasExecutableIntent(info) != planned.executable {
 			drift = append(drift, Drift{Kind: DriftChanged, Path: model.RelativePath(destination)})
 		}
@@ -118,6 +141,56 @@ func outputEntries(outputRoot string) (map[string]os.FileInfo, error) {
 		return nil, err
 	}
 	return entries, nil
+}
+
+func outputEntriesInRoot(parent *os.Root, outputName string) (map[string]os.FileInfo, error) {
+	entries := make(map[string]os.FileInfo)
+	info, err := parent.Lstat(outputName)
+	if errors.Is(err, os.ErrNotExist) {
+		return entries, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	entries[outputName] = info
+	if !info.IsDir() {
+		return entries, nil
+	}
+	if err := walkOutputInRoot(parent, outputName, "", entries); err != nil {
+		return nil, err
+	}
+	delete(entries, outputName)
+	return entries, nil
+}
+
+func walkOutputInRoot(parent *os.Root, directory, relativeDirectory string, entries map[string]os.FileInfo) error {
+	file, err := parent.Open(directory)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	directoryEntries, err := file.ReadDir(-1)
+	if err != nil {
+		return err
+	}
+	for _, entry := range directoryEntries {
+		destination := entry.Name()
+		if relativeDirectory != "" {
+			destination = path.Join(relativeDirectory, destination)
+		}
+		fullPath := filepath.Join(directory, entry.Name())
+		info, err := parent.Lstat(fullPath)
+		if err != nil {
+			return err
+		}
+		entries[destination] = info
+		if info.IsDir() {
+			if err := walkOutputInRoot(parent, fullPath, destination, entries); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func walkOutput(directory, relativeDirectory string, entries map[string]os.FileInfo) error {

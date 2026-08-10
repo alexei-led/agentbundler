@@ -4,6 +4,8 @@ package artifact
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -68,10 +70,19 @@ func Write(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) 
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return diagnostics
 	}
-	if drift, err := compare.DetectDrift(plan, outputRoot); err == nil && len(drift) == 0 {
+	parent, outputName, err := openPinnedOutputParent(outputRoot)
+	if err != nil {
+		return []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
+	}
+	defer func() { _ = parent.Close() }()
+	if err := guard.RevalidateOutputRoot(outputRoot); err != nil {
+		return []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
+	}
+	drift, driftErr := compare.DetectDriftInRoot(plan, outputName, parent)
+	if driftErr == nil && len(drift) == 0 {
 		return nil
 	}
-	return write.ReplaceOutput(plan, outputRoot)
+	return write.ReplaceOutputInRoot(plan, outputName, parent)
 }
 
 // Archive validates the layout guard and plan, then writes deterministic archives
@@ -155,6 +166,29 @@ func Verify(checks []model.NativeCheck, outputRoot string) nativeverify.Result {
 		return nativeverify.Result{Diagnostics: diagnostics}
 	}
 	return nativeverify.RunNativeChecks(checks, outputRoot)
+}
+
+func openPinnedOutputParent(outputRoot string) (*os.Root, string, error) {
+	parentPath := filepath.Dir(outputRoot)
+	parent, err := os.OpenRoot(parentPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("open pinned output parent: %w", err)
+	}
+	pathInfo, err := os.Stat(parentPath)
+	if err != nil {
+		_ = parent.Close()
+		return nil, "", fmt.Errorf("stat output parent: %w", err)
+	}
+	rootInfo, err := parent.Stat(".")
+	if err != nil {
+		_ = parent.Close()
+		return nil, "", fmt.Errorf("stat pinned output parent: %w", err)
+	}
+	if !os.SameFile(pathInfo, rootInfo) {
+		_ = parent.Close()
+		return nil, "", fmt.Errorf("output parent changed while it was being opened")
+	}
+	return parent, filepath.Base(outputRoot), nil
 }
 
 func validatePlan(plan model.BuildPlan) []model.Diagnostic {

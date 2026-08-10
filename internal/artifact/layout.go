@@ -2,8 +2,12 @@
 package artifact
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -40,10 +44,19 @@ func NewWorkspaceLayoutGuard(workspaceRoot, sourceRoot, outputRoot string) (Work
 		}
 	}
 
-	canonSource := canonPathOrTextual(sourceRoot)
-	canonOutput := canonPathOrTextual(outputRoot)
+	canonSource, err := canonPathOrTextual(sourceRoot)
+	if err != nil {
+		return WorkspaceLayoutGuard{}, err
+	}
+	canonOutput, err := canonPathOrTextual(outputRoot)
+	if err != nil {
+		return WorkspaceLayoutGuard{}, err
+	}
 
 	if err := checkDisjoint(canonSource, canonOutput); err != nil {
+		return WorkspaceLayoutGuard{}, err
+	}
+	if err := checkExistingIdentity(sourceRoot, outputRoot); err != nil {
 		return WorkspaceLayoutGuard{}, err
 	}
 
@@ -76,7 +89,11 @@ func (g WorkspaceLayoutGuard) RevalidateOutputRoot(output string) error {
 	if output != g.outputPath {
 		return fmt.Errorf("output root %q does not match guarded output root %q", output, g.outputPath)
 	}
-	if canonPathOrTextual(output) != canonOutput {
+	current, err := canonPathOrTextual(output)
+	if err != nil {
+		return err
+	}
+	if !samePath(current, canonOutput) {
 		return fmt.Errorf("output root %q changed after workspace layout validation", output)
 	}
 	return nil
@@ -92,11 +109,20 @@ func (g WorkspaceLayoutGuard) RevalidateArchiveDestination(destination string) e
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
 		return fmt.Errorf("archive destination must be an absolute cleaned path")
 	}
-	canonDestination := canonPathOrTextual(destination)
+	canonDestination, err := canonPathOrTextual(destination)
+	if err != nil {
+		return err
+	}
 	if err := checkDisjoint(canonSource, canonDestination); err != nil {
 		return fmt.Errorf("archive destination overlaps source root: %w", err)
 	}
 	if err := checkDisjoint(canonOutput, canonDestination); err != nil {
+		return fmt.Errorf("archive destination overlaps output root: %w", err)
+	}
+	if err := checkExistingIdentity(g.sourcePath, destination); err != nil {
+		return fmt.Errorf("archive destination overlaps source root: %w", err)
+	}
+	if err := checkExistingIdentity(g.outputPath, destination); err != nil {
 		return fmt.Errorf("archive destination overlaps output root: %w", err)
 	}
 	return nil
@@ -106,49 +132,106 @@ func (g WorkspaceLayoutGuard) revalidateRoots() (string, string, error) {
 	if !g.valid {
 		return "", "", fmt.Errorf("workspace layout guard was not constructed with NewWorkspaceLayoutGuard")
 	}
-	canonSource := canonPathOrTextual(g.sourcePath)
-	canonOutput := canonPathOrTextual(g.outputPath)
-	if canonSource != g.sourceCanonical {
+	canonSource, err := canonPathOrTextual(g.sourcePath)
+	if err != nil {
+		return "", "", err
+	}
+	canonOutput, err := canonPathOrTextual(g.outputPath)
+	if err != nil {
+		return "", "", err
+	}
+	if !samePath(canonSource, g.sourceCanonical) {
 		return "", "", fmt.Errorf("source root %q changed after workspace layout validation", g.sourcePath)
 	}
-	if canonOutput != g.outputCanonical {
+	if !samePath(canonOutput, g.outputCanonical) {
 		return "", "", fmt.Errorf("output root %q changed after workspace layout validation", g.outputPath)
 	}
 	if err := checkDisjoint(canonSource, canonOutput); err != nil {
+		return "", "", err
+	}
+	if err := checkExistingIdentity(g.sourcePath, g.outputPath); err != nil {
 		return "", "", err
 	}
 	return canonSource, canonOutput, nil
 }
 
 // checkDisjoint returns an error if source and output are equal or one is a
-// parent of the other. Separators are appended to prevent false matches
-// between paths that share a common prefix but are not parent/child.
+// parent of the other. Comparisons are folded on platforms whose path lookup
+// is case-insensitive; existing roots are additionally checked by identity.
 func checkDisjoint(source, output string) error {
 	sep := string(filepath.Separator)
+	equal := samePath(source, output)
+	inside := func(child, parent string) bool {
+		if samePath(child, parent) {
+			return true
+		}
+		if caseInsensitivePaths() {
+			return strings.HasPrefix(strings.ToLower(child), strings.ToLower(parent+sep))
+		}
+		return strings.HasPrefix(child, parent+sep)
+	}
 	switch {
-	case source == output:
+	case equal:
 		return fmt.Errorf("source root %q and output root %q are the same directory", source, output)
-	case strings.HasPrefix(output, source+sep):
+	case inside(output, source):
 		return fmt.Errorf("output root %q is inside source root %q", output, source)
-	case strings.HasPrefix(source, output+sep):
+	case inside(source, output):
 		return fmt.Errorf("source root %q is inside output root %q", source, output)
 	}
 	return nil
 }
 
-// canonPathOrTextual resolves symlinks in path. When a component cannot be
-// resolved (e.g., the path or an ancestor does not yet exist), it returns the
-// longest canonicalized prefix joined with the remaining textual components.
-// This allows the guard to validate paths for output directories that have not
-// been created yet, while still catching existing symlink aliases.
-func canonPathOrTextual(path string) string {
+func samePath(left, right string) bool {
+	if left == right || (caseInsensitivePaths() && strings.EqualFold(left, right)) {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
+}
+
+func checkExistingIdentity(left, right string) error {
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	if errors.Is(leftErr, fs.ErrNotExist) || errors.Is(rightErr, fs.ErrNotExist) {
+		return nil
+	}
+	if leftErr != nil {
+		return fmt.Errorf("resolve path %q: %w", left, leftErr)
+	}
+	if rightErr != nil {
+		return fmt.Errorf("resolve path %q: %w", right, rightErr)
+	}
+	if os.SameFile(leftInfo, rightInfo) {
+		return fmt.Errorf("source root %q and output root %q identify the same directory", left, right)
+	}
+	return nil
+}
+
+func caseInsensitivePaths() bool {
+	// Windows filesystems and the default macOS volumes fold path case. Folding
+	// is conservative on case-sensitive macOS volumes: rejecting a possible
+	// overlap is safer than allowing destructive output replacement.
+	return runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+}
+
+// canonPathOrTextual resolves symlinks in path. Missing paths use the longest
+// canonicalized existing prefix plus their remaining textual suffix. Resolution
+// failures other than fs.ErrNotExist are returned so layout validation fails
+// closed on permission errors and symlink cycles.
+func canonPathOrTextual(path string) (string, error) {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		return filepath.Clean(resolved)
+		return filepath.Clean(resolved), nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("resolve path %q: %w", path, err)
 	}
 	parent := filepath.Dir(path)
 	if parent == path {
-		// Filesystem root: cannot go higher.
-		return filepath.Clean(path)
+		return filepath.Clean(path), nil
 	}
-	return filepath.Join(canonPathOrTextual(parent), filepath.Base(path))
+	canonicalParent, err := canonPathOrTextual(parent)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(canonicalParent, filepath.Base(path)), nil
 }

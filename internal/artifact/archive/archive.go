@@ -20,11 +20,10 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
-// WriteTargetRoots archives each target's planned files using the target's
-// declared ArchiveUnits. Files are read from PlannedFile.Bytes; no filesystem
-// walk is performed. Each archive is written atomically: a .tmp file is renamed
-// over the destination only if bytes differ from an existing archive.
-func WriteTargetRoots(distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, error) {
+// writeTargetRoots is a test-only convenience wrapper. Production callers must
+// validate the workspace layout and use OpenDestination plus
+// WriteTargetRootsInRoot so archive creation is pinned to a guarded directory.
+func writeTargetRoots(distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, error) {
 	name, err := distributionName(distribution)
 	if err != nil {
 		return nil, err
@@ -293,12 +292,18 @@ func writeTarGzipFromPlan(destinationRoot *os.Root, output, destination, root st
 		if pf.Executable {
 			mode = 0o755
 		}
+		format := tar.FormatUSTAR
+		// USTAR's name and prefix fields cannot represent every valid imported
+		// relative path. PAX carries the full path deterministically.
+		if len([]byte(archiveName)) > 100 {
+			format = tar.FormatPAX
+		}
 		header := &tar.Header{
 			Name:    archiveName,
 			Mode:    mode,
 			Size:    int64(len(pf.Bytes)),
 			ModTime: time.Unix(0, 0),
-			Format:  tar.FormatUSTAR,
+			Format:  format,
 		}
 		if writeErr := tarWriter.WriteHeader(header); writeErr != nil {
 			_ = tarWriter.Close()

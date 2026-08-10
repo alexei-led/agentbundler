@@ -1,6 +1,7 @@
 package agentplugins_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -82,6 +83,35 @@ func TestDecodePluginManifestUnknownFields(t *testing.T) {
 	// The unknown value must not be assigned compiler semantics.
 	if manifest.Unknown["futureFeature"] != "some-value" {
 		t.Errorf("futureFeature = %v; want some-value", manifest.Unknown["futureFeature"])
+	}
+}
+
+func TestDecodeOpaqueNumbersPreservePrecision(t *testing.T) {
+	t.Parallel()
+	manifestJSON := []byte(`{"$schema":"` + agentplugins.PluginSchemaURL + `","name":"number-plugin","extensions":{"com.example.ext":{"value":9007199254740993}},"future":{"value":9007199254740993}}`)
+	manifest, diags := agentplugins.DecodePluginManifest(manifestJSON)
+	if len(diags) != 0 {
+		t.Fatalf("manifest diagnostics = %v", diags)
+	}
+	encoded, err := agentplugins.EncodePluginManifest(manifest)
+	if err != nil {
+		t.Fatalf("EncodePluginManifest() error = %v", err)
+	}
+	if got, want := string(encoded), `{"$schema":"`+agentplugins.PluginSchemaURL+`","name":"number-plugin","extensions":{"com.example.ext":{"value":9007199254740993}},"future":{"value":9007199254740993}}`; got != want {
+		t.Fatalf("encoded manifest = %s; want %s", got, want)
+	}
+
+	mcpJSON := []byte(`{"$schema":"` + agentplugins.MCPSchemaURL + `","mcpServers":{"local":{"type":"stdio","command":"server","future":9007199254740993}},"future":9007199254740993}`)
+	config, diags := agentplugins.DecodeMCPConfig(mcpJSON)
+	if len(diags) != 0 {
+		t.Fatalf("MCP diagnostics = %v", diags)
+	}
+	encoded, err = agentplugins.EncodeMCPConfig(config)
+	if err != nil {
+		t.Fatalf("EncodeMCPConfig() error = %v", err)
+	}
+	if !bytes.Contains(encoded, []byte("9007199254740993")) {
+		t.Fatalf("encoded MCP config lost opaque integer: %s", encoded)
 	}
 }
 

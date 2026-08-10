@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
@@ -53,7 +54,7 @@ func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
 	plan := planForTest()
 	output := filepath.Join(t.TempDir(), "release")
 
-	first, err := WriteTargetRoots(distribution, plan, output)
+	first, err := writeTargetRoots(distribution, plan, output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second, err := WriteTargetRoots(distribution, plan, output)
+	second, err := writeTargetRoots(distribution, plan, output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +94,23 @@ func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
 	}
 	if got, want := tarEntries(t, filepath.Join(output, "demo-pi.tgz")), []string{"package.json"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Pi entries = %#v, want %#v", got, want)
+	}
+}
+
+func TestWriteTargetRootsUsesPAXForLongPlannedPaths(t *testing.T) {
+	longPath := filepath.ToSlash(filepath.Join(strings.Repeat("a", 80), strings.Repeat("b", 80)+".txt"))
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target:       model.TargetAntigravity,
+		ArchiveUnits: []model.ArchiveUnit{{Root: ".", Stem: "long", Suffix: ".tar.gz"}},
+		Files:        []model.PlannedFile{{Path: model.RelativePath(longPath), Bytes: []byte("long")}},
+	}}}
+	output := filepath.Join(t.TempDir(), "release")
+	paths, err := writeTargetRoots(model.DistributionMetadata{"name": "demo"}, plan, output)
+	if err != nil {
+		t.Fatalf("writeTargetRoots() error = %v", err)
+	}
+	if got := tarEntries(t, paths[0]); !reflect.DeepEqual(got, []string{longPath}) {
+		t.Fatalf("archive entries = %#v; want long path", got)
 	}
 }
 
@@ -144,7 +162,7 @@ func TestWriteTargetRootsDoesNotFollowPredictableTemporarySymlink(t *testing.T) 
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	if _, err := WriteTargetRoots(model.DistributionMetadata{"name": "demo"}, planForTest(), output); err != nil {
+	if _, err := writeTargetRoots(model.DistributionMetadata{"name": "demo"}, planForTest(), output); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(sentinel); err != nil {
@@ -176,7 +194,7 @@ func TestWriteTargetRootsArchiveUnitsFilterByRoot(t *testing.T) {
 	}}}
 	output := filepath.Join(t.TempDir(), "release")
 
-	paths, err := WriteTargetRoots(distribution, plan, output)
+	paths, err := writeTargetRoots(distribution, plan, output)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +225,7 @@ func TestWriteTargetRootsStripsRootPrefixFromArchiveEntries(t *testing.T) {
 		},
 	}}}
 	output := filepath.Join(t.TempDir(), "release")
-	if _, err := WriteTargetRoots(distribution, plan, output); err != nil {
+	if _, err := writeTargetRoots(distribution, plan, output); err != nil {
 		t.Fatal(err)
 	}
 	entries := tarEntries(t, filepath.Join(output, "strip-test-myplugin.tar.gz"))
@@ -270,9 +288,9 @@ func TestWriteTargetRootsRejectsDistributionNameWithSeparator(t *testing.T) {
 	plan := planForTest()
 	output := filepath.Join(t.TempDir(), "release")
 
-	_, err := WriteTargetRoots(distribution, plan, output)
+	_, err := writeTargetRoots(distribution, plan, output)
 	if err == nil {
-		t.Fatal("WriteTargetRoots() accepted a path-traversal distribution name")
+		t.Fatal("writeTargetRoots() accepted a path-traversal distribution name")
 	}
 	// No archive must have escaped the output directory.
 	if _, statErr := os.Stat(filepath.Join(filepath.Dir(output), "evil-claude.tar.gz")); !os.IsNotExist(statErr) {
@@ -287,9 +305,9 @@ func TestWriteTargetRootsRejectsDistributionNameWithSeparator(t *testing.T) {
 func TestWriteTargetRootsRejectsReservedDistributionName(t *testing.T) {
 	distribution := model.DistributionMetadata{"name": "CON"}
 	plan := planForTest()
-	_, err := WriteTargetRoots(distribution, plan, filepath.Join(t.TempDir(), "release"))
+	_, err := writeTargetRoots(distribution, plan, filepath.Join(t.TempDir(), "release"))
 	if err == nil {
-		t.Fatal("WriteTargetRoots() accepted a reserved device name")
+		t.Fatal("writeTargetRoots() accepted a reserved device name")
 	}
 }
 
@@ -306,8 +324,8 @@ func TestWriteTargetRootsRejectsEmptyArchiveUnit(t *testing.T) {
 		},
 	}}}
 	output := filepath.Join(t.TempDir(), "release")
-	if _, err := WriteTargetRoots(distribution, plan, output); err == nil {
-		t.Fatal("WriteTargetRoots() accepted unit with no matching files")
+	if _, err := writeTargetRoots(distribution, plan, output); err == nil {
+		t.Fatal("writeTargetRoots() accepted unit with no matching files")
 	}
 }
 
@@ -335,8 +353,8 @@ func TestWriteTargetRootsRejectsInvalidArchivePartitionsBeforeMutation(t *testin
 			plan := model.BuildPlan{Targets: []model.TargetPlan{{
 				Target: model.TargetAgentPlugins, Files: files, ArchiveUnits: test.units,
 			}}}
-			if _, err := WriteTargetRoots(model.DistributionMetadata{"name": "demo"}, plan, output); err == nil {
-				t.Fatal("WriteTargetRoots() accepted invalid archive partition")
+			if _, err := writeTargetRoots(model.DistributionMetadata{"name": "demo"}, plan, output); err == nil {
+				t.Fatal("writeTargetRoots() accepted invalid archive partition")
 			}
 			if _, err := os.Stat(output); !os.IsNotExist(err) {
 				t.Fatalf("archive output was mutated before complete validation: %v", err)

@@ -3,6 +3,7 @@ package artifact
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,6 +28,21 @@ func TestNewWorkspaceLayoutGuardAcceptsAbsentOutput(t *testing.T) {
 	output := filepath.Join(ws, "generated")
 	if _, err := NewWorkspaceLayoutGuard(ws, source, output); err != nil {
 		t.Fatalf("NewWorkspaceLayoutGuard() = %v for absent output", err)
+	}
+}
+
+func TestNewWorkspaceLayoutGuardRejectsCaseFoldedOverlapOnCaseInsensitivePlatforms(t *testing.T) {
+	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
+		t.Skip("case-folded path behavior is platform-specific")
+	}
+	ws := t.TempDir()
+	source := filepath.Join(ws, "Source")
+	output := filepath.Join(ws, "source")
+	if err := os.Mkdir(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewWorkspaceLayoutGuard(ws, source, output); err == nil {
+		t.Fatal("NewWorkspaceLayoutGuard() accepted case-folded roots")
 	}
 }
 

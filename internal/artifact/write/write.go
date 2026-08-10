@@ -3,6 +3,8 @@ package write
 
 import (
 	"bytes"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -77,6 +79,171 @@ func ReplaceOutput(plan model.BuildPlan, outputRoot string) []model.Diagnostic {
 		return writeFailure("replace output", err)
 	}
 	return nil
+}
+
+// ReplaceOutputInRoot stages and replaces outputName below a pinned parent
+// directory. Every filesystem operation uses the descriptor-relative root.
+// This is the production path used by artifact.Write.
+func ReplaceOutputInRoot(plan model.BuildPlan, outputName string, parent *os.Root) []model.Diagnostic {
+	if parent == nil {
+		return writeFailure("replace output", errors.New("pinned output parent is required"))
+	}
+	if outputName == "" || filepath.Base(outputName) != outputName || outputName == "." || outputName == ".." {
+		return writeFailure("replace output", errors.New("output name must be a single relative path component"))
+	}
+	if runtime.GOOS == "windows" && hasExecutableFile(plan) {
+		return []model.Diagnostic{{Code: diagnosticExecutable, Severity: model.SeverityError, Message: "executable file intent is unsupported on Windows"}}
+	}
+
+	files := plannedFiles(plan)
+	staging, err := pinnedStagingName(parent, outputName)
+	if err != nil {
+		return writeFailure("create staging tree", err)
+	}
+	defer func() { _ = parent.RemoveAll(staging) }()
+	if err := stageFilesInRoot(parent, staging, files); err != nil {
+		return writeFailure("stage output", err)
+	}
+	if err := verifyStagingInRoot(parent, staging, files); err != nil {
+		return writeFailure("verify staging tree", err)
+	}
+	if err := syncTreeInRoot(parent, staging); err != nil {
+		return writeFailure("sync staging tree", err)
+	}
+
+	oldInfo, err := parent.Lstat(outputName)
+	hadOld := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return writeFailure("inspect output root", err)
+	}
+	if hadOld && (oldInfo.Mode()&os.ModeSymlink != 0 || !oldInfo.IsDir()) {
+		return writeFailure("inspect output root", errors.New("output root is not a directory"))
+	}
+	backup := "." + outputName + ".agbun-write-backup-" + filepath.Base(staging)
+	if hadOld {
+		if err := parent.Rename(outputName, backup); err != nil {
+			return writeFailure("replace output", err)
+		}
+	}
+	if err := parent.Rename(staging, outputName); err != nil {
+		if hadOld {
+			_ = parent.Rename(backup, outputName)
+		}
+		return writeFailure("replace output", err)
+	}
+	if hadOld {
+		_ = parent.RemoveAll(backup)
+	}
+	if err := syncPinnedDirectory(parent); err != nil {
+		return writeFailure("sync output root", err)
+	}
+	return nil
+}
+
+func pinnedStagingName(parent *os.Root, outputName string) (string, error) {
+	for attempt := 0; attempt < 10; attempt++ {
+		var random [12]byte
+		if _, err := cryptorand.Read(random[:]); err != nil {
+			return "", err
+		}
+		name := "." + outputName + ".agbun-write-staging-" + hex.EncodeToString(random[:])
+		if err := parent.Mkdir(name, 0o700); errors.Is(err, os.ErrExist) {
+			continue
+		} else if err != nil {
+			return "", err
+		}
+		return name, nil
+	}
+	return "", errors.New("could not allocate staging directory")
+}
+
+func stageFilesInRoot(parent *os.Root, staging string, files []stagedFile) error {
+	for _, file := range files {
+		name := filepath.ToSlash(filepath.Join(staging, file.path))
+		if err := parent.MkdirAll(filepath.ToSlash(filepath.Dir(filepath.Join(staging, file.path))), 0o755); err != nil {
+			return err
+		}
+		if err := writeRootFile(parent, name, file.bytes, file.executable); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeRootFile(parent *os.Root, name string, data []byte, executable bool) error {
+	file, err := parent.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if runtime.GOOS != "windows" {
+		mode := os.FileMode(0o644)
+		if executable {
+			mode = 0o755
+		}
+		return parent.Chmod(name, mode)
+	}
+	return nil
+}
+
+func verifyStagingInRoot(parent *os.Root, staging string, files []stagedFile) error {
+	for _, file := range files {
+		name := filepath.ToSlash(filepath.Join(staging, file.path))
+		info, err := parent.Lstat(name)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("staged path %q is not a regular file", file.path)
+		}
+		data, err := parent.ReadFile(name)
+		if err != nil || !bytes.Equal(data, file.bytes) {
+			return fmt.Errorf("staged path %q differs from planned bytes", file.path)
+		}
+		if runtime.GOOS != "windows" && (info.Mode()&0o111 != 0) != file.executable {
+			return fmt.Errorf("staged path %q has incorrect executable intent", file.path)
+		}
+	}
+	return nil
+}
+
+func syncTreeInRoot(parent *os.Root, staging string) error {
+	file, err := parent.Open(staging)
+	if err != nil {
+		return err
+	}
+	err = file.Sync()
+	closeErr := file.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
+func syncPinnedDirectory(parent *os.Root) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	file, err := parent.Open(".")
+	if err != nil {
+		return err
+	}
+	err = file.Sync()
+	closeErr := file.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
 }
 
 func hasExecutableFile(plan model.BuildPlan) bool {
