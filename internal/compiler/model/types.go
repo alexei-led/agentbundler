@@ -377,16 +377,23 @@ type ClientExtension struct {
 	PackageFiles []PackageFile `json:"packageFiles"`
 }
 
+// AgentPluginAuthor holds the optional typed author fields from plugin.json.
+type AgentPluginAuthor struct {
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
 // AgentPluginManifest holds the typed portable fields from a plugin.json manifest.
 type AgentPluginManifest struct {
-	Name        string   `json:"name"`
-	Version     string   `json:"version,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Author      string   `json:"author,omitempty"`
-	Homepage    string   `json:"homepage,omitempty"`
-	Repository  string   `json:"repository,omitempty"`
-	License     string   `json:"license,omitempty"`
-	Keywords    []string `json:"keywords,omitempty"`
+	Name        string             `json:"name"`
+	Version     string             `json:"version,omitempty"`
+	Description string             `json:"description,omitempty"`
+	Author      *AgentPluginAuthor `json:"author,omitempty"`
+	Homepage    string             `json:"homepage,omitempty"`
+	Repository  string             `json:"repository,omitempty"`
+	License     string             `json:"license,omitempty"`
+	Keywords    []string           `json:"keywords,omitempty"`
 }
 
 // AgentPluginData carries all decoded plugin data for one agent plugin package.

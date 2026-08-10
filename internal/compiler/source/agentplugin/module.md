@@ -25,7 +25,7 @@ adapter registered in Task 4.
   external references. Directory symlink cycles are detected with `os.SameFile`.
 - Reject external symlinks, special files (devices, FIFOs, sockets), cycles, and
   host filenames that cannot be represented by the portable relative-path model.
-- Discover immediate-child Agent Skills (`<name>/SKILL.md`) using the
+- Discover immediate-child Agent Skills (`skills/<name>/SKILL.md`) using the
   `frontmatter` contract and record support files in `Base.Files`; malformed
   skill identities, frontmatter, or non-portable support filenames reject the
   plugin with a skill-scoped diagnostic.

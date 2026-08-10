@@ -272,11 +272,10 @@ func TestNewRegistryRejectsDuplicateTarget(t *testing.T) {
 	}
 }
 
-func TestResolveNormalizesAgentPluginCapabilitiesToUnsupported(t *testing.T) {
+func TestResolveMapsAgentPluginSkillsAndRejectsUnmappedComponents(t *testing.T) {
 	t.Parallel()
 
-	agentPluginKeys := []model.CapabilityKey{
-		model.CapabilityKeyAgentPluginSkills,
+	unsupportedAgentPluginKeys := []model.CapabilityKey{
 		model.CapabilityKeyAgentPluginMCPStdio,
 		model.CapabilityKeyAgentPluginMCPStreamableHTTP,
 		model.CapabilityKeyAgentPluginMCPSSE,
@@ -285,7 +284,8 @@ func TestResolveNormalizesAgentPluginCapabilitiesToUnsupported(t *testing.T) {
 		model.CapabilityKeyAgentPluginPackageFiles,
 	}
 
-	// All existing targets must have all new portable keys normalized to unsupported.
+	// Existing targets reuse their verified asset.skill support. Other Agent
+	// Plugin components remain unsupported without dedicated codecs.
 	existingTargets := []model.TargetID{
 		model.TargetAntigravity,
 		model.TargetClaude,
@@ -306,7 +306,10 @@ func TestResolveNormalizesAgentPluginCapabilitiesToUnsupported(t *testing.T) {
 			for _, r := range Capabilities(adapter) {
 				states[r.Key] = r.State
 			}
-			for _, key := range agentPluginKeys {
+			if states[model.CapabilityKeyAgentPluginSkills] != states["asset.skill"] {
+				t.Errorf("Capabilities(%q)[%q] = %q, want mapped asset.skill state %q", targetID, model.CapabilityKeyAgentPluginSkills, states[model.CapabilityKeyAgentPluginSkills], states["asset.skill"])
+			}
+			for _, key := range unsupportedAgentPluginKeys {
 				if states[key] != model.CapabilityStateUnsupported {
 					t.Errorf("Capabilities(%q)[%q] = %q, want unsupported", targetID, key, states[key])
 				}

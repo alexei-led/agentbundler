@@ -1,1 +1,1 @@
-{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"beta","description":"Beta plugin","author":"Test Author"}
+{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"beta","description":"Beta plugin","author":{"name":"Test Author","email":"author@example.com","url":"not a validated URL"}}

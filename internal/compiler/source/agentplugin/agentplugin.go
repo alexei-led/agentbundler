@@ -151,7 +151,7 @@ func importPlugin(
 	// Build the workspace-relative prefix for origin paths.
 	wsPrefix := wsRelPluginRoot
 
-	// Discover immediate-child skills.
+	// Discover immediate-child skill directories under the fixed skills/ root.
 	skillAssets, skillPaths, skillDiags := discoverSkills(files, wsPrefix)
 	if hasErrors(skillDiags) {
 		return model.SourcePackage{}, nil, scopeDiags(skillDiags, string(pluginPath))
@@ -285,10 +285,16 @@ func mapPluginManifest(wm agentplugins.PluginManifest) model.AgentPluginManifest
 		Name:        wm.Name,
 		Version:     wm.Version,
 		Description: wm.Description,
-		Author:      wm.Author,
 		Homepage:    wm.Homepage,
 		Repository:  wm.Repository,
 		License:     wm.License,
+	}
+	if wm.Author != nil {
+		m.Author = &model.AgentPluginAuthor{
+			Name:  wm.Author.Name,
+			Email: wm.Author.Email,
+			URL:   wm.Author.URL,
+		}
 	}
 	if wm.Keywords != nil {
 		m.Keywords = append([]string(nil), wm.Keywords...)

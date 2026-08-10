@@ -1,5 +1,14 @@
 package agentplugins
 
+// PluginAuthor is the optional author object in a plugin.json manifest.
+// All fields are type-only metadata; the pinned specification does not require
+// URL, email, or other format validation.
+type PluginAuthor struct {
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+	URL   string `json:"url,omitempty"`
+}
+
 // PluginManifest is the decoded wire representation of a plugin.json file.
 //
 // Schema is always PluginSchemaURL. Unknown is the set of top-level JSON
@@ -19,8 +28,8 @@ type PluginManifest struct {
 	// Description is the optional human-readable description.
 	Description string
 
-	// Author is the optional author name or contact.
-	Author string
+	// Author is the optional author metadata object.
+	Author *PluginAuthor
 
 	// Homepage is the optional homepage URL string.
 	Homepage string

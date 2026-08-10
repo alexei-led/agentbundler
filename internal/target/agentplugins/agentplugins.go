@@ -161,7 +161,7 @@ func renderPlugin(root string, pkg model.NormalizedPackage, usedPaths map[model.
 			return nil, []model.Diagnostic{diag(fmt.Sprintf("package %q skill %q: %v", pkg.Identity, asset.Identity, err))}
 		}
 		for _, sf := range skillFiles {
-			relPath := model.RelativePath(skillName + "/" + string(sf.Path))
+			relPath := model.RelativePath("skills/" + skillName + "/" + string(sf.Path))
 			if diags := addFile(relPath, sf.Bytes, sf.Executable, sf.Origin); len(diags) != 0 {
 				return nil, diags
 			}
@@ -275,11 +275,17 @@ func encodePluginManifest(data model.AgentPluginData) ([]byte, error) {
 		Name:        m.Name,
 		Version:     m.Version,
 		Description: m.Description,
-		Author:      m.Author,
 		Homepage:    m.Homepage,
 		Repository:  m.Repository,
 		License:     m.License,
 		Unknown:     cloneAnyMap(data.UnknownManifest),
+	}
+	if m.Author != nil {
+		wire.Author = &agentpluginsformat.PluginAuthor{
+			Name:  m.Author.Name,
+			Email: m.Author.Email,
+			URL:   m.Author.URL,
+		}
 	}
 	if len(m.Keywords) > 0 {
 		wire.Keywords = append([]string(nil), m.Keywords...)

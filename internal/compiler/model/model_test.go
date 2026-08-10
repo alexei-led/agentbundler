@@ -1228,6 +1228,7 @@ func TestCloneAgentPluginDataIsDetached(t *testing.T) {
 		Profile: "agent-plugins/1.0.0-bd383552",
 		Manifest: AgentPluginManifest{
 			Name:     "test-plugin",
+			Author:   &AgentPluginAuthor{Name: "Test Author", Email: "author@example.com"},
 			Keywords: []string{"a", "b"},
 		},
 		MCPServers: []MCPServer{
@@ -1272,6 +1273,11 @@ func TestCloneAgentPluginDataIsDetached(t *testing.T) {
 	}
 
 	// Mutate clone and verify original is unaffected.
+	clone.Manifest.Author.Name = "mutated"
+	if data.Manifest.Author.Name == "mutated" {
+		t.Error("Manifest.Author not detached")
+	}
+
 	clone.Manifest.Keywords[0] = "mutated"
 	if data.Manifest.Keywords[0] == "mutated" {
 		t.Error("Manifest.Keywords not detached")
@@ -1323,8 +1329,11 @@ func TestValidateAgentPluginDataRejectsEmpty(t *testing.T) {
 func TestValidateAgentPluginDataAcceptsMinimal(t *testing.T) {
 	t.Parallel()
 	data := AgentPluginData{
-		Profile:  "agent-plugins/1.0.0-bd383552",
-		Manifest: AgentPluginManifest{Name: "test-plugin"},
+		Profile: "agent-plugins/1.0.0-bd383552",
+		Manifest: AgentPluginManifest{
+			Name:   "test-plugin",
+			Author: &AgentPluginAuthor{URL: "not a validated URL", Email: "not a validated email"},
+		},
 	}
 	if diags := ValidateAgentPluginData(data); len(diags) != 0 {
 		t.Fatalf("minimal AgentPluginData diagnostics = %v", diags)

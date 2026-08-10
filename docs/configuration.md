@@ -132,8 +132,9 @@ pairs, permitted unknown JSON, and links materialized as source locations.
 
 `agentPlugin.plugins` lists one or more plugin-root directories relative to
 `root`. Each directory must contain `plugin.json` and may contain `mcp.json`,
-skills, extensions, and regular package files. The `agent-plugins` target is
-the only supported target for this source kind.
+a fixed `skills/<name>/SKILL.md` tree, extensions, and regular package files.
+The `agent-plugins` target preserves the full package. Vendor targets map skills
+through their existing skill codec and reject other unsupported components.
 
 Duplicate or case-fold-clashing plugin paths and plugin names are rejected.
 External symlinks, cycles, and special files fail before traversal. Contained

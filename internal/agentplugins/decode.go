@@ -74,11 +74,11 @@ func DecodePluginManifest(data []byte) (PluginManifest, []Diagnostic) {
 		delete(raw, "description")
 	}
 
-	// author — optional string
+	// author — optional closed object with string fields
 	if v, ok := raw["author"]; ok {
-		if err := json.Unmarshal(v, &manifest.Author); err != nil {
-			diagnostics = append(diagnostics, diag("invalid-field", "author", "author must be a string"))
-		}
+		author, authorDiagnostics := decodePluginAuthor(v)
+		manifest.Author = author
+		diagnostics = append(diagnostics, authorDiagnostics...)
 		delete(raw, "author")
 	}
 
@@ -150,6 +150,35 @@ func DecodePluginManifest(data []byte) (PluginManifest, []Diagnostic) {
 		return manifest, diagnostics
 	}
 	return manifest, ValidatePluginManifest(manifest)
+}
+
+func decodePluginAuthor(data json.RawMessage) (*PluginAuthor, []Diagnostic) {
+	raw, err := decodeLenientJSONObject(data)
+	if err != nil {
+		return nil, []Diagnostic{diag("invalid-field", "author", "author must be a JSON object")}
+	}
+
+	author := &PluginAuthor{}
+	fields := map[string]*string{
+		"name":  &author.Name,
+		"email": &author.Email,
+		"url":   &author.URL,
+	}
+	var diagnostics []Diagnostic
+	for _, key := range sortedKeys(raw) {
+		destination, ok := fields[key]
+		if !ok {
+			diagnostics = append(diagnostics, diag("invalid-field", "author."+key,
+				"author may contain only name, email, and url"))
+			continue
+		}
+		value := bytes.TrimSpace(raw[key])
+		if len(value) == 0 || value[0] != '"' || json.Unmarshal(value, destination) != nil {
+			diagnostics = append(diagnostics, diag("invalid-field", "author."+key,
+				key+" must be a string"))
+		}
+	}
+	return author, diagnostics
 }
 
 // DecodeMCPConfig decodes and validates the JSON bytes of a mcp.json file.

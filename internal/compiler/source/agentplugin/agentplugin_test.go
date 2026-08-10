@@ -90,7 +90,7 @@ func TestAgentPluginMinimalImport(t *testing.T) {
 func TestAgentPluginWithSkill(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
-	write(t, tmp, "source/plugin/my-skill/SKILL.md", "---\ntitle: My Skill\n---\nBody text.")
+	write(t, tmp, "source/plugin/skills/my-skill/SKILL.md", "---\ntitle: My Skill\n---\nBody text.")
 
 	manifest := minimalManifest("source", "plugin")
 	ws := openWorkspace(t, tmp)
@@ -472,8 +472,8 @@ func TestAgentPluginRejectsNonPortableSkillSupportFilename(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
-	write(t, tmp, "source/plugin/my-skill/SKILL.md", "# Skill\n")
-	write(t, tmp, `source/plugin/my-skill/bad\name.txt`, "not portable")
+	write(t, tmp, "source/plugin/skills/my-skill/SKILL.md", "# Skill\n")
+	write(t, tmp, `source/plugin/skills/my-skill/bad\name.txt`, "not portable")
 
 	inventory, diags := InspectAgentPluginRoot(minimalManifest("source", "plugin"), tmp, openWorkspace(t, tmp))
 	if len(inventory.Packages) != 0 {
@@ -482,7 +482,7 @@ func TestAgentPluginRejectsNonPortableSkillSupportFilename(t *testing.T) {
 	if !hasDiag(diags, `support file path "bad\\name.txt" is not portable`) {
 		t.Fatalf("diagnostics = %v; want scoped non-portable skill support path error", diags)
 	}
-	wantLocation := model.RelativePath("source/plugin/my-skill/SKILL.md")
+	wantLocation := model.RelativePath("source/plugin/skills/my-skill/SKILL.md")
 	if len(diags) == 0 || diags[0].Location == nil || diags[0].Location.Path != wantLocation {
 		t.Fatalf("diagnostic location = %#v; want %q", diags, wantLocation)
 	}
@@ -491,8 +491,8 @@ func TestAgentPluginRejectsNonPortableSkillSupportFilename(t *testing.T) {
 func TestAgentPluginSkillFilesExcludedFromPackageFiles(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
-	write(t, tmp, "source/plugin/my-skill/SKILL.md", "# Skill")
-	write(t, tmp, "source/plugin/my-skill/context.txt", "some context")
+	write(t, tmp, "source/plugin/skills/my-skill/SKILL.md", "# Skill")
+	write(t, tmp, "source/plugin/skills/my-skill/context.txt", "some context")
 
 	manifest := minimalManifest("source", "plugin")
 	ws := openWorkspace(t, tmp)
@@ -529,7 +529,7 @@ func TestAgentPluginRejectsMalformedImmediateChildSkill(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			tmp := t.TempDir()
 			write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
-			write(t, tmp, "source/plugin/"+test.skillDir+"/SKILL.md", test.content)
+			write(t, tmp, "source/plugin/skills/"+test.skillDir+"/SKILL.md", test.content)
 
 			inventory, diags := InspectAgentPluginRoot(minimalManifest("source", "plugin"), tmp, openWorkspace(t, tmp))
 			if !hasDiag(diags, test.want) {
@@ -538,7 +538,7 @@ func TestAgentPluginRejectsMalformedImmediateChildSkill(t *testing.T) {
 			if len(inventory.Packages) != 0 {
 				t.Fatalf("malformed skill produced packages: %#v", inventory.Packages)
 			}
-			wantPath := model.RelativePath("source/plugin/" + test.skillDir + "/SKILL.md")
+			wantPath := model.RelativePath("source/plugin/skills/" + test.skillDir + "/SKILL.md")
 			if diags[0].Location == nil || diags[0].Location.Path != wantPath {
 				t.Fatalf("diagnostic location = %#v; want %q", diags[0].Location, wantPath)
 			}
@@ -806,8 +806,8 @@ func TestAgentPluginInvalidManifestKind(t *testing.T) {
 func TestAgentPluginNestedSkillNotDiscovered(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
-	// Nested skill at depth 2 should NOT be discovered (only immediate children).
-	write(t, tmp, "source/plugin/subdir/nested-skill/SKILL.md", "Nested skill.")
+	// Nested skill below an immediate child of skills/ should NOT be discovered.
+	write(t, tmp, "source/plugin/skills/subdir/nested-skill/SKILL.md", "Nested skill.")
 
 	manifest := minimalManifest("source", "plugin")
 	ws := openWorkspace(t, tmp)

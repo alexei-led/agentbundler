@@ -77,6 +77,37 @@ func TestRenderMinimalPlugin(t *testing.T) {
 	}
 }
 
+func TestRenderAuthorObject(t *testing.T) {
+	t.Parallel()
+	data := minimalPluginData("author-plugin")
+	data.Manifest.Author = &model.AgentPluginAuthor{
+		Name:  "Test Author",
+		Email: "author@example.com",
+		URL:   "not a validated URL",
+	}
+	plan, diagnostics := Render(model.TargetRenderInput{
+		Packages:    []model.NormalizedPackage{{Identity: "author-plugin", Target: model.TargetAgentPlugins, AgentPlugin: data}},
+		PackageMode: model.TargetPackageModeSeparate,
+	})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %v", diagnostics)
+	}
+	pluginFile := findFile(plan, "author-plugin/plugin.json")
+	if pluginFile == nil {
+		t.Fatalf("plugin.json absent; paths = %v", plannedPaths(plan))
+	}
+	var document struct {
+		Author map[string]string `json:"author"`
+	}
+	if err := json.Unmarshal(pluginFile.Bytes, &document); err != nil {
+		t.Fatalf("json.Unmarshal plugin.json: %v", err)
+	}
+	want := map[string]string{"name": "Test Author", "email": "author@example.com", "url": "not a validated URL"}
+	if !reflect.DeepEqual(document.Author, want) {
+		t.Fatalf("plugin.json author = %#v; want %#v", document.Author, want)
+	}
+}
+
 func TestRenderSkillAsset(t *testing.T) {
 	t.Parallel()
 	body := "Use this skill to test.\n"
@@ -104,9 +135,9 @@ func TestRenderSkillAsset(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("Render() diagnostics = %v", diags)
 	}
-	skillFile := findFile(plan, "myplugin/my-skill/SKILL.md")
+	skillFile := findFile(plan, "myplugin/skills/my-skill/SKILL.md")
 	if skillFile == nil {
-		t.Fatalf("my-skill/SKILL.md absent; paths = %v", plannedPaths(plan))
+		t.Fatalf("skills/my-skill/SKILL.md absent; paths = %v", plannedPaths(plan))
 	}
 	if !strings.Contains(string(skillFile.Bytes), body) {
 		t.Fatalf("SKILL.md body = %q, want to contain %q", skillFile.Bytes, body)

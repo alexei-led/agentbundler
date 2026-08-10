@@ -82,8 +82,8 @@ func TestImportRoutesExplicitSourceKinds(t *testing.T) {
 				},
 			},
 			files: map[string]string{
-				"source/my-plugin/plugin.json":       `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"my-plugin"}`,
-				"source/my-plugin/my-skill/SKILL.md": "Agent plugin skill.",
+				"source/my-plugin/plugin.json":              `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"my-plugin"}`,
+				"source/my-plugin/skills/my-skill/SKILL.md": "Agent plugin skill.",
 			},
 			packageID: "my-plugin",
 			assetID:   "skill/my-skill",

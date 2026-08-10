@@ -9,9 +9,10 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/source/frontmatter"
 )
 
-// discoverSkills finds Agent Skills at the immediate children of the plugin
-// root. A skill is a directory at depth 1 that contains a SKILL.md file.
-// The skill name is the directory name; the identity is skill/<name>.
+// discoverSkills finds Agent Skills at the immediate children of the plugin's
+// fixed skills/ directory. A skill is a directory at that depth containing a
+// SKILL.md file. The skill name is the directory name; the identity is
+// skill/<name>.
 // It returns discovered skill assets, the plugin-relative paths they consume,
 // and diagnostics for malformed immediate-child skills.
 func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.SourceAsset, map[string]bool, []model.Diagnostic) {
@@ -22,29 +23,25 @@ func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.Sour
 	}
 	skills := make(map[string]*skillEntry)
 	for _, f := range files {
-		parts := strings.SplitN(f.relPath, "/", 3)
-		if len(parts) < 2 {
-			// root-level file; not a skill file
+		parts := strings.SplitN(f.relPath, "/", 4)
+		if len(parts) != 3 || parts[0] != "skills" || parts[2] != "SKILL.md" {
 			continue
 		}
-		name := parts[0]
-		rest := parts[1]
-		if len(parts) == 2 && rest == "SKILL.md" {
-			if _, ok := skills[name]; !ok {
-				skills[name] = &skillEntry{}
-			}
-			skills[name].skillMD = f
+		name := parts[1]
+		if _, ok := skills[name]; !ok {
+			skills[name] = &skillEntry{}
 		}
+		skills[name].skillMD = f
 	}
 
 	// Collect support files for directories that have a SKILL.md.
 	for _, f := range files {
-		parts := strings.SplitN(f.relPath, "/", 3)
-		if len(parts) < 2 {
+		parts := strings.SplitN(f.relPath, "/", 4)
+		if len(parts) < 3 || parts[0] != "skills" {
 			continue
 		}
-		name := parts[0]
-		rest := strings.Join(parts[1:], "/")
+		name := parts[1]
+		rest := strings.Join(parts[2:], "/")
 		if entry, ok := skills[name]; ok && rest != "SKILL.md" {
 			entry.support = append(entry.support, f)
 		}
@@ -89,8 +86,8 @@ func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.Sour
 		// Build support files map (relative to skill root).
 		assetFiles := make(map[model.RelativePath]model.FileContent, len(entry.support))
 		for _, sf := range entry.support {
-			// relPath relative to the skill root: strip "<name>/"
-			relToSkill := strings.TrimPrefix(sf.relPath, name+"/")
+			// relPath relative to the skill root: strip "skills/<name>/"
+			relToSkill := strings.TrimPrefix(sf.relPath, "skills/"+name+"/")
 			rp, err := model.NewRelativePath(relToSkill)
 			if err != nil {
 				diagnostics = append(diagnostics, diag(entry.skillMD.relPath, fmt.Sprintf(

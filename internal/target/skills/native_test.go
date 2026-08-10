@@ -34,6 +34,30 @@ func TestRenderProducesDeterministicNativeSkillTree(t *testing.T) {
 	}
 }
 
+func TestRenderMapsAgentPluginSkillCapability(t *testing.T) {
+	pkg := model.NormalizedPackage{
+		Identity: "demo",
+		Target:   model.TargetClaude,
+		Assets: []model.NormalizedAsset{{
+			Identity: "skill/guide",
+			Kind:     model.AssetKindSkill,
+			Content:  model.AssetContent{Body: "# Guide\n", Files: map[model.RelativePath]model.FileContent{}},
+			CapabilityUses: []model.CapabilityUse{{
+				Key:      model.CapabilityKeyAgentPluginSkills,
+				Location: model.SourceLocation{Path: "source/skills/guide/SKILL.md"},
+			}},
+		}},
+	}
+
+	plan, diagnostics := Render(model.TargetClaude, ".claude/skills", []model.NormalizedPackage{pkg})
+	if len(diagnostics) != 0 {
+		t.Fatalf("Render() diagnostics = %#v", diagnostics)
+	}
+	if got, want := plan.Files[0].Path, model.RelativePath(".claude/skills/guide/SKILL.md"); got != want {
+		t.Fatalf("path = %q, want %q", got, want)
+	}
+}
+
 func TestRenderWithCommandsProducesDeterministicCommandTree(t *testing.T) {
 	line := 4
 	location := model.SourceLocation{Path: "source/commands/resume-from.md", Line: &line}

@@ -3,7 +3,11 @@
   "name": "full-plugin",
   "version": "1.2.3",
   "description": "A complete plugin for testing.",
-  "author": "Test Author",
+  "author": {
+    "name": "Test Author",
+    "email": "author@example.com",
+    "url": "not a validated URL"
+  },
   "homepage": "https://example.com/plugin",
   "repository": "https://github.com/example/plugin",
   "license": "MIT",

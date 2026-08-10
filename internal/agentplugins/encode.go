@@ -58,7 +58,7 @@ func EncodePluginManifest(manifest PluginManifest) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if manifest.Author != "" {
+	if manifest.Author != nil {
 		if err := write("author", manifest.Author); err != nil {
 			return nil, err
 		}

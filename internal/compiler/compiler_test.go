@@ -59,6 +59,34 @@ func TestCompileBuildsMinimalSkillsRepositoryForEveryTarget(t *testing.T) {
 	}
 }
 
+func TestCompileMapsAgentPluginSkillToClaude(t *testing.T) {
+	workspace := t.TempDir()
+	writeCompilerFixture(t, workspace, "source/plugin/plugin.json", `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"plugin"}`)
+	writeCompilerFixture(t, workspace, "source/plugin/skills/my-skill/SKILL.md", "# My skill\n")
+	manifest := model.SourceManifest{
+		Version:     1,
+		Kind:        model.SourceKindAgentPlugin,
+		Root:        "source",
+		Targets:     []model.TargetID{model.TargetClaude},
+		Output:      "generated",
+		AgentPlugin: &model.AgentPluginSourceConfig{Plugins: []model.RelativePath{"plugin"}},
+	}
+
+	result := Compile(CompileRequest{WorkspaceRoot: filepath.Clean(workspace), Manifest: manifest, Mode: BuildModeBuild})
+	if len(result.Diagnostics) != 0 {
+		t.Fatalf("Compile() diagnostics = %#v", result.Diagnostics)
+	}
+	if len(result.Plan.Targets) != 1 {
+		t.Fatalf("Compile() targets = %#v", result.Plan.Targets)
+	}
+	for _, file := range result.Plan.Targets[0].Files {
+		if file.Path == ".claude/skills/my-skill/SKILL.md" {
+			return
+		}
+	}
+	t.Fatalf("Compile() files = %#v; want .claude/skills/my-skill/SKILL.md", result.Plan.Targets[0].Files)
+}
+
 func TestCompileRecordsResolvedAdapterRevision(t *testing.T) {
 	for _, test := range []struct {
 		target   model.TargetID

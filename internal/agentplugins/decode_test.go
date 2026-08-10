@@ -26,7 +26,7 @@ func TestDecodePluginManifestMinimal(t *testing.T) {
 	if manifest.Schema != agentplugins.PluginSchemaURL {
 		t.Errorf("Schema = %q; want %q", manifest.Schema, agentplugins.PluginSchemaURL)
 	}
-	if manifest.Version != "" || manifest.Description != "" || manifest.Author != "" {
+	if manifest.Version != "" || manifest.Description != "" || manifest.Author != nil {
 		t.Errorf("optional fields non-empty in minimal manifest: %+v", manifest)
 	}
 }
@@ -47,6 +47,12 @@ func TestDecodePluginManifestFull(t *testing.T) {
 	if manifest.Description != "A complete plugin for testing." {
 		t.Errorf("Description = %q", manifest.Description)
 	}
+	if manifest.Author == nil {
+		t.Fatal("Author is nil")
+	}
+	if manifest.Author.Name != "Test Author" || manifest.Author.Email != "author@example.com" || manifest.Author.URL != "not a validated URL" {
+		t.Errorf("Author = %+v", manifest.Author)
+	}
 	if manifest.License != "MIT" {
 		t.Errorf("License = %q", manifest.License)
 	}
@@ -58,6 +64,34 @@ func TestDecodePluginManifestFull(t *testing.T) {
 	}
 	if _, ok := manifest.Extensions["com.example.client"]; !ok {
 		t.Error("missing extension com.example.client")
+	}
+}
+
+func TestDecodePluginManifestRejectsInvalidAuthorObjects(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name   string
+		author string
+		path   string
+	}{
+		{name: "string", author: `"Test Author"`, path: "author"},
+		{name: "null", author: `null`, path: "author"},
+		{name: "unknown field", author: `{"handle":"tester"}`, path: "author.handle"},
+		{name: "non-string field", author: `{"name":7}`, path: "author.name"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			data := []byte(`{"$schema":"` + agentplugins.PluginSchemaURL + `","name":"author-plugin","author":` + test.author + `}`)
+			_, diagnostics := agentplugins.DecodePluginManifest(data)
+			for _, diagnostic := range diagnostics {
+				if diagnostic.Path == test.path {
+					return
+				}
+			}
+			t.Fatalf("DecodePluginManifest() diagnostics = %v; want path %q", diagnostics, test.path)
+		})
 	}
 }
 
@@ -336,6 +370,22 @@ func TestEncodePluginManifestDeterministic(t *testing.T) {
 	var decoded any
 	if err := json.Unmarshal(encoded1, &decoded); err != nil {
 		t.Fatalf("encoded result is not valid JSON: %v", err)
+	}
+}
+
+func TestEncodePluginManifestPreservesEmptyAuthorObject(t *testing.T) {
+	t.Parallel()
+	manifest := agentplugins.PluginManifest{
+		Schema: agentplugins.PluginSchemaURL,
+		Name:   "test-plugin",
+		Author: &agentplugins.PluginAuthor{},
+	}
+	encoded, err := agentplugins.EncodePluginManifest(manifest)
+	if err != nil {
+		t.Fatalf("EncodePluginManifest() error = %v", err)
+	}
+	if got, want := string(encoded), `{"$schema":"`+agentplugins.PluginSchemaURL+`","name":"test-plugin","author":{}}`; got != want {
+		t.Fatalf("EncodePluginManifest() = %s; want %s", got, want)
 	}
 }
 

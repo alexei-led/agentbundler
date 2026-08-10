@@ -116,20 +116,25 @@ var portableCapabilityCatalog = []model.CapabilityKey{
 }
 
 // normalizeCapabilities fills in any missing portable capability keys as
-// unsupported, returning a new slice. Existing rules are preserved as-is.
+// unsupported, returning a new slice. Agent Plugin skills reuse the adapter's
+// verified ordinary-skill codec. Existing rules are preserved as-is.
 func normalizeCapabilities(rules []model.CapabilityRule) []model.CapabilityRule {
-	declared := make(map[model.CapabilityKey]bool, len(rules))
+	declared := make(map[model.CapabilityKey]model.CapabilityState, len(rules))
 	for _, r := range rules {
-		declared[r.Key] = true
+		declared[r.Key] = r.State
 	}
 	result := append([]model.CapabilityRule(nil), rules...)
 	for _, key := range portableCapabilityCatalog {
-		if !declared[key] {
-			result = append(result, model.CapabilityRule{
-				Key:   key,
-				State: model.CapabilityStateUnsupported,
-			})
+		if _, ok := declared[key]; ok {
+			continue
 		}
+		state := model.CapabilityStateUnsupported
+		if key == model.CapabilityKeyAgentPluginSkills {
+			if skillState, ok := declared["asset.skill"]; ok {
+				state = skillState
+			}
+		}
+		result = append(result, model.CapabilityRule{Key: key, State: state})
 	}
 	return result
 }

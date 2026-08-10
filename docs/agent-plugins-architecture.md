@@ -415,7 +415,7 @@ Fitness check:
 Behavior tests:
 
 - Import one plugin and multiple explicit roots deterministically.
-- Discover only immediate child skills.
+- Discover only immediate child skill directories under the fixed `skills/` root.
 - Preserve extension trees, licenses, MCP command payloads, modes, and inputs.
 - Report malformed plugin, skill, and MCP entries at the correct scope.
 

@@ -70,6 +70,10 @@ func cloneJSONValue(value any) any {
 
 func cloneAgentPluginManifest(m AgentPluginManifest) AgentPluginManifest {
 	clone := m
+	if m.Author != nil {
+		author := *m.Author
+		clone.Author = &author
+	}
 	if m.Keywords != nil {
 		clone.Keywords = append([]string(nil), m.Keywords...)
 	}

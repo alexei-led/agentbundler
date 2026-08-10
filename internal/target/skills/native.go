@@ -51,7 +51,8 @@ func render(target model.TargetID, root, resourceRoot, commandRoot string, packa
 	for _, asset := range assets {
 		expectedCapability := model.CapabilityKey("asset." + string(asset.Kind))
 		for _, use := range asset.CapabilityUses {
-			if use.Key != expectedCapability {
+			mappedAgentPluginSkill := asset.Kind == model.AssetKindSkill && use.Key == model.CapabilityKeyAgentPluginSkills
+			if use.Key != expectedCapability && !mappedAgentPluginSkill {
 				return empty(target), []model.Diagnostic{diagnostic("unsupported-capability", fmt.Sprintf("target %q native skill output does not support capability %q", target, use.Key))}
 			}
 		}
