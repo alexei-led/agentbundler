@@ -766,6 +766,22 @@ func TestAgentPluginTraversalEntryLimit(t *testing.T) {
 	}
 }
 
+func TestAgentPluginTraversalExactEntryLimit(t *testing.T) {
+	tmp := t.TempDir()
+	write(t, tmp, "a", "a")
+	write(t, tmp, "b", "b")
+	limits := defaultTraversalLimits()
+	limits.maxEntries = 2
+
+	files, diags := traversePluginRootWithLimits(openWorkspace(t, tmp), limits)
+	if len(diags) != 0 {
+		t.Fatalf("diagnostics = %v; want exact entry limit accepted", diags)
+	}
+	if len(files) != 2 {
+		t.Fatalf("files = %d, want 2", len(files))
+	}
+}
+
 func TestAgentPluginTraversalTotalBytesLimit(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "file", "ab")

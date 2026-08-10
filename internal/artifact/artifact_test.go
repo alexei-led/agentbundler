@@ -107,6 +107,32 @@ func TestWriteAndCompareSharePlanValidation(t *testing.T) {
 	}
 }
 
+func TestDestinationConflictsFindsNonAdjacentAncestor(t *testing.T) {
+	diagnostics := destinationConflicts([]string{"a", "a-b", "a/c"})
+	want := `planned destination "a" prevents owning target path "a/c"`
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Message == want {
+			return
+		}
+	}
+	t.Fatalf("destinationConflicts() diagnostics = %#v; want %q", diagnostics, want)
+}
+
+func TestDestinationConflictsRejectsCrossNamespaceDuplicate(t *testing.T) {
+	plan := model.BuildPlan{
+		Targets: []model.TargetPlan{{
+			Target: model.TargetClaude,
+			Files:  []model.PlannedFile{{Path: "x.md"}},
+		}},
+		CompilerFiles: []model.PlannedFile{{Path: "claude/x.md"}},
+	}
+	diagnostics := destinationConflicts(planDestinations(plan))
+	want := `planned destination "claude/x.md" is duplicated`
+	if len(diagnostics) != 1 || diagnostics[0].Message != want {
+		t.Fatalf("destinationConflicts() diagnostics = %#v; want %q", diagnostics, want)
+	}
+}
+
 func TestWriteAndCompareRejectUnboundOutputRoot(t *testing.T) {
 	guard := validGuard(t)
 	outputRoot := filepath.Join(t.TempDir(), "output")

@@ -243,35 +243,40 @@ func destinationConflicts(destinations []string) []model.Diagnostic {
 	sorted := append([]string(nil), destinations...)
 	sort.Strings(sorted)
 
-	caseFolded := make(map[string]string, len(sorted))
-	var diagnostics []model.Diagnostic
-	for _, destination := range sorted {
-		folded := strings.ToLower(destination)
-		if previous, exists := caseFolded[folded]; exists && previous != destination {
-			diagnostics = append(diagnostics, invalidPlanDiagnostic(
-				fmt.Sprintf("planned destinations %q and %q collide after case folding", previous, destination),
-			))
-			continue
-		}
-		caseFolded[folded] = destination
-	}
 	type foldedDestination struct {
 		raw, folded string
 	}
-	foldedSorted := make([]foldedDestination, len(sorted))
-	for index, destination := range sorted {
-		foldedSorted[index] = foldedDestination{raw: destination, folded: strings.ToLower(destination)}
-	}
-	sort.SliceStable(foldedSorted, func(left, right int) bool {
-		if foldedSorted[left].folded == foldedSorted[right].folded {
-			return foldedSorted[left].raw < foldedSorted[right].raw
+	caseFolded := make(map[string]foldedDestination, len(sorted))
+	unique := make([]foldedDestination, 0, len(sorted))
+	var diagnostics []model.Diagnostic
+	for _, destination := range sorted {
+		folded := strings.ToLower(destination)
+		if previous, exists := caseFolded[folded]; exists {
+			if previous.raw == destination {
+				diagnostics = append(diagnostics, invalidPlanDiagnostic(
+					fmt.Sprintf("planned destination %q is duplicated", destination),
+				))
+			} else {
+				diagnostics = append(diagnostics, invalidPlanDiagnostic(
+					fmt.Sprintf("planned destinations %q and %q collide after case folding", previous.raw, destination),
+				))
+			}
+			continue
 		}
-		return foldedSorted[left].folded < foldedSorted[right].folded
-	})
-	for index := 1; index < len(foldedSorted); index++ {
-		if strings.HasPrefix(foldedSorted[index].folded, foldedSorted[index-1].folded+"/") {
+		entry := foldedDestination{raw: destination, folded: folded}
+		caseFolded[folded] = entry
+		unique = append(unique, entry)
+	}
+
+	for _, destination := range unique {
+		components := strings.Split(destination.folded, "/")
+		for end := 1; end < len(components); end++ {
+			ancestor, exists := caseFolded[strings.Join(components[:end], "/")]
+			if !exists {
+				continue
+			}
 			diagnostics = append(diagnostics, invalidPlanDiagnostic(
-				fmt.Sprintf("planned destination %q prevents owning target path %q", foldedSorted[index-1].raw, foldedSorted[index].raw),
+				fmt.Sprintf("planned destination %q prevents owning target path %q", ancestor.raw, destination.raw),
 			))
 		}
 	}

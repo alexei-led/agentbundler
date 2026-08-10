@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/agentplugins"
@@ -411,6 +412,111 @@ func TestEncodePluginManifestUnknownPreserved(t *testing.T) {
 	}
 	if findJSON(encoded, `"anotherUnknown"`) < 0 {
 		t.Error("encoded output missing anotherUnknown unknown field")
+	}
+}
+
+func TestMCPPlaceholderAndWorkingDirectoryValidation(t *testing.T) {
+	t.Parallel()
+
+	for _, cwd := range []string{"./", "./work", "${PLUGIN_ROOT}", "${PLUGIN_ROOT}/work", "${PLUGIN_DATA}", "${PLUGIN_DATA}/work"} {
+		cwd := cwd
+		t.Run("valid-cwd/"+cwd, func(t *testing.T) {
+			t.Parallel()
+			config := agentplugins.MCPConfig{
+				Schema: agentplugins.MCPSchemaURL,
+				Servers: []agentplugins.MCPServer{{
+					Name:      "local",
+					Transport: agentplugins.MCPTransportStdio,
+					Stdio: &agentplugins.StdioTransport{
+						Command: "server",
+						Args:    []string{"--root=${PLUGIN_ROOT}", "${PLUGIN_DATA}/cache"},
+						Env:     map[string]string{"CONFIG": "${PLUGIN_ROOT}/config.json"},
+						Cwd:     cwd,
+					},
+				}},
+			}
+			if diags := agentplugins.ValidateMCPConfig(config); len(diags) != 0 {
+				t.Fatalf("ValidateMCPConfig() diagnostics = %v", diags)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name  string
+		args  []string
+		env   map[string]string
+		cwd   string
+		field string
+	}{
+		{name: "unknown argument placeholder", args: []string{"${UNKNOWN}"}, field: ".args[0]"},
+		{name: "malformed argument placeholder", args: []string{"${PLUGIN_ROOT"}, field: ".args[0]"},
+		{name: "malformed argument variable", args: []string{"$PLUGIN_DATA/cache"}, field: ".args[0]"},
+		{name: "unknown environment placeholder", env: map[string]string{"CONFIG": "${HOME}/config"}, field: ".env.CONFIG"},
+		{name: "absolute cwd", cwd: "/tmp", field: ".cwd"},
+		{name: "windows absolute cwd", cwd: `C:\\tmp`, field: ".cwd"},
+		{name: "plugin relative parent traversal", cwd: "./../tmp", field: ".cwd"},
+		{name: "plugin root parent traversal", cwd: "${PLUGIN_ROOT}/../tmp", field: ".cwd"},
+		{name: "plugin data parent traversal", cwd: "${PLUGIN_DATA}/../tmp", field: ".cwd"},
+		{name: "unknown cwd placeholder", cwd: "${UNKNOWN}/tmp", field: ".cwd"},
+		{name: "malformed cwd placeholder", cwd: "${PLUGIN_ROOT", field: ".cwd"},
+		{name: "nested cwd placeholder", cwd: "${PLUGIN_ROOT}/${PLUGIN_DATA}", field: ".cwd"},
+		{name: "backslash cwd traversal", cwd: `./..\\tmp`, field: ".cwd"},
+	} {
+		test := test
+		t.Run("invalid/"+test.name, func(t *testing.T) {
+			t.Parallel()
+			config := agentplugins.MCPConfig{
+				Schema: agentplugins.MCPSchemaURL,
+				Servers: []agentplugins.MCPServer{{
+					Name:      "local",
+					Transport: agentplugins.MCPTransportStdio,
+					Stdio: &agentplugins.StdioTransport{
+						Command: "server",
+						Args:    test.args,
+						Env:     test.env,
+						Cwd:     test.cwd,
+					},
+				}},
+			}
+			diags := agentplugins.ValidateMCPConfig(config)
+			for _, diagnostic := range diags {
+				if strings.Contains(diagnostic.Path, test.field) {
+					return
+				}
+			}
+			t.Fatalf("ValidateMCPConfig() diagnostics = %v; want field containing %q", diags, test.field)
+		})
+	}
+}
+
+func TestEncodersRejectUnknownKnownFieldCollisions(t *testing.T) {
+	t.Parallel()
+
+	manifest := agentplugins.PluginManifest{
+		Name:    "test-plugin",
+		Unknown: map[string]any{"name": "shadow"},
+	}
+	if _, err := agentplugins.EncodePluginManifest(manifest); err == nil || !strings.Contains(err.Error(), "collides with a known field") {
+		t.Fatalf("EncodePluginManifest() error = %v", err)
+	}
+
+	config := agentplugins.MCPConfig{
+		Unknown: map[string]any{"mcpServers": map[string]any{}},
+	}
+	if _, err := agentplugins.EncodeMCPConfig(config); err == nil || !strings.Contains(err.Error(), "collides with a known field") {
+		t.Fatalf("EncodeMCPConfig() error = %v", err)
+	}
+
+	config = agentplugins.MCPConfig{
+		Servers: []agentplugins.MCPServer{{
+			Name:      "local",
+			Transport: agentplugins.MCPTransportStdio,
+			Stdio:     &agentplugins.StdioTransport{Command: "server"},
+			Unknown:   map[string]any{"type": "shadow"},
+		}},
+	}
+	if _, err := agentplugins.EncodeMCPConfig(config); err == nil || !strings.Contains(err.Error(), "collides with a known field") {
+		t.Fatalf("EncodeMCPConfig(server collision) error = %v", err)
 	}
 }
 

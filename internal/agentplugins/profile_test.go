@@ -1,6 +1,7 @@
 package agentplugins_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
@@ -79,6 +80,29 @@ func TestEmbeddedSchemaDigests(t *testing.T) {
 			sum := sha256.Sum256(test.schema)
 			if got := hex.EncodeToString(sum[:]); got != test.approved {
 				t.Fatalf("embedded schema SHA-256 = %s; want approved profile digest %s", got, test.approved)
+			}
+		})
+	}
+}
+
+func TestEmbeddedSchemaBytesAreIsolated(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name string
+		read func() []byte
+	}{
+		{name: "plugin", read: agentplugins.PluginSchemaBytes},
+		{name: "mcp", read: agentplugins.MCPSchemaBytes},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			mutated := test.read()
+			original := bytes.Clone(mutated)
+			mutated[0] ^= 0xff
+			if got := test.read(); !bytes.Equal(got, original) {
+				t.Fatal("mutating returned schema bytes changed embedded schema")
 			}
 		})
 	}

@@ -114,8 +114,17 @@ func (s *traversalState) walk(dirPath string, depth int, visited []os.FileInfo) 
 	}
 	visited = append(visited, dirStat)
 
-	entries, err := f.ReadDir(-1)
-	if err != nil {
+	remainingEntries := s.limits.maxEntries - s.entryCount
+	if remainingEntries < 0 {
+		s.err(dirPath, "traversal entry limit exceeded")
+		return
+	}
+	entries, err := f.ReadDir(remainingEntries + 1)
+	if len(entries) > remainingEntries {
+		s.err(dirPath, "traversal entry limit exceeded")
+		return
+	}
+	if err != nil && err != io.EOF {
 		s.err(dirPath, "read directory: "+err.Error())
 		return
 	}
@@ -151,7 +160,7 @@ func (s *traversalState) walk(dirPath string, depth int, visited []os.FileInfo) 
 		case mode.IsDir():
 			s.walk(childPath, depth+1, visited)
 		case mode.IsRegular():
-			s.processFile(childPath, mode)
+			s.processFile(childPath)
 		default:
 			s.err(childPath, "special file not allowed in plugin root")
 		}
@@ -180,7 +189,7 @@ func (s *traversalState) processSymlink(childPath string, depth int, visited []o
 		// Recurse; cycle detection happens inside walk via dirStat check.
 		s.walk(childPath, depth+1, visited)
 	case targetStat.Mode().IsRegular():
-		s.processFile(childPath, targetStat.Mode())
+		s.processFile(childPath)
 	default:
 		s.err(childPath, "symlink to special file not allowed")
 	}
@@ -188,7 +197,7 @@ func (s *traversalState) processSymlink(childPath string, depth int, visited []o
 
 // processFile reads and records a regular file (or regular file via symlink).
 // The opened descriptor's stat is authoritative for size, type, and mode.
-func (s *traversalState) processFile(relPath string, mode os.FileMode) {
+func (s *traversalState) processFile(relPath string) {
 	file, err := s.pluginRoot.Open(relPath)
 	if err != nil {
 		s.err(relPath, "open file: "+err.Error())
@@ -205,7 +214,6 @@ func (s *traversalState) processFile(relPath string, mode os.FileMode) {
 		s.err(relPath, "file changed to a non-regular file during traversal")
 		return
 	}
-	mode = info.Mode()
 	if info.Size() > s.limits.maxFileSizeB {
 		s.err(relPath, "file exceeds 64 MiB size limit")
 		return
@@ -237,7 +245,7 @@ func (s *traversalState) processFile(relPath string, mode os.FileMode) {
 	s.files = append(s.files, traversedFile{
 		relPath:    relPath,
 		bytes:      content,
-		executable: mode.Perm()&0o111 != 0,
+		executable: info.Mode().Perm()&0o111 != 0,
 		sha256:     hex.EncodeToString(sum[:]),
 	})
 }

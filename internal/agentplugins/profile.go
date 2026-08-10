@@ -8,7 +8,10 @@
 // embedded schemas from the network or implement unmerged upstream proposals.
 package agentplugins
 
-import _ "embed"
+import (
+	"bytes"
+	_ "embed"
+)
 
 // ProfileID is the canonical compatibility profile identifier.
 const ProfileID = "agent-plugins/1.0.0-bd383552"
@@ -43,11 +46,11 @@ var pluginSchemaBytes []byte
 //go:embed schemas/1.0.0/mcp.schema.json
 var mcpSchemaBytes []byte
 
-// PluginSchemaBytes returns the embedded plugin schema bytes (read-only).
-func PluginSchemaBytes() []byte { return pluginSchemaBytes }
+// PluginSchemaBytes returns a copy of the embedded plugin schema bytes.
+func PluginSchemaBytes() []byte { return bytes.Clone(pluginSchemaBytes) }
 
-// MCPSchemaBytes returns the embedded MCP schema bytes (read-only).
-func MCPSchemaBytes() []byte { return mcpSchemaBytes }
+// MCPSchemaBytes returns a copy of the embedded MCP schema bytes.
+func MCPSchemaBytes() []byte { return bytes.Clone(mcpSchemaBytes) }
 
 // IsPluginSchemaURL reports whether url is the recognized plugin.json schema selector.
 func IsPluginSchemaURL(url string) bool { return url == PluginSchemaURL }

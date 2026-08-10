@@ -15,6 +15,11 @@ var reservedEnvKeys = map[string]bool{
 	"PLUGIN_DATA": true,
 }
 
+const (
+	pluginRootPlaceholder = "${PLUGIN_ROOT}"
+	pluginDataPlaceholder = "${PLUGIN_DATA}"
+)
+
 // ValidatePluginManifest validates the semantic field rules for a decoded manifest.
 // It does not access the filesystem or network.
 func ValidatePluginManifest(manifest PluginManifest) []Diagnostic {
@@ -112,15 +117,18 @@ func validateStdioTransport(prefix string, t StdioTransport) []Diagnostic {
 			"command must be a bare executable name or a plugin-relative path starting with ./"))
 	}
 
-	// args: check for NUL bytes
+	// args: check for NUL bytes and unsupported placeholders.
 	for i, arg := range t.Args {
+		field := fmt.Sprintf("%s.args[%d]", prefix, i)
 		if strings.ContainsRune(arg, '\x00') {
-			diagnostics = append(diagnostics, diag("invalid-field",
-				fmt.Sprintf("%s.args[%d]", prefix, i), "argument must not contain NUL"))
+			diagnostics = append(diagnostics, diag("invalid-field", field, "argument must not contain NUL"))
+		}
+		if err := validatePlaceholders(arg); err != nil {
+			diagnostics = append(diagnostics, diag("invalid-field", field, err.Error()))
 		}
 	}
 
-	// env: check for reserved keys and NUL bytes
+	// env: check for reserved keys, NUL bytes, and unsupported placeholders in values.
 	for key, value := range t.Env {
 		if reservedEnvKeys[key] {
 			diagnostics = append(diagnostics, diag("reserved-env-key", prefix+".env."+key,
@@ -130,14 +138,75 @@ func validateStdioTransport(prefix string, t StdioTransport) []Diagnostic {
 			diagnostics = append(diagnostics, diag("invalid-field", prefix+".env."+key,
 				"environment key and value must not contain NUL"))
 		}
+		if err := validatePlaceholders(value); err != nil {
+			diagnostics = append(diagnostics, diag("invalid-field", prefix+".env."+key, err.Error()))
+		}
 	}
 
-	// cwd: if set, must be a valid non-NUL string
-	if t.Cwd != "" && strings.ContainsRune(t.Cwd, '\x00') {
-		diagnostics = append(diagnostics, diag("invalid-field", prefix+".cwd", "cwd must not contain NUL"))
+	if t.Cwd != "" {
+		switch {
+		case strings.ContainsRune(t.Cwd, '\x00'):
+			diagnostics = append(diagnostics, diag("invalid-field", prefix+".cwd", "cwd must not contain NUL"))
+		case validatePlaceholders(t.Cwd) != nil:
+			diagnostics = append(diagnostics, diag("invalid-field", prefix+".cwd",
+				"cwd contains an unsupported or malformed placeholder; only ${PLUGIN_ROOT} and ${PLUGIN_DATA} are allowed"))
+		case !isValidWorkingDirectory(t.Cwd):
+			diagnostics = append(diagnostics, diag("invalid-field", prefix+".cwd",
+				"cwd must be a contained ./, ${PLUGIN_ROOT}, or ${PLUGIN_DATA} path"))
+		}
 	}
 
 	return diagnostics
+}
+
+func validatePlaceholders(value string) error {
+	for offset := 0; offset < len(value); {
+		nextDollar := strings.IndexByte(value[offset:], '$')
+		if nextDollar < 0 {
+			return nil
+		}
+		offset += nextDollar
+		remainder := value[offset:]
+		switch {
+		case strings.HasPrefix(remainder, pluginRootPlaceholder):
+			offset += len(pluginRootPlaceholder)
+		case strings.HasPrefix(remainder, pluginDataPlaceholder):
+			offset += len(pluginDataPlaceholder)
+		case strings.HasPrefix(remainder, "${"),
+			strings.HasPrefix(remainder, "$PLUGIN_ROOT"),
+			strings.HasPrefix(remainder, "$PLUGIN_DATA"):
+			return fmt.Errorf("value contains an unsupported or malformed placeholder; only %s and %s are allowed", pluginRootPlaceholder, pluginDataPlaceholder)
+		default:
+			offset++
+		}
+	}
+	return nil
+}
+
+func isValidWorkingDirectory(cwd string) bool {
+	var suffix string
+	switch {
+	case cwd == "./", cwd == pluginRootPlaceholder, cwd == pluginDataPlaceholder:
+		return true
+	case strings.HasPrefix(cwd, "./"):
+		suffix = strings.TrimPrefix(cwd, "./")
+	case strings.HasPrefix(cwd, pluginRootPlaceholder+"/"):
+		suffix = strings.TrimPrefix(cwd, pluginRootPlaceholder+"/")
+	case strings.HasPrefix(cwd, pluginDataPlaceholder+"/"):
+		suffix = strings.TrimPrefix(cwd, pluginDataPlaceholder+"/")
+	default:
+		return false
+	}
+
+	if strings.HasPrefix(suffix, "/") || strings.Contains(suffix, "\\") || strings.Contains(suffix, "${") {
+		return false
+	}
+	for _, component := range strings.Split(suffix, "/") {
+		if component == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // validateRemoteTransport validates remote (streamable-http/sse) transport fields.

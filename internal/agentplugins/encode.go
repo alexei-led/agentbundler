@@ -14,6 +14,11 @@ import (
 // keys are sorted alphabetically within the extensions object. No indentation
 // is added.
 func EncodePluginManifest(manifest PluginManifest) ([]byte, error) {
+	if err := rejectUnknownFieldCollisions("plugin manifest", manifest.Unknown,
+		"$schema", "name", "version", "description", "author", "homepage", "repository", "license", "keywords", "extensions"); err != nil {
+		return nil, err
+	}
+
 	var buf bytes.Buffer
 	buf.WriteByte('{')
 	comma := false
@@ -116,6 +121,10 @@ func EncodePluginManifest(manifest PluginManifest) ([]byte, error) {
 // unknown fields sorted alphabetically. Server entries emit type first, then
 // transport-specific fields, then unknown server fields alphabetically.
 func EncodeMCPConfig(config MCPConfig) ([]byte, error) {
+	if err := rejectUnknownFieldCollisions("MCP config", config.Unknown, "$schema", "mcpServers"); err != nil {
+		return nil, err
+	}
+
 	var buf bytes.Buffer
 	buf.WriteByte('{')
 	comma := false
@@ -195,6 +204,11 @@ func encodeMCPServers(servers []MCPServer) ([]byte, error) {
 
 // encodeMCPServer encodes one MCPServer entry as a JSON object.
 func encodeMCPServer(server MCPServer) ([]byte, error) {
+	if err := rejectUnknownFieldCollisions("MCP server", server.Unknown,
+		"type", "command", "args", "env", "cwd", "url", "headers"); err != nil {
+		return nil, err
+	}
+
 	var buf bytes.Buffer
 	buf.WriteByte('{')
 	comma := false
@@ -337,6 +351,19 @@ func encodeStringKeyedMapFromKeys(keys []string, m map[string]string) ([]byte, e
 	}
 	buf.WriteByte('}')
 	return buf.Bytes(), nil
+}
+
+func rejectUnknownFieldCollisions(scope string, unknown map[string]any, known ...string) error {
+	knownFields := make(map[string]struct{}, len(known))
+	for _, key := range known {
+		knownFields[key] = struct{}{}
+	}
+	for _, key := range sortedStringSlice(unknown) {
+		if _, exists := knownFields[key]; exists {
+			return fmt.Errorf("%s unknown field %q collides with a known field", scope, key)
+		}
+	}
+	return nil
 }
 
 // sortedStringSlice returns the keys of m sorted alphabetically.
