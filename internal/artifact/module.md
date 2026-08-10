@@ -49,8 +49,10 @@ with diagnostic code `invalid-workspace-layout`. The guard retains both original
 and their construction-time canonical roots. `Revalidate` rejects alias changes and
 re-checks physical disjointness at TOCTOU-sensitive boundaries. Archive revalidation
 also rejects a destination equal to, inside, or containing source or generated output.
-Archive destinations are pinned with a no-follow, descriptor-relative `os.Root`
-operation; identity is checked again before temporary creation and final replacement.
+Archive handling pins the longest existing destination parent before containment
+validation, then creates missing descendants descriptor-relative without following
+symlinks. The bound destination handle is used for temporary creation, comparison,
+and final replacement; pathname identity is checked before publication.
 
 `PlannedFile.executable` is semantic data, not an inferred extension or shebang property. On POSIX it means at least one execute bit; false means none. On Windows any true value is rejected before a child artifact operation with `ARTIFACT_EXECUTABLE_INTENT_UNSUPPORTED`. Interpreter-backed scripts remain buildable on Windows when their explicit intent is false.
 

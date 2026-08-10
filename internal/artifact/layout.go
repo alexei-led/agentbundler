@@ -102,6 +102,20 @@ func (g WorkspaceLayoutGuard) RevalidateOutputRoot(output string) error {
 // RevalidateArchiveDestination verifies the guarded roots and rejects an
 // archive directory that overlaps either source or generated output.
 func (g WorkspaceLayoutGuard) RevalidateArchiveDestination(destination string) error {
+	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
+		return fmt.Errorf("archive destination must be an absolute cleaned path")
+	}
+	canonical, err := canonPathOrTextual(destination)
+	if err != nil {
+		return err
+	}
+	return g.revalidateBoundArchiveDestination(destination, canonical)
+}
+
+// revalidateBoundArchiveDestination validates the canonical path derived from
+// a pinned existing parent. It deliberately does not resolve destination again:
+// later creation remains bound to the same parent descriptor.
+func (g WorkspaceLayoutGuard) revalidateBoundArchiveDestination(destination, canonical string) error {
 	canonSource, canonOutput, err := g.revalidateRoots()
 	if err != nil {
 		return err
@@ -109,20 +123,13 @@ func (g WorkspaceLayoutGuard) RevalidateArchiveDestination(destination string) e
 	if !filepath.IsAbs(destination) || filepath.Clean(destination) != destination {
 		return fmt.Errorf("archive destination must be an absolute cleaned path")
 	}
-	canonDestination, err := canonPathOrTextual(destination)
-	if err != nil {
-		return err
+	if !filepath.IsAbs(canonical) || filepath.Clean(canonical) != canonical {
+		return fmt.Errorf("canonical archive destination must be an absolute cleaned path")
 	}
-	if err := checkDisjoint(canonSource, canonDestination); err != nil {
+	if err := checkDisjoint(canonSource, canonical); err != nil {
 		return fmt.Errorf("archive destination overlaps source root: %w", err)
 	}
-	if err := checkDisjoint(canonOutput, canonDestination); err != nil {
-		return fmt.Errorf("archive destination overlaps output root: %w", err)
-	}
-	if err := checkExistingIdentity(g.sourcePath, destination); err != nil {
-		return fmt.Errorf("archive destination overlaps source root: %w", err)
-	}
-	if err := checkExistingIdentity(g.outputPath, destination); err != nil {
+	if err := checkDisjoint(canonOutput, canonical); err != nil {
 		return fmt.Errorf("archive destination overlaps output root: %w", err)
 	}
 	return nil

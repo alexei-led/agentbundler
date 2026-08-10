@@ -158,7 +158,10 @@ func importPlugin(
 	}
 
 	// Build extension entries.
-	extensions, extensionPaths := buildExtensions(pluginManifest.Extensions, files, wsPrefix)
+	extensions, extensionPaths, extensionDiags := buildExtensions(pluginManifest.Extensions, files, wsPrefix)
+	if hasErrors(extensionDiags) {
+		return model.SourcePackage{}, nil, scopeDiags(extensionDiags, string(pluginPath))
+	}
 
 	// Partition remaining files into AgentPluginData.PackageFiles.
 	reservedPaths := make(map[string]bool, 2+len(skillPaths)+len(extensionPaths))
@@ -178,8 +181,8 @@ func importPlugin(
 		}
 		rp, err := model.NewRelativePath(f.relPath)
 		if err != nil {
-			// path passed traversal but cannot be a model.RelativePath; skip.
-			continue
+			return model.SourcePackage{}, nil, []model.Diagnostic{diag(string(pluginPath), fmt.Sprintf(
+				"package file path %q is not portable: %v", f.relPath, err))}
 		}
 		origin := workspaceOrigin(wsPrefix, f.relPath)
 		pkgFiles = append(pkgFiles, model.PackageFile{

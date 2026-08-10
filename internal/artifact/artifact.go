@@ -91,24 +91,31 @@ func Write(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) 
 // The guard must have been constructed with NewWorkspaceLayoutGuard before
 // source ingestion.
 func Archive(guard WorkspaceLayoutGuard, distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, []model.Diagnostic) {
-	if err := guard.RevalidateArchiveDestination(output); err != nil {
+	if err := guard.Revalidate(); err != nil {
+		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
+	}
+
+	// Pin the longest existing destination parent before validating containment.
+	// Missing descendants are not created until the guard accepts the canonical
+	// path derived from this exact directory handle.
+	destination, err := archive.OpenDestination(output)
+	if err != nil {
+		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
+	}
+	defer func() { _ = destination.Close() }()
+	if err := guard.revalidateBoundArchiveDestination(output, destination.CanonicalPath()); err != nil {
 		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
 	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
 		return nil, diagnostics
 	}
-	// Pin the destination before revalidating its pathname. Archive writes then
-	// use descriptor-relative operations, so a later pathname swap cannot
-	// redirect them outside the validated directory.
-	destinationRoot, err := archive.OpenDestination(output)
-	if err != nil {
+	if err := destination.Create(); err != nil {
 		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
 	}
-	defer func() { _ = destinationRoot.Close() }()
-	if err := guard.RevalidateArchiveDestination(output); err != nil {
+	if err := guard.revalidateBoundArchiveDestination(output, destination.CanonicalPath()); err != nil {
 		return nil, []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
 	}
-	paths, err := archive.WriteTargetRootsInRoot(distribution, plan, output, destinationRoot)
+	paths, err := archive.WriteTargetRootsInDestination(distribution, plan, destination)
 	if err != nil {
 		return nil, []model.Diagnostic{{Code: diagnosticArchive, Severity: model.SeverityError, Message: err.Error()}}
 	}

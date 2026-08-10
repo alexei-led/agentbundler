@@ -93,7 +93,8 @@ func discoverSkills(files []traversedFile, workspacePrefix string) ([]model.Sour
 			relToSkill := strings.TrimPrefix(sf.relPath, name+"/")
 			rp, err := model.NewRelativePath(relToSkill)
 			if err != nil {
-				// Invalid path; skip.
+				diagnostics = append(diagnostics, diag(entry.skillMD.relPath, fmt.Sprintf(
+					"skill %q support file path %q is not portable: %v", name, relToSkill, err)))
 				continue
 			}
 			origin := workspaceOrigin(workspacePrefix, sf.relPath)

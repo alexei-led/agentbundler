@@ -20,9 +20,20 @@ import (
 	"github.com/alexei-led/agentbundler/internal/compiler/model"
 )
 
+// Destination binds an archive output path to its longest existing ancestor.
+// Missing descendants are created only after the artifact facade validates the
+// bound canonical path against its workspace guard.
+type Destination struct {
+	path          string
+	canonicalPath string
+	root          *os.Root
+	missing       []string
+	created       bool
+}
+
 // writeTargetRoots is a test-only convenience wrapper. Production callers must
-// validate the workspace layout and use OpenDestination plus
-// WriteTargetRootsInRoot so archive creation is pinned to a guarded directory.
+// validate the workspace layout between OpenDestination and Create, then pass
+// the same bound Destination to WriteTargetRootsInDestination.
 func writeTargetRoots(distribution model.DistributionMetadata, plan model.BuildPlan, output string) ([]string, error) {
 	name, err := distributionName(distribution)
 	if err != nil {
@@ -32,60 +43,201 @@ func writeTargetRoots(distribution model.DistributionMetadata, plan model.BuildP
 	if err != nil {
 		return nil, err
 	}
-	root, err := OpenDestination(output)
+	destination, err := OpenDestination(output)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = root.Close() }()
-	return writePreparedArchives(name, writes, output, root)
+	defer func() { _ = destination.Close() }()
+	if err := destination.Create(); err != nil {
+		return nil, err
+	}
+	return writePreparedArchives(writes, destination)
 }
 
-// OpenDestination creates and pins an archive destination directory. The
-// returned root keeps later operations on the directory descriptor-relative,
-// even if the destination pathname is replaced.
-func OpenDestination(output string) (*os.Root, error) {
+// OpenDestination pins the longest existing ancestor of output without
+// creating anything. Its canonical path is tied to the pinned directory
+// identity, so a pathname swap cannot retarget later descendant creation.
+func OpenDestination(output string) (*Destination, error) {
 	if output == "" {
 		return nil, fmt.Errorf("archive output directory is required")
 	}
-	if err := os.MkdirAll(output, 0o755); err != nil {
-		return nil, fmt.Errorf("create archive output: %w", err)
+	if !filepath.IsAbs(output) || filepath.Clean(output) != output {
+		return nil, fmt.Errorf("archive output directory must be an absolute cleaned path")
 	}
-	pathInfo, err := os.Lstat(output)
+
+	existing, missing, err := longestExistingDirectory(output)
 	if err != nil {
-		return nil, fmt.Errorf("lstat archive output: %w", err)
+		return nil, err
 	}
-	if pathInfo.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("archive output directory must not be a symbolic link")
-	}
-	root, err := os.OpenRoot(output)
+	canonical, err := filepath.EvalSymlinks(existing)
 	if err != nil {
-		return nil, fmt.Errorf("open archive output: %w", err)
+		return nil, fmt.Errorf("resolve archive output parent: %w", err)
 	}
-	if err := verifyDestinationIdentity(root, output); err != nil {
+	canonical = filepath.Clean(canonical)
+	root, err := os.OpenRoot(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("pin archive output parent: %w", err)
+	}
+	if err := verifyPinnedDirectory(root, existing, canonical); err != nil {
 		_ = root.Close()
 		return nil, err
 	}
-	return root, nil
+
+	return &Destination{
+		path:          output,
+		canonicalPath: filepath.Join(append([]string{canonical}, missing...)...),
+		root:          root,
+		missing:       missing,
+	}, nil
 }
 
-// WriteTargetRootsInRoot writes archives below the already pinned destination.
-// output is retained only for returned display paths and identity checks.
-func WriteTargetRootsInRoot(distribution model.DistributionMetadata, plan model.BuildPlan, output string, destinationRoot *os.Root) ([]string, error) {
-	if output == "" {
-		return nil, fmt.Errorf("archive output directory is required")
+// CanonicalPath returns the destination path below its pinned existing parent.
+// The path is valid only while the Destination remains open.
+func (d *Destination) CanonicalPath() string {
+	if d == nil {
+		return ""
 	}
-	if destinationRoot == nil {
-		return nil, fmt.Errorf("archive destination root is required")
+	return d.canonicalPath
+}
+
+// Create creates missing destination components descriptor-relative. Each
+// component is opened and identity-checked without accepting symbolic links.
+func (d *Destination) Create() error {
+	if d == nil || d.root == nil {
+		return fmt.Errorf("archive destination is required")
+	}
+	if d.created {
+		return d.verifyIdentity()
+	}
+
+	current := d.root
+	opened := make([]*os.Root, 0, len(d.missing))
+	defer func() {
+		for _, root := range opened {
+			if root != d.root {
+				_ = root.Close()
+			}
+		}
+	}()
+	for _, component := range d.missing {
+		info, err := current.Lstat(component)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := current.Mkdir(component, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("create archive output component %q: %w", component, err)
+			}
+			info, err = current.Lstat(component)
+		}
+		if err != nil {
+			return fmt.Errorf("inspect archive output component %q: %w", component, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("archive output component %q must be a directory, not a symbolic link or file", component)
+		}
+
+		next, err := current.OpenRoot(component)
+		if err != nil {
+			return fmt.Errorf("open archive output component %q: %w", component, err)
+		}
+		opened = append(opened, next)
+		currentInfo, err := current.Lstat(component)
+		if err != nil || currentInfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("archive output component %q changed while it was being opened", component)
+		}
+		nextInfo, err := next.Stat(".")
+		if err != nil || !os.SameFile(currentInfo, nextInfo) {
+			return fmt.Errorf("archive output component %q changed while it was being opened", component)
+		}
+		current = next
+	}
+
+	if len(opened) != 0 {
+		oldRoot := d.root
+		d.root = opened[len(opened)-1]
+		_ = oldRoot.Close()
+	}
+	d.missing = nil
+	d.created = true
+	return d.verifyIdentity()
+}
+
+// Close releases the pinned destination handle.
+func (d *Destination) Close() error {
+	if d == nil || d.root == nil {
+		return nil
+	}
+	err := d.root.Close()
+	d.root = nil
+	return err
+}
+
+// WriteTargetRootsInDestination writes archives below an already validated and
+// created Destination. All filesystem operations use its pinned handle.
+func WriteTargetRootsInDestination(distribution model.DistributionMetadata, plan model.BuildPlan, destination *Destination) ([]string, error) {
+	if destination == nil || destination.root == nil || !destination.created {
+		return nil, fmt.Errorf("created archive destination is required")
 	}
 	name, err := distributionName(distribution)
 	if err != nil {
 		return nil, err
 	}
-	writes, err := prepareArchiveWrites(name, plan, output)
+	writes, err := prepareArchiveWrites(name, plan, destination.path)
 	if err != nil {
 		return nil, err
 	}
-	return writePreparedArchives(name, writes, output, destinationRoot)
+	return writePreparedArchives(writes, destination)
+}
+
+func longestExistingDirectory(output string) (string, []string, error) {
+	candidate := output
+	var reversed []string
+	for {
+		info, err := os.Lstat(candidate)
+		if err == nil {
+			if candidate == output && info.Mode()&os.ModeSymlink != 0 {
+				return "", nil, fmt.Errorf("archive output directory must not be a symbolic link")
+			}
+			targetInfo, statErr := os.Stat(candidate)
+			if statErr != nil {
+				return "", nil, fmt.Errorf("stat archive output parent: %w", statErr)
+			}
+			if !targetInfo.IsDir() {
+				return "", nil, fmt.Errorf("archive output parent %q is not a directory", candidate)
+			}
+			missing := make([]string, len(reversed))
+			for index := range reversed {
+				missing[len(reversed)-1-index] = reversed[index]
+			}
+			return candidate, missing, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", nil, fmt.Errorf("inspect archive output parent: %w", err)
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return "", nil, fmt.Errorf("find existing archive output parent: %w", err)
+		}
+		reversed = append(reversed, filepath.Base(candidate))
+		candidate = parent
+	}
+}
+
+func verifyPinnedDirectory(root *os.Root, original, canonical string) error {
+	originalInfo, err := os.Stat(original)
+	if err != nil {
+		return fmt.Errorf("stat archive output parent: %w", err)
+	}
+	canonicalInfo, err := os.Stat(canonical)
+	if err != nil {
+		return fmt.Errorf("stat canonical archive output parent: %w", err)
+	}
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return fmt.Errorf("stat pinned archive output parent: %w", err)
+	}
+	if !os.SameFile(originalInfo, rootInfo) || !os.SameFile(canonicalInfo, rootInfo) {
+		return fmt.Errorf("archive output parent changed while it was being pinned")
+	}
+	return nil
 }
 
 func distributionName(distribution model.DistributionMetadata) (string, error) {
@@ -99,10 +251,10 @@ func distributionName(distribution model.DistributionMetadata) (string, error) {
 	return name, nil
 }
 
-func writePreparedArchives(name string, writes []archiveWrite, output string, destinationRoot *os.Root) ([]string, error) {
+func writePreparedArchives(writes []archiveWrite, destination *Destination) ([]string, error) {
 	paths := make([]string, 0, len(writes))
 	for _, write := range writes {
-		if err := writeTarGzipFromPlan(destinationRoot, output, filepath.Base(write.path), write.unit.Root, write.files); err != nil {
+		if err := writeTarGzipFromPlan(destination, filepath.Base(write.path), write.unit.Root, write.files); err != nil {
 			return nil, fmt.Errorf("archive target %q unit %q: %w", write.target, write.unit.Root, err)
 		}
 		paths = append(paths, write.path)
@@ -111,17 +263,17 @@ func writePreparedArchives(name string, writes []archiveWrite, output string, de
 	return paths, nil
 }
 
-func verifyDestinationIdentity(root *os.Root, output string) error {
-	pathInfo, err := os.Stat(output)
+func (d *Destination) verifyIdentity() error {
+	pathInfo, err := os.Stat(d.path)
 	if err != nil {
 		return fmt.Errorf("stat archive output: %w", err)
 	}
-	rootInfo, err := root.Stat(".")
+	rootInfo, err := d.root.Stat(".")
 	if err != nil {
 		return fmt.Errorf("stat pinned archive output: %w", err)
 	}
 	if !os.SameFile(pathInfo, rootInfo) {
-		return fmt.Errorf("archive output directory changed while it was being opened")
+		return fmt.Errorf("archive output directory changed after it was pinned")
 	}
 	return nil
 }
@@ -247,10 +399,11 @@ func validateArchiveName(name string) error {
 // writeTarGzipFromPlan writes a deterministic tar.gz archive from plan bytes.
 // Files are sorted by path and written with zeroed timestamps. The root prefix
 // is stripped from each file's archive name when root is not ".".
-func writeTarGzipFromPlan(destinationRoot *os.Root, output, destination, root string, files []model.PlannedFile) (err error) {
-	if err := verifyDestinationIdentity(destinationRoot, output); err != nil {
+func writeTarGzipFromPlan(destinationRoot *Destination, destination, root string, files []model.PlannedFile) (err error) {
+	if err := destinationRoot.verifyIdentity(); err != nil {
 		return err
 	}
+	rootHandle := destinationRoot.root
 	// Sort for determinism.
 	sortedFiles := append([]model.PlannedFile(nil), files...)
 	sort.Slice(sortedFiles, func(i, j int) bool {
@@ -259,17 +412,17 @@ func writeTarGzipFromPlan(destinationRoot *os.Root, output, destination, root st
 
 	// Create a unique temporary file relative to the pinned destination. O_EXCL
 	// prevents a pre-existing symlink from being followed.
-	temporary, err := temporaryName(destination)
+	temporary, err := temporaryName()
 	if err != nil {
 		return err
 	}
-	file, err := destinationRoot.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := rootHandle.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if err != nil {
-			_ = destinationRoot.Remove(temporary)
+			_ = rootHandle.Remove(temporary)
 		}
 	}()
 	defer func() { _ = file.Close() }()
@@ -331,25 +484,25 @@ func writeTarGzipFromPlan(destinationRoot *os.Root, output, destination, root st
 	// Check the pathname identity before committing, while all writes still use
 	// the pinned root. A swapped pathname therefore fails closed rather than
 	// redirecting the archive to another directory.
-	if err := verifyDestinationIdentity(destinationRoot, output); err != nil {
+	if err := destinationRoot.verifyIdentity(); err != nil {
 		return err
 	}
-	unchanged, err := sameFileContents(destinationRoot, temporary, destination)
+	unchanged, err := sameFileContents(rootHandle, temporary, destination)
 	if err != nil {
 		return err
 	}
 	if unchanged {
-		return destinationRoot.Remove(temporary)
+		return rootHandle.Remove(temporary)
 	}
-	return destinationRoot.Rename(temporary, destination)
+	return rootHandle.Rename(temporary, destination)
 }
 
-func temporaryName(destination string) (string, error) {
+func temporaryName() (string, error) {
 	var random [16]byte
 	if _, err := cryptorand.Read(random[:]); err != nil {
 		return "", fmt.Errorf("generate temporary archive name: %w", err)
 	}
-	return "." + destination + ".tmp-" + hex.EncodeToString(random[:]), nil
+	return ".agbun-tmp-" + hex.EncodeToString(random[:]), nil
 }
 
 func sameFileContents(root *os.Root, left, right string) (bool, error) {

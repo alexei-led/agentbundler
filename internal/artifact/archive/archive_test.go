@@ -97,6 +97,26 @@ func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
 	}
 }
 
+func TestWriteTargetRootsUsesFixedWidthTemporaryNameForNearLimitBasename(t *testing.T) {
+	distributionName := strings.Repeat("d", 245)
+	plan := model.BuildPlan{Targets: []model.TargetPlan{{
+		Target:       model.TargetPi,
+		ArchiveUnits: []model.ArchiveUnit{{Root: ".", Stem: "p", Suffix: ".tar.gz"}},
+		Files:        []model.PlannedFile{{Path: "plugin.json", Bytes: []byte("{}\n")}},
+	}}}
+	output := filepath.Join(t.TempDir(), "release")
+	paths, err := writeTargetRoots(model.DistributionMetadata{"name": distributionName}, plan, output)
+	if err != nil {
+		t.Fatalf("writeTargetRoots() with %d-byte final basename: %v", len(distributionName)+len("-p.tar.gz"), err)
+	}
+	if len(paths) != 1 {
+		t.Fatalf("paths = %v, want one archive", paths)
+	}
+	if info, err := os.Stat(paths[0]); err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("near-limit archive: info=%v err=%v", info, err)
+	}
+}
+
 func TestWriteTargetRootsUsesPAXForLongPlannedPaths(t *testing.T) {
 	longPath := filepath.ToSlash(filepath.Join(strings.Repeat("a", 80), strings.Repeat("b", 80)+".txt"))
 	plan := model.BuildPlan{Targets: []model.TargetPlan{{
@@ -124,11 +144,14 @@ func TestWriteTargetRootsPinnedDestinationRejectsPathSwap(t *testing.T) {
 	if err := os.MkdirAll(outside, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	root, err := OpenDestination(output)
+	destination, err := OpenDestination(output)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = root.Close() }()
+	defer func() { _ = destination.Close() }()
+	if err := destination.Create(); err != nil {
+		t.Fatal(err)
+	}
 	moved := filepath.Join(outputParent, "moved")
 	if err := os.Rename(output, moved); err != nil {
 		t.Fatal(err)
@@ -136,8 +159,8 @@ func TestWriteTargetRootsPinnedDestinationRejectsPathSwap(t *testing.T) {
 	if err := os.Symlink(outside, output); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, err := WriteTargetRootsInRoot(model.DistributionMetadata{"name": "demo"}, planForTest(), output, root); err == nil {
-		t.Fatal("WriteTargetRootsInRoot accepted a swapped destination path")
+	if _, err := WriteTargetRootsInDestination(model.DistributionMetadata{"name": "demo"}, planForTest(), destination); err == nil {
+		t.Fatal("WriteTargetRootsInDestination accepted a swapped destination path")
 	}
 	entries, err := os.ReadDir(outside)
 	if err != nil {
@@ -145,6 +168,60 @@ func TestWriteTargetRootsPinnedDestinationRejectsPathSwap(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("swapped destination received archive files: %v", entries)
+	}
+}
+
+func TestOpenDestinationPinsExistingParentBeforeCreatingDescendants(t *testing.T) {
+	parentPath := filepath.Join(t.TempDir(), "parent")
+	if err := os.Mkdir(parentPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(parentPath, "nested", "release")
+	destination, err := OpenDestination(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = destination.Close() }()
+	if _, err := os.Stat(output); !os.IsNotExist(err) {
+		t.Fatalf("OpenDestination created output before validation: %v", err)
+	}
+
+	movedParent := parentPath + "-moved"
+	if err := os.Rename(parentPath, movedParent); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, parentPath); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := destination.Create(); err == nil {
+		t.Fatal("Create accepted a swapped destination pathname")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "nested")); !os.IsNotExist(err) {
+		t.Fatalf("swapped parent received destination descendants: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(movedParent, "nested", "release")); err != nil || !info.IsDir() {
+		t.Fatalf("destination descendants were not created below pinned parent: info=%v err=%v", info, err)
+	}
+}
+
+func TestDestinationCreateRejectsSymlinkedMissingDescendant(t *testing.T) {
+	parentPath := t.TempDir()
+	output := filepath.Join(parentPath, "nested", "release")
+	destination, err := OpenDestination(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = destination.Close() }()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(parentPath, "nested")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := destination.Create(); err == nil {
+		t.Fatal("Create followed a symlinked missing destination component")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "release")); !os.IsNotExist(err) {
+		t.Fatalf("symlink target received destination descendants: %v", err)
 	}
 }
 

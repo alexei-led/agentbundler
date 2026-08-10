@@ -23,10 +23,12 @@ adapter registered in Task 4.
 - Materialize contained symlinks: the symlink's path is used for origin and
   provenance; the target bytes are read through `os.Root` which rejects
   external references. Directory symlink cycles are detected with `os.SameFile`.
-- Reject external symlinks, special files (devices, FIFOs, sockets), and cycles.
+- Reject external symlinks, special files (devices, FIFOs, sockets), cycles, and
+  host filenames that cannot be represented by the portable relative-path model.
 - Discover immediate-child Agent Skills (`<name>/SKILL.md`) using the
   `frontmatter` contract and record support files in `Base.Files`; malformed
-  skill identities or frontmatter reject the plugin with a skill-scoped diagnostic.
+  skill identities, frontmatter, or non-portable support filenames reject the
+  plugin with a skill-scoped diagnostic.
 - Derive package capability uses for each MCP transport, extensions, permitted
   unknown JSON, and ordinary package files.
 - Partition traversal files into: manifest, MCP, skill assets + support files,

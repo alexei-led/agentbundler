@@ -1,6 +1,7 @@
 package agentplugin
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -22,7 +23,7 @@ func buildExtensions(
 	manifestExtensions map[string]any,
 	files []traversedFile,
 	workspacePrefix string,
-) ([]model.ClientExtension, map[string]bool) {
+) ([]model.ClientExtension, map[string]bool, []model.Diagnostic) {
 	type extEntry struct {
 		manifest any
 		files    []traversedFile
@@ -56,7 +57,7 @@ func buildExtensions(
 	}
 
 	if len(entries) == 0 {
-		return nil, usedPaths
+		return nil, usedPaths, nil
 	}
 
 	// Build result in sorted namespace order.
@@ -67,6 +68,7 @@ func buildExtensions(
 	sort.Strings(namespaces)
 
 	result := make([]model.ClientExtension, 0, len(namespaces))
+	var diagnostics []model.Diagnostic
 	for _, ns := range namespaces {
 		entry := entries[ns]
 		// Prefix for files within this extension: "extensions/<ns>/"
@@ -83,6 +85,8 @@ func buildExtensions(
 			relToExt := strings.TrimPrefix(f.relPath, prefix)
 			rp, err := model.NewRelativePath(relToExt)
 			if err != nil {
+				diagnostics = append(diagnostics, diag("", fmt.Sprintf(
+					"extension %q package file path %q is not portable: %v", ns, relToExt, err)))
 				continue
 			}
 			origin := workspaceOrigin(workspacePrefix, f.relPath)
@@ -100,5 +104,5 @@ func buildExtensions(
 			PackageFiles: pkgFiles,
 		})
 	}
-	return result, usedPaths
+	return result, usedPaths, diagnostics
 }

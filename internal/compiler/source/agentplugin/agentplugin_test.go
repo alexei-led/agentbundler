@@ -446,6 +446,48 @@ func TestAgentPluginPackageFiles(t *testing.T) {
 	}
 }
 
+func TestAgentPluginRejectsNonPortablePackageFilename(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("backslash is a path separator on Windows")
+	}
+	tmp := t.TempDir()
+	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
+	write(t, tmp, `source/plugin/bad\name.txt`, "not portable")
+
+	inventory, diags := InspectAgentPluginRoot(minimalManifest("source", "plugin"), tmp, openWorkspace(t, tmp))
+	if len(inventory.Packages) != 0 {
+		t.Fatalf("non-portable package file produced packages: %#v", inventory.Packages)
+	}
+	if !hasDiag(diags, `package file path "bad\\name.txt" is not portable`) {
+		t.Fatalf("diagnostics = %v; want scoped non-portable path error", diags)
+	}
+	if len(diags) == 0 || diags[0].Location == nil || diags[0].Location.Path != "plugin" {
+		t.Fatalf("diagnostic location = %#v; want plugin scope", diags)
+	}
+}
+
+func TestAgentPluginRejectsNonPortableSkillSupportFilename(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("backslash is a path separator on Windows")
+	}
+	tmp := t.TempDir()
+	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
+	write(t, tmp, "source/plugin/my-skill/SKILL.md", "# Skill\n")
+	write(t, tmp, `source/plugin/my-skill/bad\name.txt`, "not portable")
+
+	inventory, diags := InspectAgentPluginRoot(minimalManifest("source", "plugin"), tmp, openWorkspace(t, tmp))
+	if len(inventory.Packages) != 0 {
+		t.Fatalf("non-portable skill support file produced packages: %#v", inventory.Packages)
+	}
+	if !hasDiag(diags, `support file path "bad\\name.txt" is not portable`) {
+		t.Fatalf("diagnostics = %v; want scoped non-portable skill support path error", diags)
+	}
+	wantLocation := model.RelativePath("source/plugin/my-skill/SKILL.md")
+	if len(diags) == 0 || diags[0].Location == nil || diags[0].Location.Path != wantLocation {
+		t.Fatalf("diagnostic location = %#v; want %q", diags, wantLocation)
+	}
+}
+
 func TestAgentPluginSkillFilesExcludedFromPackageFiles(t *testing.T) {
 	tmp := t.TempDir()
 	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
