@@ -167,15 +167,21 @@ func writeTarGzipFromPlan(destination, root string, files []model.PlannedFile) (
 		return sortedFiles[i].Path < sortedFiles[j].Path
 	})
 
-	temporary := destination + ".tmp"
+	// Create a unique temporary file in the destination directory. A fixed
+	// temporary path could follow a pre-existing symlink or be shared by
+	// concurrent archive writers.
+	file, err := os.CreateTemp(filepath.Dir(destination), "."+filepath.Base(destination)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
 	defer func() {
 		if err != nil {
 			_ = os.Remove(temporary)
 		}
 	}()
-
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
+	if err := file.Chmod(0o644); err != nil {
+		_ = file.Close()
 		return err
 	}
 	defer func() { _ = file.Close() }()

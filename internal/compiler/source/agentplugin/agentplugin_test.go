@@ -1,10 +1,15 @@
 package agentplugin
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/alexei-led/agentbundler/internal/agentplugins"
@@ -137,6 +142,60 @@ func TestAgentPluginWithMCP(t *testing.T) {
 	}
 	if srv.Stdio == nil || srv.Stdio.Command != "node" {
 		t.Errorf("MCP stdio = %+v", srv.Stdio)
+	}
+}
+
+func TestAgentPluginMCPImportDoesNotExecuteOrContactEndpoints(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sentinel shell process is Unix-specific")
+	}
+	tmp := t.TempDir()
+	marker := filepath.Join(tmp, "executed")
+	commandDir := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(commandDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commandPath := filepath.Join(commandDir, "mcp-sentinel")
+	if err := os.WriteFile(commandPath, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", commandDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		requests.Add(1)
+	}))
+	defer server.Close()
+	mcpJSON, err := json.Marshal(map[string]any{
+		"$schema": agentplugins.MCPSchemaURL,
+		"mcpServers": map[string]any{
+			"local-process": map[string]any{
+				"type": "stdio", "command": "mcp-sentinel",
+			},
+			"local-network": map[string]any{
+				"type": "streamable-http", "url": server.URL,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, tmp, "source/plugin/plugin.json", validPluginJSON("plugin"))
+	write(t, tmp, "source/plugin/mcp.json", string(mcpJSON))
+
+	manifest := minimalManifest("source", "plugin")
+	inventory, diags := InspectAgentPluginRoot(manifest, tmp, openWorkspace(t, tmp))
+	if len(diags) != 0 {
+		t.Fatalf("unexpected diagnostics: %v", diags)
+	}
+	if len(inventory.Packages) != 1 || len(inventory.Packages[0].AgentPlugin.MCPServers) != 2 {
+		t.Fatalf("MCP servers = %#v", inventory.Packages)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("MCP command sentinel was executed: %v", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("MCP endpoint received %d requests", got)
 	}
 }
 

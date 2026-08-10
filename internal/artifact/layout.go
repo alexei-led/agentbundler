@@ -63,6 +63,25 @@ func (g WorkspaceLayoutGuard) Revalidate() error {
 	return err
 }
 
+// RevalidateOutputRoot verifies that output is the exact path bound to this
+// guard, then revalidates both guarded roots.
+func (g WorkspaceLayoutGuard) RevalidateOutputRoot(output string) error {
+	_, canonOutput, err := g.revalidateRoots()
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(output) || filepath.Clean(output) != output {
+		return fmt.Errorf("output root must be an absolute cleaned path")
+	}
+	if output != g.outputPath {
+		return fmt.Errorf("output root %q does not match guarded output root %q", output, g.outputPath)
+	}
+	if canonPathOrTextual(output) != canonOutput {
+		return fmt.Errorf("output root %q changed after workspace layout validation", output)
+	}
+	return nil
+}
+
 // RevalidateArchiveDestination verifies the guarded roots and rejects an
 // archive directory that overlaps either source or generated output.
 func (g WorkspaceLayoutGuard) RevalidateArchiveDestination(destination string) error {

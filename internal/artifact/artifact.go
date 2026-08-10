@@ -58,10 +58,11 @@ type ProvenanceInput struct {
 }
 
 // Write validates the layout guard and plan, then atomically replaces outputRoot
-// with its generated output. The guard must have been constructed with
-// NewWorkspaceLayoutGuard before source ingestion.
+// with its generated output. outputRoot must be the exact path bound to guard.
+// The guard must have been constructed with NewWorkspaceLayoutGuard before
+// source ingestion.
 func Write(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) []model.Diagnostic {
-	if err := guard.Revalidate(); err != nil {
+	if err := guard.RevalidateOutputRoot(outputRoot); err != nil {
 		return []model.Diagnostic{layoutGuardDiagnostic(err.Error())}
 	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {
@@ -94,10 +95,11 @@ func Archive(guard WorkspaceLayoutGuard, distribution model.DistributionMetadata
 
 // Compare validates the layout guard and plan, then reports exact generated-output
 // drift below outputRoot. The returned bool distinguishes observed drift from an
-// output-observation failure. The guard must have been constructed with
-// NewWorkspaceLayoutGuard before source ingestion.
+// output-observation failure. outputRoot must be the exact path bound to guard.
+// The guard must have been constructed with NewWorkspaceLayoutGuard before
+// source ingestion.
 func Compare(guard WorkspaceLayoutGuard, plan model.BuildPlan, outputRoot string) ([]model.Diagnostic, bool) {
-	if err := guard.Revalidate(); err != nil {
+	if err := guard.RevalidateOutputRoot(outputRoot); err != nil {
 		return []model.Diagnostic{layoutGuardDiagnostic(err.Error())}, false
 	}
 	if diagnostics := validatePlan(plan); len(diagnostics) != 0 {

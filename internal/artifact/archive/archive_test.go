@@ -96,6 +96,35 @@ func TestWriteTargetRootsCreatesDeterministicPlanOwnedArchives(t *testing.T) {
 	}
 }
 
+func TestWriteTargetRootsDoesNotFollowPredictableTemporarySymlink(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "release")
+	destination := filepath.Join(output, "demo-antigravity.tar.gz")
+	sentinel := filepath.Join(t.TempDir(), "sentinel")
+	if err := os.MkdirAll(output, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sentinel, []byte("sentinel"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sentinel, destination+".tmp"); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := WriteTargetRoots(model.DistributionMetadata{"name": "demo"}, planForTest(), output); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(sentinel); err != nil {
+		t.Fatal(err)
+	} else if string(got) != "sentinel" {
+		t.Fatalf("predictable temporary symlink target changed to %q", got)
+	}
+	if info, err := os.Lstat(destination); err != nil {
+		t.Fatal(err)
+	} else if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		t.Fatalf("archive destination is not a regular file: %v", info.Mode())
+	}
+}
+
 func TestWriteTargetRootsArchiveUnitsFilterByRoot(t *testing.T) {
 	// agent-plugins style: two plugins with separate roots.
 	distribution := model.DistributionMetadata{"name": "test"}

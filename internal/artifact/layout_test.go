@@ -153,6 +153,24 @@ func TestRevalidateDetectsSourceAliasSwap(t *testing.T) {
 	}
 }
 
+func TestRevalidateOutputRootRequiresGuardedPath(t *testing.T) {
+	ws := t.TempDir()
+	source := filepath.Join(ws, "source")
+	output := filepath.Join(ws, "generated")
+	guard, err := NewWorkspaceLayoutGuard(ws, source, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{filepath.Join(ws, "other"), "relative/output"} {
+		if err := guard.RevalidateOutputRoot(candidate); err == nil {
+			t.Errorf("RevalidateOutputRoot(%q) accepted an unbound path", candidate)
+		}
+	}
+	if err := guard.RevalidateOutputRoot(output); err != nil {
+		t.Fatalf("RevalidateOutputRoot(%q) = %v", output, err)
+	}
+}
+
 func TestRevalidateArchiveDestinationRejectsWorkspaceOverlap(t *testing.T) {
 	ws := t.TempDir()
 	source := filepath.Join(ws, "source")
