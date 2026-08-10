@@ -560,7 +560,7 @@ All whole-plan verification commands pass with exit status 0:
 | `golangci-lint run` | PASS (0 issues) |
 | `go test -run '^$' -tags=vendor_smoke ./...` | PASS (compile only) |
 | `scripts/check-acceptance-fixture` | PASS (7 targets deterministic) |
-| `scripts/check-agent-plugins-fixture` | PASS (minimal + full, build/check/deterministic) |
+| `scripts/check-agent-plugins-fixture` | PASS (minimal + full, build/check/package/deterministic, archive extraction, semantic round-trip) |
 | archfit v1.6.0 | PASS (0 blocking, score 36/100) |
 
 ### GitNexus

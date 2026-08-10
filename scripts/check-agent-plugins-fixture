@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# check-agent-plugins-fixture — build/check/deterministic gate for agent-plugins fixtures.
+# check-agent-plugins-fixture — build/check/package/deterministic and semantic
+# round-trip gate for agent-plugins fixtures.
 # Run from the repository root.
 set -euo pipefail
 
@@ -11,8 +12,11 @@ fail=0
 for fixture in testdata/agent-plugins/minimal testdata/agent-plugins/full; do
   first=$(mktemp -d)
   second=$(mktemp -d)
+  first_archives=$(mktemp -d)
+  second_archives=$(mktemp -d)
+  extracted=$(mktemp -d)
   cleanup() {
-    find "$first" "$second" -depth -delete 2>/dev/null || true
+    find "$first" "$second" "$first_archives" "$second_archives" "$extracted" -depth -delete 2>/dev/null || true
   }
   trap cleanup EXIT
 
@@ -23,11 +27,119 @@ for fixture in testdata/agent-plugins/minimal testdata/agent-plugins/full; do
   go run ./cmd/agbun check --root "$first" >/dev/null
   go run ./cmd/agbun build --root "$second" >/dev/null
 
+  go run ./cmd/agbun package --root "$first" --out "$first_archives" >/dev/null
+  go run ./cmd/agbun package --root "$second" --out "$second_archives" >/dev/null
+
   if ! diff -ru "$first/generated" "$second/generated"; then
     printf 'FAIL: %s generated output is not deterministic\n' "$fixture" >&2
     fail=1
+  elif ! diff -ru "$first_archives" "$second_archives"; then
+    printf 'FAIL: %s package archives are not deterministic\n' "$fixture" >&2
+    fail=1
   else
-    printf '%s: build/check/deterministic ok\n' "$fixture"
+    printf '%s: build/check/package/deterministic ok\n' "$fixture"
+  fi
+
+  distribution=$(python3 - "$fixture/agentbundle.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as stream:
+    print(json.load(stream)["distribution"]["name"])
+PY
+)
+  archive_count=0
+  for archive in "$first_archives"/*.tar.gz; do
+    [[ -f "$archive" ]] || continue
+    archive_count=$((archive_count + 1))
+    archive_name=$(basename "$archive")
+    plugin=${archive_name#"$distribution"-}
+    plugin=${plugin%.tar.gz}
+    source_plugin="$first/source/$plugin"
+    extract_plugin="$extracted/$plugin"
+    mkdir -p "$extract_plugin"
+    if ! python3 - "$archive" "$source_plugin" "$extract_plugin" <<'PY'
+import json
+import os
+import pathlib
+import sys
+import tarfile
+
+archive, source_root, extracted_root = map(pathlib.Path, sys.argv[1:])
+source_root = source_root.resolve()
+extracted_root = extracted_root.resolve()
+
+with tarfile.open(archive, "r:gz") as stream:
+    members = stream.getmembers()
+    names = [member.name for member in members]
+    if names.count("plugin.json") != 1:
+        raise SystemExit(f"{archive}: plugin.json is not exactly at archive root: {names}")
+    for member in members:
+        member_path = pathlib.PurePosixPath(member.name)
+        if member_path.is_absolute() or ".." in member_path.parts:
+            raise SystemExit(f"{archive}: unsafe archive member {member.name!r}")
+        if not member.isfile():
+            raise SystemExit(f"{archive}: unexpected non-file member {member.name!r}")
+        destination = (extracted_root / pathlib.Path(*member_path.parts)).resolve()
+        if os.path.commonpath((str(extracted_root), str(destination))) != str(extracted_root):
+            raise SystemExit(f"{archive}: archive member escapes extraction root: {member.name!r}")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with stream.extractfile(member) as source, destination.open("wb") as target:
+            target.write(source.read())
+
+
+def load_json(path):
+    with path.open(encoding="utf-8") as stream:
+        return json.load(stream)
+
+
+def skill_semantics(path):
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].rstrip("\\r\\n") != "---":
+        return {}, text
+    for index in range(1, len(lines)):
+        if lines[index].rstrip("\\r\\n") == "---":
+            frontmatter = json.loads("".join(lines[1:index]))
+            return frontmatter, "".join(lines[index + 1:])
+    raise SystemExit(f"{path}: unterminated skill frontmatter")
+
+source_files = {
+    path.relative_to(source_root).as_posix(): path
+    for path in source_root.rglob("*")
+    if path.is_file()
+}
+archive_files = {
+    path.relative_to(extracted_root).as_posix(): path
+    for path in extracted_root.rglob("*")
+    if path.is_file()
+}
+if set(source_files) != set(archive_files):
+    raise SystemExit(
+        f"{archive}: archive/source file set differs: "
+        f"source={sorted(source_files)}, archive={sorted(archive_files)}"
+    )
+
+for relative, source_path in source_files.items():
+    archive_path = archive_files[relative]
+    if relative in ("plugin.json", "mcp.json"):
+        if load_json(source_path) != load_json(archive_path):
+            raise SystemExit(f"{archive}: decoded {relative} differs from source")
+    elif relative.endswith("/SKILL.md") or relative == "SKILL.md":
+        if skill_semantics(source_path) != skill_semantics(archive_path):
+            raise SystemExit(f"{archive}: decoded skill semantics differ for {relative}")
+    elif source_path.read_bytes() != archive_path.read_bytes():
+        raise SystemExit(f"{archive}: package file differs for {relative}")
+PY
+    then
+      printf 'FAIL: %s archive %s failed extraction/semantic round-trip\n' "$fixture" "$archive_name" >&2
+      fail=1
+    fi
+  done
+  if [[ $archive_count -eq 0 ]]; then
+    printf 'FAIL: %s produced no package archives\n' "$fixture" >&2
+    fail=1
+  else
+    printf '%s: archive extraction/semantic round-trip ok (%d archive(s))\n' "$fixture" "$archive_count"
   fi
 done
 
