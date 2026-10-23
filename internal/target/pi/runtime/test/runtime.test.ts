@@ -13,7 +13,8 @@ import {
   type ProcessRunner,
 } from "../src/index.js";
 
-type Handler = (event: Record<string, unknown>, context: { signal?: AbortSignal }) => Promise<unknown> | unknown;
+type FakeUI = { notify(message: string, type?: "info" | "warning" | "error"): void };
+type Handler = (event: Record<string, unknown>, context: { signal?: AbortSignal; cwd?: string; sessionManager?: { getSessionId(): string | undefined }; hasUI?: boolean; ui?: FakeUI }) => Promise<unknown> | unknown;
 
 class FakePi implements PiExtensionAPI {
   readonly handlers = new Map<string, Handler>();
@@ -45,6 +46,24 @@ function hook(identity: string, event: HookDescriptor["event"], extra: Partial<H
 
 function config(...hooks: HookDescriptor[]): HookConfigV1 {
   return { version: 1, hooks };
+}
+
+async function emitWithUI(
+  pi: FakePi,
+  event: string,
+  value: Record<string, unknown>,
+  ui: FakeUI,
+): Promise<unknown> {
+  const handler = pi.handlers.get(event);
+  if (handler === undefined) throw new Error(`missing handler ${event}`);
+  return await handler(value, { ui });
+}
+
+function captureConsoleErrors(): { messages: string[]; restore(): void } {
+  const original = console.error;
+  const messages: string[] = [];
+  console.error = (...values: unknown[]): void => { messages.push(values.map(String).join(" ")); };
+  return { messages, restore: () => { console.error = original; } };
 }
 
 describe("schema v1", () => {
@@ -272,6 +291,117 @@ describe("decision translation and failure policy", () => {
     });
     expect(await passivePi.emit("session_start")).toBeUndefined();
     expect(errors.map((error) => error.message)).toEqual(["deny is only valid for pre-tool hooks"]);
+  });
+});
+
+describe("diagnostic reporting", () => {
+  test("notifies only nonempty successful stderr and bounds the message", async () => {
+    const notices: Array<{ message: string; type: string | undefined }> = [];
+    const errors: Error[] = [];
+    let stderr = "";
+    const pi = new FakePi();
+    createPiHookRuntime(pi, config(hook("advisory", "session-start")), {
+      packageRoot: "/tmp/package",
+      runner: async () => ({ exitCode: 0, signal: null, stdout: "", stderr }),
+      onError: (error) => errors.push(error),
+    });
+    const ui: FakeUI = { notify: (message, type) => notices.push({ message, type }) };
+
+    await emitWithUI(pi, "session_start", {}, ui);
+    expect(notices).toEqual([]);
+
+    stderr = " advisory text ";
+    await emitWithUI(pi, "session_start", {}, ui);
+    expect(notices).toEqual([{
+      message: 'Pi hook "advisory" wrote to stderr: advisory text',
+      type: "warning",
+    }]);
+
+    stderr = "x".repeat(3_000);
+    await emitWithUI(pi, "session_start", {}, ui);
+    expect((notices[1]?.message.length ?? 2_001) <= 2_000).toBe(true);
+    expect(notices[1]?.message.includes("\n…\n")).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test("reports runtime errors while preserving open and closed decisions", async () => {
+    const notices: Array<{ message: string; type: string | undefined }> = [];
+    const errors: Error[] = [];
+    const openPi = new FakePi();
+    createPiHookRuntime(openPi, config(hook("open", "pre-tool")), {
+      packageRoot: "/tmp/package",
+      runner: async () => { throw new Error("hook timed out"); },
+      onError: (error) => errors.push(error),
+    });
+    const result = await emitWithUI(openPi, "tool_call", { toolName: "bash", input: {} }, {
+      notify: (message, type) => notices.push({ message, type }),
+    });
+    expect(result).toBeUndefined();
+    expect(errors.map((error) => error.message)).toEqual(["hook timed out"]);
+    expect(notices).toEqual([{
+      message: 'Pi hook "open" failed: hook timed out',
+      type: "error",
+    }]);
+
+    const captured = captureConsoleErrors();
+    try {
+      const closedPi = new FakePi();
+      createPiHookRuntime(closedPi, config(hook("closed", "pre-tool", { failurePolicy: "closed" })), {
+        packageRoot: "/tmp/package",
+        runner: async () => { throw new Error("hook crashed"); },
+        onError: async () => { throw new Error("reporter failed"); },
+      });
+      const closed = await emitWithUI(closedPi, "tool_call", { toolName: "bash", input: {} }, {
+        notify: () => { throw new Error("UI unavailable"); },
+      });
+      expect(closed).toEqual({ block: true, reason: "hook execution failed: hook crashed" });
+      expect(captured.messages).toEqual(['Pi hook "closed" failed: hook crashed']);
+    } finally {
+      captured.restore();
+    }
+  });
+
+  test("falls back to stderr in headless contexts and keeps shutdown best-effort", async () => {
+    const captured = captureConsoleErrors();
+    try {
+      const pi = new FakePi();
+      createPiHookRuntime(pi, config(hook("headless-advisory", "session-start")), {
+        packageRoot: "/tmp/package",
+        runner: async () => ({ exitCode: 0, signal: null, stdout: "", stderr: "advisory" }),
+      });
+      await pi.emit("session_start");
+
+      const failingPi = new FakePi();
+      createPiHookRuntime(failingPi, config(hook("headless-error", "session-start")), {
+        packageRoot: "/tmp/package",
+        runner: async () => { throw new Error("spawn failed"); },
+      });
+      await failingPi.emit("session_start");
+      expect(captured.messages).toEqual([
+        'Pi hook "headless-advisory" wrote to stderr: advisory',
+        'Pi hook "headless-error" failed: spawn failed',
+      ]);
+
+      let started!: () => void;
+      const didStart = new Promise<void>((resolve) => { started = resolve; });
+      const shutdownPi = new FakePi();
+      const runtime = createPiHookRuntime(shutdownPi, config(hook("shutdown", "session-end", { asynchronous: true })), {
+        packageRoot: "/tmp/package",
+        runner: async (_command, options) => await new Promise((_resolve, reject) => {
+          started();
+          options.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }),
+        onError: async () => { throw new Error("reporter failed"); },
+      });
+      const shutdownHandler = shutdownPi.handlers.get("session_shutdown");
+      if (shutdownHandler === undefined) throw new Error("missing session_shutdown handler");
+      const shuttingDown = shutdownHandler({}, { ui: { notify: () => { throw new Error("UI unavailable"); } } });
+      await didStart;
+      await runtime.shutdown();
+      await shuttingDown;
+    } finally {
+      captured.restore();
+    }
   });
 });
 
@@ -516,4 +646,67 @@ describe("shutdown", () => {
     await Promise.all([pending, first]);
     expect(aborts).toBe(1);
   });
+});
+
+
+test("headless contexts with a no-op UI still receive stderr diagnostics", async () => {
+  const captured = captureConsoleErrors();
+  try {
+    const pi = new FakePi();
+    createPiHookRuntime(pi, config(hook("headless-noop-ui", "stop")), {
+      packageRoot: "/tmp/package",
+      runner: async () => ({ exitCode: 0, signal: null, stdout: "", stderr: "tests incomplete" }),
+    });
+    let uiCalls = 0;
+    const handler = pi.handlers.get("agent_end");
+    if (handler === undefined) throw new Error("missing agent_end handler");
+    await handler({}, { hasUI: false, ui: { notify: () => { uiCalls++; } } });
+    expect(uiCalls).toBe(0);
+    expect(captured.messages).toEqual(['Pi hook "headless-noop-ui" wrote to stderr: tests incomplete']);
+  } finally {
+    captured.restore();
+  }
+});
+
+
+test("passes trusted project cwd and session identity without losing native fields", async () => {
+  const pi = new FakePi();
+  let observed: unknown;
+  createPiHookRuntime(pi, config(hook("context", "stop")), {
+    packageRoot: "/plugin/package",
+    runner: async (_command, options) => {
+      observed = options.input;
+      return { exitCode: 0, signal: null, stdout: "", stderr: "" };
+    },
+  });
+  const handler = pi.handlers.get("agent_end");
+  if (handler === undefined) throw new Error("missing agent_end handler");
+  const nativeEvent = { messages: [], cwd: "/untrusted/event", session_id: "untrusted" };
+  await handler(nativeEvent, {
+    cwd: "/workspace/project",
+    sessionManager: { getSessionId: () => "session-42" },
+  });
+  expect(observed).toEqual({
+    event: "stop", hook: "context",
+    piEvent: { messages: [], cwd: "/workspace/project", session_id: "session-42" },
+  });
+  expect(nativeEvent).toEqual({ messages: [], cwd: "/untrusted/event", session_id: "untrusted" });
+});
+
+
+test("bounded diagnostics preserve the final outcome and remove terminal controls", async () => {
+  const pi = new FakePi();
+  const notices: string[] = [];
+  createPiHookRuntime(pi, config(hook("long-output", "stop")), {
+    packageRoot: "/tmp/package",
+    runner: async () => ({
+      exitCode: 0, signal: null, stdout: "",
+      stderr: `\x1b[31m${"diagnostic\n".repeat(1000)}FINAL: tests incomplete\x1b[0m`,
+    }),
+  });
+  await emitWithUI(pi, "agent_end", {}, { notify: (message) => notices.push(message) });
+  expect(notices.length).toBe(1);
+  expect(notices[0]?.length).toBe(2000);
+  expect(notices[0]?.endsWith("FINAL: tests incomplete")).toBe(true);
+  expect(notices[0]?.includes("\x1b")).toBe(false);
 });

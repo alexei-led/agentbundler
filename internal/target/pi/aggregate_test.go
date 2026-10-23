@@ -128,7 +128,7 @@ func TestAggregateRuntimeBytesAreEmbeddedDeterministically(t *testing.T) {
 		hash.Write([]byte{0})
 		hash.Write(source.bytes)
 	}
-	if got, want := hex.EncodeToString(hash.Sum(nil)), "4c7b39d79ed4a61b87ad4f5a10888e99187bc5bf034b41fbaedfa03015ccffa9"; got != want {
+	if got, want := hex.EncodeToString(hash.Sum(nil)), "b2a157911d3a8f2555eff94218dce861e8c508188529651368aa6f487e6e3f2f"; got != want {
 		t.Fatalf("embedded runtime hash = %q, want %q", got, want)
 	}
 

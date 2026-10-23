@@ -34,3 +34,7 @@ declare const process: {
   platform: string;
   kill(pid: number, signal: string | number): void;
 };
+
+declare module "node:util" {
+  export function stripVTControlCharacters(value: string): string;
+}
