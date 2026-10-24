@@ -89,7 +89,7 @@ The current writer and archive implementation produce identical bytes but still
 replace unchanged filesystem objects. This is a known product gap, not the
 intended steady-state contract. Until content-aware no-op writes land, run
 `check` first and invoke `build` only when it reports drift. See
-[Idempotence quality contract](docs/targets-and-cli.md#idempotence-quality-contract).
+[Command and verification reference](docs/targets-and-cli.md).
 
 ## Install
 
@@ -104,6 +104,10 @@ Or install with Go 1.26+:
 ```sh
 go install github.com/alexei-led/agentbundler/cmd/agbun@latest
 ```
+
+Windows binaries are best-effort. Their compatibility checks are advisory;
+Linux quality and release checks remain required. See
+[release validation](docs/release.md).
 
 ## Start with an existing bundle
 

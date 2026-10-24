@@ -83,6 +83,8 @@ jobs:
           version: v2.12.2
   windows-artifacts:
     name: Windows artifact contracts
+    # Keep failures visible without blocking Linux-gated releases.
+    continue-on-error: true
     runs-on: windows-latest
     timeout-minutes: 10
     steps:

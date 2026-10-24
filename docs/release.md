@@ -10,6 +10,12 @@ Release validation and binary builds disable shared GitHub Actions tool caches.
 Validation does not restore cached Bun executables or Go dependency/build state
 from previous CI runs.
 
+Linux quality checks and release validation are required. Windows artifact
+checks still run without test exclusions, but the Windows CI job is advisory.
+Windows binaries remain best-effort: cross-compilation does not establish
+runtime compatibility. Restore a required Windows gate when its artifact
+contracts pass on Windows.
+
 ## Required local gate
 
 ```sh
