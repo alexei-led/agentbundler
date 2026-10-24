@@ -6,6 +6,10 @@ Run from a clean checkout. Release tags are `vMAJOR.MINOR.PATCH` on `master`.
 The release workflow validates, builds six OS/architecture binaries, creates the
 GitHub release, and dispatches the Homebrew update.
 
+Release validation and binary builds disable shared GitHub Actions tool caches.
+Validation does not restore cached Bun executables or Go dependency/build state
+from previous CI runs.
+
 ## Required local gate
 
 ```sh
