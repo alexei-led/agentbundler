@@ -313,8 +313,8 @@ describe("diagnostic reporting", () => {
     stderr = " advisory text ";
     await emitWithUI(pi, "session_start", {}, ui);
     expect(notices).toEqual([{
-      message: 'Pi hook "advisory" wrote to stderr: advisory text',
-      type: "warning",
+      message: 'Pi hook "advisory": advisory text',
+      type: "info",
     }]);
 
     stderr = "x".repeat(3_000);
@@ -378,7 +378,7 @@ describe("diagnostic reporting", () => {
       });
       await failingPi.emit("session_start");
       expect(captured.messages).toEqual([
-        'Pi hook "headless-advisory" wrote to stderr: advisory',
+        'Pi hook "headless-advisory": advisory',
         'Pi hook "headless-error" failed: spawn failed',
       ]);
 
@@ -662,7 +662,7 @@ test("headless contexts with a no-op UI still receive stderr diagnostics", async
     if (handler === undefined) throw new Error("missing agent_end handler");
     await handler({}, { hasUI: false, ui: { notify: () => { uiCalls++; } } });
     expect(uiCalls).toBe(0);
-    expect(captured.messages).toEqual(['Pi hook "headless-noop-ui" wrote to stderr: tests incomplete']);
+    expect(captured.messages).toEqual(['Pi hook "headless-noop-ui": tests incomplete']);
   } finally {
     captured.restore();
   }
