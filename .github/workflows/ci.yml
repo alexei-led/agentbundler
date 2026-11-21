@@ -7,6 +7,7 @@ permissions:
 env:
   ANTIGRAVITY_CLI_SHA256: 7a7239a69b65d3cf3af7e75f27b2ff4e9cce696a7b9a9e5c37c695f1c74eec34
   ANTIGRAVITY_CLI_VERSION: 1.1.3
+  ARCHFIT_LINUX_AMD64_SHA256: be04076e5a9e7d669fd2a778f71eebd0a403c7c4a28c70060e6087c7104e679d
   ARCHFIT_VERSION: v0.9.0
   ARCHFIT_VERSION_CHECK: "1"
   AST_GREP_VERSION: 0.44.0
@@ -46,7 +47,12 @@ jobs:
       - name: Install architecture tools
         # zizmor: ignore[adhoc-packages] pinned CI-only analyzers are not app dependencies
         run: |
-          go install "github.com/coupling-dev/archfit/cmd/archfit@${ARCHFIT_VERSION}"
+          # archfit 0.9.0 needs Go 1.27; the pinned release binary does not.
+          archfit_bin="archfit-${ARCHFIT_VERSION}-linux-amd64"
+          curl -fsSL -o "${RUNNER_TEMP}/archfit" \
+            "https://github.com/coupling-dev/archfit/releases/download/${ARCHFIT_VERSION}/${archfit_bin}"
+          echo "${ARCHFIT_LINUX_AMD64_SHA256}  ${RUNNER_TEMP}/archfit" | sha256sum --check
+          sudo install -m 0755 "${RUNNER_TEMP}/archfit" /usr/local/bin/archfit
           npm install --global "@ast-grep/cli@${AST_GREP_VERSION}"
       - name: Check formatting
         run: |
