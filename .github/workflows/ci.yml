@@ -80,10 +80,6 @@ jobs:
       - name: Check architecture
         env:
           ARCHFIT_BASE: origin/${{ github.base_ref || github.event.repository.default_branch }}
-          # One-time migration: the target branch still holds a policy that
-          # archfit 0.9.0 cannot read, so the check would end unknown.
-          # Remove this line in the follow-up PR after the migration merges.
-          ARCHFIT_POLICY: .archfit.yaml
         run: scripts/check-architecture
       - name: Lint Go
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
