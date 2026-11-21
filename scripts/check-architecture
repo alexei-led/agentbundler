@@ -3,16 +3,24 @@ set -euo pipefail
 
 if ! command -v archfit >/dev/null 2>&1; then
 	printf '%s\n' 'archfit is required for architecture checks.' >&2
-	printf '%s\n' 'Install it with: brew install alexei-led/tap/archfit' >&2
+	printf '%s\n' 'Install it with: brew install coupling-dev/tap/archfit' >&2
 	exit 1
 fi
 
 if [[ "${ARCHFIT_VERSION_CHECK:-}" == "1" ]]; then
 	version=$(archfit --version 2>&1)
-	if [[ "$version" != *'v1.6.0'* ]]; then
-		printf 'archfit v1.6.0 is required in strict mode; found: %s\n' "$version" >&2
+	if [[ "$version" != *'v0.9.0'* ]]; then
+		printf 'archfit v0.9.0 is required in strict mode; found: %s\n' "$version" >&2
 		exit 1
 	fi
 fi
 
-exec archfit check --config .archfit.yaml --require-tools --progress none
+args=()
+if [[ -n "${ARCHFIT_BASE:-}" ]]; then
+	args+=(--base "$ARCHFIT_BASE")
+fi
+if [[ -n "${ARCHFIT_POLICY:-}" ]]; then
+	args+=(--policy "$ARCHFIT_POLICY")
+fi
+
+exec archfit check ${args[@]+"${args[@]}"}

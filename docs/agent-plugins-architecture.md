@@ -71,11 +71,11 @@ Drift and evidence limits:
   behavior fail before rendering.
 - No `.archfit` rule currently covers Agent Plugins boundaries. New rules below
   are recommended until wired into CI.
-- Architecture fitness is enforced in CI with pinned archfit v1.6.0 through
-  `scripts/check-architecture`. The local unversioned development binary uses a
-  newer CLI/config schema and is not valid evidence. Running
-  `go run github.com/alexei-led/archfit/cmd/archfit@v1.6.0 check --config .archfit.yaml --require-tools --progress none`
-  at design time passed with 0 blocking findings and 16 advisories.
+- Architecture fitness is enforced in CI with pinned archfit v0.9.0 through
+  `scripts/check-architecture`. Running
+  `go run github.com/coupling-dev/archfit/cmd/archfit@v0.9.0 check`
+  (needs Go 1.27; CI uses the checksum-pinned release binary) checks the working
+  tree against the target branch.
 
 ## Domain and volatility map
 
