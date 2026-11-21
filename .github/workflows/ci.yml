@@ -47,7 +47,7 @@ jobs:
       - name: Install architecture tools
         # zizmor: ignore[adhoc-packages] pinned CI-only analyzers are not app dependencies
         run: |
-          # archfit 0.9.0 needs Go 1.27; the pinned release binary does not.
+          # Keep the checksum-pinned release binary: no source build or module proxy in the gate.
           archfit_bin="archfit-${ARCHFIT_VERSION}-linux-amd64"
           curl -fsSL -o "${RUNNER_TEMP}/archfit" \
             "https://github.com/coupling-dev/archfit/releases/download/${ARCHFIT_VERSION}/${archfit_bin}"
