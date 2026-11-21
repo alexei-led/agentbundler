@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/alexei-led/agentbundler/actions/workflows/ci.yml/badge.svg)](https://github.com/alexei-led/agentbundler/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/alexei-led/agentbundler?sort=semver&display_name=tag)](https://github.com/alexei-led/agentbundler/releases)
-[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/)
+[![Go 1.27](https://img.shields.io/badge/Go-1.27-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/github/license/alexei-led/agentbundler)](LICENSE)
 
 > **One source → target-specific coding-agent layouts**
@@ -99,7 +99,7 @@ Homebrew is the default install:
 brew install alexei-led/tap/agentbundler
 ```
 
-Or install with Go 1.26+:
+Or install with Go 1.27+:
 
 ```sh
 go install github.com/alexei-led/agentbundler/cmd/agbun@latest

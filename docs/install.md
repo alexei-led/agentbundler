@@ -18,7 +18,7 @@ executable.
 
 ## Go
 
-Go 1.26 or newer:
+Go 1.27 or newer:
 
 ```sh
 go install github.com/alexei-led/agentbundler/cmd/agbun@latest

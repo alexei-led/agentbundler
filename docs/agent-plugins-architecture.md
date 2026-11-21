@@ -74,7 +74,7 @@ Drift and evidence limits:
 - Architecture fitness is enforced in CI with pinned archfit v0.9.0 through
   `scripts/check-architecture`. Running
   `go run github.com/coupling-dev/archfit/cmd/archfit@v0.9.0 check`
-  (needs Go 1.27; CI uses the checksum-pinned release binary) checks the working
+  (needs Go 1.27; CI installs the checksum-pinned release binary) checks the working
   tree against the target branch.
 
 ## Domain and volatility map
