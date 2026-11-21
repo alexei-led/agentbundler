@@ -155,28 +155,17 @@ Run the deterministic gate directly, or let the enabled pre-push hook run it:
 scripts/check-architecture
 ```
 
-For a full local report using the configured SCIP, syntax, and clone analyzers:
+For the repository-wide picture for owners:
 
 ```sh
-archfit analyze --config .archfit.yaml --refresh
+archfit report
 ```
 
-For an off-gate LLM summary, load an API key into the local environment and add
-`--ai-summary`. Do not commit `.env` or use the LLM summary as a CI decision:
-
-```sh
-set -a
-. /path/to/private/archfit/.env
-set +a
-archfit analyze --config .archfit.yaml --refresh --ai-summary
-```
-
-CI installs Archfit v1.6.0 and pinned SCIP, ast-grep, and jscpd analyzers, then
-runs the deterministic gate in strict tool mode. It also runs Go tests/race/vet,
+CI installs Archfit v0.9.0 and pinned ast-grep, then runs the deterministic
+gate against the target branch. It also runs Go tests/race/vet,
 Go lint, the pinned Bun TypeScript gate, the seven-target deterministic fixture,
 and checksum/version-pinned Claude, Grok, and Antigravity validators. Local
-pre-push uses the same architecture config and requires its analyzers, but local
-tool versions may differ. The pre-push hook fails closed if Archfit or a required analyzer is
+pre-push uses the same policy, but local tool versions may differ. The pre-push hook fails closed if Archfit or a required analyzer is
 missing. Update versions, config, CI pins, and validator evidence together; run
 `archfit doctor` after an upgrade.
 

@@ -1,11 +1,18 @@
 version: 1
-# Agent Bundler is one binary with one owner. Module distance therefore follows
-# code structure. Volatility describes the domain contract: target adapters
-# change with vendor formats; artifact writing is stable infrastructure.
-coupling:
-  min_severity: medium
-  duplicated_knowledge: score
-  volatility_cascade: true
+# Agent Bundler is one binary with one owner. Module distance follows code
+# structure. Volatility describes the domain contract: target adapters change
+# with vendor formats; artifact writing is stable infrastructure.
+owners:
+  - alexei-led
+builtin:
+  graph: deny
+  duplication: off
+# Inner to outer. The layers rule rejects an inner module depending on an outer one.
+layers:
+  - model
+  - stage
+  - compiler
+  - cmd
 languages:
   go:
     enabled: true
@@ -17,25 +24,11 @@ languages:
     enabled: false
   rust:
     enabled: false
-# CI installs and requires pinned analyzers. Local pre-push requires the
-# configured analyzers to be available; versions may differ by developer.
 analyzers:
-  scip:
-    enabled: true
   syntax:
     enabled: true
-  clones:
-    enabled: true
-# Inner to outer. forbidden_layer_direction rejects an inner module importing a
-# module listed after it.
-layers:
-  - model
-  - stage
-  - compiler
-  - cmd
 modules:
   agentplugins:
-    owner: alexei-led
     paths:
       - internal/agentplugins/**
     public:
@@ -43,9 +36,7 @@ modules:
     layer: model
     subdomain: core
     volatility: high
-    deploy_unit: agentbundler
   compiler_model:
-    owner: alexei-led
     paths:
       - internal/compiler/model/**
     public:
@@ -53,9 +44,7 @@ modules:
     layer: model
     subdomain: core
     volatility: high
-    deploy_unit: agentbundler
   composition:
-    owner: alexei-led
     paths:
       - internal/compiler/composition/**
     public:
@@ -63,9 +52,9 @@ modules:
     layer: stage
     subdomain: core
     volatility: high
-    deploy_unit: agentbundler
+    depends_on:
+      - compiler_model
   source:
-    owner: alexei-led
     paths:
       - internal/compiler/source/**
     public:
@@ -73,9 +62,10 @@ modules:
     layer: stage
     subdomain: core
     volatility: high
-    deploy_unit: agentbundler
+    depends_on:
+      - compiler_model
+      - agentplugins
   target:
-    owner: alexei-led
     paths:
       - internal/target/**
     public:
@@ -83,9 +73,10 @@ modules:
     layer: stage
     subdomain: core
     volatility: high
-    deploy_unit: agentbundler
+    depends_on:
+      - compiler_model
+      - agentplugins
   artifact:
-    owner: alexei-led
     paths:
       - internal/artifact/**
     public:
@@ -93,9 +84,9 @@ modules:
     layer: stage
     subdomain: supporting
     volatility: medium
-    deploy_unit: agentbundler
+    depends_on:
+      - compiler_model
   compatibility:
-    owner: alexei-led
     paths:
       - internal/compatibility/**
     public:
@@ -103,9 +94,9 @@ modules:
     layer: stage
     subdomain: supporting
     volatility: high
-    deploy_unit: agentbundler
+    depends_on:
+      - compiler_model
   compiler:
-    owner: alexei-led
     paths:
       - internal/compiler/*.go
     public:
@@ -113,133 +104,52 @@ modules:
     layer: compiler
     subdomain: core
     volatility: high
-    deploy_unit: agentbundler
+    depends_on:
+      - compiler_model
+      - composition
+      - source
+      - target
+      - artifact
+      - compatibility
+      - buildinfo
+      - agentplugins
   cmd_agentbundler:
-    owner: alexei-led
     paths:
       - cmd/agbun/**
     public:
       - cmd/agbun
-    role: composition_root
     layer: cmd
     subdomain: generic
     volatility: medium
-    deploy_unit: agentbundler
-rules:
-  - id: no_layer_back_edges
-    type: forbidden_layer_direction
-    gate: fail
-  - id: public_api_only
-    type: public_api_only
-    gate: fail
-  - id: no_cycles
-    type: cycle
-    gate: fail
-  # Composition, import, rendering, and artifact handling meet only in the
-  # compiler orchestrator. Keep the stage implementations independent.
-  - id: composition_no_source
-    type: forbidden_dependency
-    from: internal/compiler/composition/**
-    to: internal/compiler/source/**
-    gate: fail
-  - id: composition_no_target
-    type: forbidden_dependency
-    from: internal/compiler/composition/**
-    to: internal/target/**
-    gate: fail
-  - id: composition_no_artifact
-    type: forbidden_dependency
-    from: internal/compiler/composition/**
-    to: internal/artifact/**
-    gate: fail
-  - id: source_no_composition
-    type: forbidden_dependency
-    from: internal/compiler/source/**
-    to: internal/compiler/composition/**
-    gate: fail
-  - id: source_no_target
-    type: forbidden_dependency
-    from: internal/compiler/source/**
-    to: internal/target/**
-    gate: fail
-  - id: source_no_artifact
-    type: forbidden_dependency
-    from: internal/compiler/source/**
-    to: internal/artifact/**
-    gate: fail
-  - id: target_no_composition
-    type: forbidden_dependency
-    from: internal/target/**
-    to: internal/compiler/composition/**
-    gate: fail
-  - id: target_no_source
-    type: forbidden_dependency
-    from: internal/target/**
-    to: internal/compiler/source/**
-    gate: fail
-  - id: target_no_artifact
-    type: forbidden_dependency
-    from: internal/target/**
-    to: internal/artifact/**
-    gate: fail
-  - id: artifact_no_composition
-    type: forbidden_dependency
-    from: internal/artifact/**
-    to: internal/compiler/composition/**
-    gate: fail
-  - id: artifact_no_source
-    type: forbidden_dependency
-    from: internal/artifact/**
-    to: internal/compiler/source/**
-    gate: fail
-  - id: artifact_no_target
-    type: forbidden_dependency
-    from: internal/artifact/**
-    to: internal/target/**
-    gate: fail
-  - id: compatibility_no_source
-    type: forbidden_dependency
-    from: internal/compatibility/**
-    to: internal/compiler/source/**
-    gate: fail
-  - id: compatibility_no_composition
-    type: forbidden_dependency
-    from: internal/compatibility/**
-    to: internal/compiler/composition/**
-    gate: fail
-  - id: compatibility_no_target
-    type: forbidden_dependency
-    from: internal/compatibility/**
-    to: internal/target/**
-    gate: fail
-  - id: compatibility_no_artifact
-    type: forbidden_dependency
-    from: internal/compatibility/**
-    to: internal/artifact/**
-    gate: fail
-  # internal/agentplugins is a pure wire contract module. It must not import
-  # compiler internals, targets, artifact infrastructure, or the CLI. This
-  # boundary is also enforced by the imports_test.go allowlist test.
-  - id: agentplugins_no_compiler
-    type: forbidden_dependency
-    from: internal/agentplugins/**
-    to: internal/compiler/**
-    gate: fail
-  - id: agentplugins_no_target
-    type: forbidden_dependency
-    from: internal/agentplugins/**
-    to: internal/target/**
-    gate: fail
-  - id: agentplugins_no_artifact
-    type: forbidden_dependency
-    from: internal/agentplugins/**
-    to: internal/artifact/**
-    gate: fail
-  - id: agentplugins_no_cmd
-    type: forbidden_dependency
-    from: internal/agentplugins/**
-    to: cmd/**
-    gate: fail
-ai:
-  provider: anthropic
-  model: claude-opus-4-8
+    depends_on:
+      - compiler
+      - compiler_model
+      - artifact
+      - buildinfo
+      - agentplugins
+  buildinfo:
+    paths:
+      - internal/buildinfo/**
+    public:
+      - internal/buildinfo
+    subdomain: generic
+    volatility: low
+  testutil:
+    paths:
+      - internal/testutil/**
+    public:
+      - internal/testutil
+    subdomain: generic
+    volatility: low
+  root:
+    paths:
+      - "*.go"
+    public:
+      - "*.go"
+    subdomain: generic
+    volatility: low
+tests:
+  - "**/*_test.go"
+  - "**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"
+  - "**/test/**"
+  - "**/testdata/**"
